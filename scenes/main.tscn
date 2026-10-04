@@ -1,0 +1,46 @@
+[gd_scene format=3 uid="uid://ptlo3f5hyu7q"]
+
+[ext_resource type="Script" uid="uid://ohbyapek81lw" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://3c7jpx22r4nc" path="res://scripts/world/world.gd" id="2_world"]
+[ext_resource type="Script" uid="uid://b7w7et7cnh1oi" path="res://scripts/world/camera_controller.gd" id="3_camera"]
+[ext_resource type="Script" uid="uid://ccnuadn782ffp" path="res://scripts/world/build_system.gd" id="4_build"]
+[ext_resource type="Script" uid="uid://dyvf2bpjjjtqn" path="res://scripts/customers/customer_spawner.gd" id="5_spawner"]
+[ext_resource type="Script" uid="uid://cqy72adg7y41q" path="res://scripts/ui/hud.gd" id="6_hud"]
+[ext_resource type="Script" uid="uid://4lkxtm71q6nh" path="res://scripts/ui/building_panel.gd" id="7_bpanel"]
+[ext_resource type="Script" uid="uid://cjhna080dmahi" path="res://scripts/ui/inventory_panel.gd" id="8_ipanel"]
+[ext_resource type="Script" uid="uid://bouml6rpjij1a" path="res://scripts/ui/exploration_panel.gd" id="9_expanel"]
+[ext_resource type="Script" uid="uid://btwl1qsdkmyjo" path="res://scripts/ui/stats_panel.gd" id="10_spanel"]
+[ext_resource type="Script" uid="uid://cemhup0qby64e" path="res://scripts/world/daylight.gd" id="11_daylight"]
+
+[node name="Main" type="Node2D" unique_id=1523221713]
+script = ExtResource("1_main")
+
+[node name="World" type="Node2D" parent="." unique_id=1967799962]
+script = ExtResource("2_world")
+
+[node name="Daylight" type="CanvasModulate" parent="." unique_id=1009039914]
+script = ExtResource("11_daylight")
+
+[node name="Camera" type="Camera2D" parent="." unique_id=1494243965]
+script = ExtResource("3_camera")
+
+[node name="BuildSystem" type="Node2D" parent="." unique_id=1445846233]
+script = ExtResource("4_build")
+
+[node name="CustomerSpawner" type="Node" parent="." unique_id=526733518]
+script = ExtResource("5_spawner")
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=2139208004]
+script = ExtResource("6_hud")
+
+[node name="BuildingPanel" type="CanvasLayer" parent="." unique_id=1985063856]
+script = ExtResource("7_bpanel")
+
+[node name="InventoryPanel" type="CanvasLayer" parent="." unique_id=1734907837]
+script = ExtResource("8_ipanel")
+
+[node name="ExplorationPanel" type="CanvasLayer" parent="." unique_id=1677635888]
+script = ExtResource("9_expanel")
+
+[node name="StatsPanel" type="CanvasLayer" parent="." unique_id=127989295]
+script = ExtResource("10_spanel")

@@ -1,0 +1,20 @@
+{
+  "ground": {
+	"grass": [3, 3],
+	"grass_dark": [3, 6],
+	"sand": [3, 0],
+	"atlas": "res://art/placeholder/tiles/field.png",
+	"cost": { "path": 30, "lawn": 10, "grass": 10 }
+  },
+  "decorations": [
+	{ "id": "tree_small", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [0, 0, 32, 48], "weight": 12 },
+	{ "id": "tree_pine", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [32, 0, 32, 48], "weight": 10 },
+	{ "id": "tree_pair", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [0, 48, 64, 48], "weight": 6 },
+	{ "id": "tree_blossom", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [192, 48, 64, 48], "weight": 4 },
+	{ "id": "rock_grey", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [256, 112, 48, 48], "weight": 6 },
+	{ "id": "rock_brown", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [240, 160, 64, 48], "weight": 4 },
+	{ "id": "bush", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [0, 144, 16, 16], "weight": 14 },
+	{ "id": "flower", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [0, 176, 16, 16], "weight": 12 },
+	{ "id": "pond", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [0, 192, 48, 48], "weight": 3 }
+  ]
+}

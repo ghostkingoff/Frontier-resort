@@ -1,0 +1,433 @@
+{
+  "events": [
+    {
+      "id": "low_herb_patch", "zone": "low",
+      "title": "路边的草药丛",
+      "text": "浅滩边的草丛里长着几株泛着微光的草叶，叶片上还挂着水珠。",
+      "options": [
+        { "label": "仔细采摘", "stamina": 4, "san": 1,
+          "result": "你小心地把草叶收进袋子，根部的泥土里还翻出一点别的东西。",
+          "rewards": [ { "item": "spring_water", "min": 1, "max": 2, "chance": 0.95 } ] },
+        { "label": "连根拔走，多采一些", "stamina": 8, "san": 3,
+          "result": "你多拔了两大把，泥土被翻开，露出底下压着的碎石。",
+          "rewards": [ { "item": "spring_water", "min": 2, "max": 3, "chance": 1.0 }, { "item": "gem_green", "min": 1, "max": 1, "chance": 0.3 } ],
+          "risk": { "chance": 0.15, "type": "injury", "stamina": 8, "san": 4, "text": "石缝里窜出一条细蛇，你被吓了一跳，手背也被划了一下。" } }
+      ]
+    },
+    {
+      "id": "low_stream", "zone": "low",
+      "title": "浅溪",
+      "text": "溪水清得能看见底，几块带色彩的石头躺在水里。",
+      "options": [
+        { "label": "下水摸石头", "stamina": 5, "san": 1,
+          "result": "水很凉，你摸到了几块颜色不错的石头。",
+          "rewards": [ { "item": "rock", "min": 1, "max": 3, "chance": 1.0 }, { "item": "gem_red", "min": 1, "max": 1, "chance": 0.15 } ] },
+        { "label": "只灌一壶水就走", "stamina": 2, "san": 0,
+          "result": "你把水壶灌满，没花多少力气。",
+          "rewards": [ { "item": "spring_water", "min": 1, "max": 1, "chance": 1.0 } ] }
+      ]
+    },
+    {
+      "id": "low_old_camp", "zone": "low",
+      "title": "废弃营地",
+      "text": "半塌的帐篷里散落着前人留下的东西，火堆早就凉透了。",
+      "options": [
+        { "label": "翻找有用的东西", "stamina": 5, "san": 2,
+          "result": "你从布料底下摸出几件还能用的东西。",
+          "rewards": [ { "item": "branch", "min": 1, "max": 3, "chance": 1.0 }, { "item": "medipack", "min": 1, "max": 1, "chance": 0.35 } ] },
+        { "label": "在灰烬里找线索", "stamina": 3, "san": 4,
+          "result": "灰烬里埋着半枚烧焦的铜币，还有一块被磨圆的金属。",
+          "rewards": [ { "item": "bar_copper", "min": 1, "max": 1, "chance": 0.6 }, { "item": "coin_gold", "min": 1, "max": 1, "chance": 0.2 } ] }
+      ]
+    },
+    {
+      "id": "low_bird_nest", "zone": "low",
+      "title": "岩缝里的鸟巢",
+      "text": "高处的岩缝里卡着一只鸟巢，羽毛从边上垂下来。",
+      "options": [
+        { "label": "爬上去看看", "stamina": 8, "san": 2,
+          "result": "你踩着石棱爬上去，巢里没有蛋，只有几根漂亮的羽毛和一点亮晶晶的东西。",
+          "rewards": [ { "item": "feather", "min": 2, "max": 4, "chance": 1.0 }, { "item": "coin_gold", "min": 1, "max": 1, "chance": 0.25 } ],
+          "risk": { "chance": 0.18, "type": "injury", "stamina": 10, "san": 3, "text": "脚下的石头松了，你滑落半截，膝盖磕在岩壁上。" } },
+        { "label": "只在下面捡掉落的东西", "stamina": 2, "san": 0,
+          "result": "你在巢下的草丛里捡到几根羽毛。",
+          "rewards": [ { "item": "feather", "min": 1, "max": 2, "chance": 0.9 } ] }
+      ]
+    },
+    {
+      "id": "low_ore_outcrop", "zone": "low",
+      "title": "露头的矿脉",
+      "text": "斜坡上露出一小段金属色的矿脉，用工具就能敲下来。",
+      "options": [
+        { "label": "敲一批矿石", "stamina": 7, "san": 1,
+          "result": "你敲下了几块成色不错的矿石。",
+          "rewards": [ { "item": "rock", "min": 2, "max": 4, "chance": 1.0 }, { "item": "bar_copper", "min": 1, "max": 2, "chance": 0.5 } ] },
+        { "label": "只挑最好的那块", "stamina": 4, "san": 1,
+          "result": "你只取走了最亮的一块矿石。",
+          "rewards": [ { "item": "bar_copper", "min": 1, "max": 1, "chance": 0.75 } ] }
+      ]
+    },
+    {
+      "id": "low_broken_cart", "zone": "low",
+      "title": "破损的板车",
+      "text": "一辆翻倒的板车陷在泥里，车上的箱子散了架。",
+      "options": [
+        { "label": "把箱子拆开", "stamina": 6, "san": 2,
+          "result": "箱子里有几件还能用的零碎物品。",
+          "rewards": [ { "item": "branch", "min": 2, "max": 3, "chance": 1.0 }, { "item": "bar_iron", "min": 1, "max": 1, "chance": 0.28 } ] },
+        { "label": "看看还有没有人", "stamina": 4, "san": 5,
+          "result": "四周没有脚印，只有车辙一直通向外围。你在车底发现一点遗留的货物。",
+          "rewards": [ { "item": "bar_copper", "min": 1, "max": 2, "chance": 0.7 } ] }
+      ]
+    },
+    {
+      "id": "low_shrine", "zone": "low",
+      "title": "路边的小神龛",
+      "text": "石制的小神龛立在岔路口，上面覆着薄薄一层灰，供台上似乎放过东西。",
+      "options": [
+        { "label": "拜一拜，收下供品", "stamina": 2, "san": -4,
+          "result": "你合掌片刻，心里安稳了些，也收下了供台上残留的物件。",
+          "rewards": [ { "item": "coin_silver", "min": 1, "max": 1, "chance": 0.5 }, { "item": "gem_yellow", "min": 1, "max": 1, "chance": 0.25 } ] },
+        { "label": "把神龛擦干净再走", "stamina": 4, "san": -6,
+          "result": "你拂去灰尘，神龛上的刻痕亮了一下。心里那点不安散了不少。",
+          "rewards": [ { "item": "spring_water", "min": 1, "max": 1, "chance": 0.6 } ] }
+      ]
+    },
+    {
+      "id": "low_animal_trail", "zone": "low",
+      "title": "兽道",
+      "text": "草丛被踩出一条窄道，尽头传来窸窸窣窣的声响。",
+      "options": [
+        { "label": "沿着兽道走一段", "stamina": 6, "san": 2,
+          "result": "你在兽道尽头找到一处被拱开的土堆，里面埋着东西。",
+          "rewards": [ { "item": "rock", "min": 1, "max": 2, "chance": 0.8 }, { "item": "gem_green", "min": 1, "max": 1, "chance": 0.2 } ] },
+        { "label": "在路口设个简易陷阱", "stamina": 5, "san": 1,
+          "result": "你留下陷阱，回头时里面已经有东西了。",
+          "rewards": [ { "item": "feather", "min": 1, "max": 2, "chance": 0.7 }, { "item": "ration", "min": 1, "max": 1, "chance": 0.2 } ],
+          "risk": { "chance": 0.12, "type": "injury", "stamina": 6, "san": 3, "text": "陷阱的绳子回弹，抽到了你的手。" } }
+      ]
+    },
+    {
+      "id": "low_fog_bank", "zone": "low",
+      "title": "薄雾带",
+      "text": "一片薄雾贴着地面铺开，雾里有细碎的光点在缓慢移动。",
+      "options": [
+        { "label": "穿过去", "stamina": 5, "san": 6,
+          "result": "走到一半，你听见有人在雾里叫你的名字，但回头什么都没看到。",
+          "rewards": [ { "item": "gem_green", "min": 1, "max": 1, "chance": 0.45 } ] },
+        { "label": "绕开雾区", "stamina": 8, "san": 1,
+          "result": "你多走了半圈，路边的碎石里有一点点收获。",
+          "rewards": [ { "item": "rock", "min": 1, "max": 2, "chance": 0.8 } ] }
+      ]
+    },
+    {
+      "id": "low_mushroom_ring", "zone": "low",
+      "title": "蘑菇圈",
+      "text": "一圈蘑菇在草地上长得异常整齐，圈里的草比别处更绿。",
+      "options": [
+        { "label": "进圈里看看", "stamina": 3, "san": 8,
+          "result": "圈里安静得不正常。你在圈心挖出一小块温热的石头。",
+          "rewards": [ { "item": "gem_yellow", "min": 1, "max": 1, "chance": 0.5 } ] },
+        { "label": "只在圈外采蘑菇", "stamina": 3, "san": 1,
+          "result": "你采了几朵能吃的蘑菇，顺手捡了点柴枝。",
+          "rewards": [ { "item": "ration", "min": 1, "max": 1, "chance": 0.6 }, { "item": "branch", "min": 1, "max": 2, "chance": 1.0 } ] }
+      ]
+    },
+    {
+      "id": "high_mirage", "zone": "high",
+      "title": "沙海幻影",
+      "text": "前面的空气扭曲起来，一座不存在的城市浮在半空，街上还有人群在走动。",
+      "options": [
+        { "label": "盯着看，找出幻象的破绽", "stamina": 6, "san": 16,
+          "result": "你看穿了幻象：那些人影的脸都是同一个。幻象碎开时，地上多了一枚冷硬的结晶。",
+          "rewards": [ { "item": "gem_purple", "min": 1, "max": 1, "chance": 0.6 }, { "item": "bar_purple", "min": 1, "max": 1, "chance": 0.15 } ] },
+        { "label": "闭眼快步穿过", "stamina": 10, "san": 8,
+          "result": "你低着头冲过去，身后传来很多人同时叹气的声音。",
+          "rewards": [ { "item": "gem_red", "min": 1, "max": 1, "chance": 0.35 } ] }
+      ]
+    },
+    {
+      "id": "high_crystal_field", "zone": "high",
+      "title": "结晶林",
+      "text": "紫色的结晶从地里长出来，像一片没有叶子的森林，风穿过时会发出很轻的响声。",
+      "options": [
+        { "label": "敲下一块结晶", "stamina": 10, "san": 5,
+          "result": "结晶比看上去脆，你收好了一整块。",
+          "rewards": [ { "item": "gem_purple", "min": 1, "max": 2, "chance": 0.85 }, { "item": "bar_purple", "min": 1, "max": 1, "chance": 0.2 } ],
+          "risk": { "chance": 0.2, "type": "anomaly", "stamina": 6, "san": 14, "text": "碎屑飞起来的一瞬间，你看见结晶里映着自己的背影，它没有跟着你动。" } },
+        { "label": "只捡地上掉落的碎块", "stamina": 6, "san": 3,
+          "result": "你捡了几块碎晶，稳妥地退了出来。",
+          "rewards": [ { "item": "gem_purple", "min": 1, "max": 1, "chance": 0.6 } ] }
+      ]
+    },
+    {
+      "id": "high_ruins_gate", "zone": "high",
+      "title": "遗迹大门",
+      "text": "半埋的石门还立着，门缝里透出暖色的光，门楣上的字已经看不清了。",
+      "options": [
+        { "label": "推开石门", "stamina": 14, "san": 10,
+          "result": "门后是一间空屋，正中的石台上摆着一件东西，像是专门留给你的一样。",
+          "rewards": [ { "item": "key_gold", "min": 1, "max": 1, "chance": 0.45 }, { "item": "cup_gold", "min": 1, "max": 1, "chance": 0.3 }, { "item": "chest_small", "min": 1, "max": 1, "chance": 0.12 } ],
+          "risk": { "chance": 0.25, "type": "injury", "stamina": 14, "san": 8, "text": "门轴断裂，石块砸下来，你侧身躲开，肩膀还是被磕了一下。" } },
+        { "label": "从门缝探手进去摸", "stamina": 7, "san": 8,
+          "result": "你摸到一件冰凉的器物，抽出来时手心全是灰。",
+          "rewards": [ { "item": "cup_silver", "min": 1, "max": 1, "chance": 0.4 }, { "item": "coin_gold", "min": 1, "max": 2, "chance": 0.5 } ] }
+      ]
+    },
+    {
+      "id": "high_watcher", "zone": "high",
+      "title": "凝视者",
+      "text": "远处的石柱上站着一个瘦长的影子，它一直看着你，但你一动它就跟着动。",
+      "options": [
+        { "label": "慢慢后退，绕开它", "stamina": 12, "san": 10,
+          "result": "你退到它看不见的地方，脚边正好有一堆前人留下的东西。",
+          "rewards": [ { "item": "medipack", "min": 1, "max": 1, "chance": 0.4 }, { "item": "bar_iron", "min": 1, "max": 2, "chance": 0.5 } ] },
+        { "label": "盯回去，向它走过去", "stamina": 10, "san": 18,
+          "result": "你走近时它散成了灰。灰烬里留下一样东西，像是它的骨头。",
+          "rewards": [ { "item": "bar_mithril", "min": 1, "max": 1, "chance": 0.3 }, { "item": "gem_purple", "min": 1, "max": 2, "chance": 0.5 } ],
+          "risk": { "chance": 0.22, "type": "monster", "text": "它突然不在原地了，你的后颈一凉——" } }
+      ]
+    },
+    {
+      "id": "high_whisper_woods", "zone": "high",
+      "title": "低语林",
+      "text": "树干上刻满了字，凑近才看清那些字一直在动。林子里有人在很小声地说话。",
+      "options": [
+        { "label": "听清它们在说什么", "stamina": 6, "san": 20,
+          "result": "你听懂了一句：往西三步。你照做，脚下踢到一个硬物。",
+          "rewards": [ { "item": "gem_red", "min": 1, "max": 1, "chance": 0.5 }, { "item": "bar_silver", "min": 1, "max": 1, "chance": 0.35 } ] },
+        { "label": "堵住耳朵快速通过", "stamina": 9, "san": 6,
+          "result": "你一路快走，只在林边捡到几根落下的树枝。",
+          "rewards": [ { "item": "branch", "min": 2, "max": 3, "chance": 0.8 } ] }
+      ]
+    },
+    {
+      "id": "high_broken_bridge", "zone": "high",
+      "title": "断桥",
+      "text": "石桥中间塌了一段，桥下的雾气看不到底。对岸似乎有东西在反光。",
+      "options": [
+        { "label": "跳过去", "stamina": 16, "san": 8,
+          "result": "你落在对岸，回身看了一眼桥下的雾，觉得雾里也有人在看你。对岸的东西很值钱。",
+          "rewards": [ { "item": "cup_silver", "min": 1, "max": 1, "chance": 0.5 }, { "item": "bar_silver", "min": 1, "max": 1, "chance": 0.45 } ],
+          "risk": { "chance": 0.28, "type": "injury", "stamina": 18, "san": 12, "text": "你没踩稳，半个身子挂在断口上才爬上来。" } },
+        { "label": "沿桥下的浅滩绕过去", "stamina": 12, "san": 5,
+          "result": "绕路花了些时间，你在浅滩上捡到几样被水冲来的东西。",
+          "rewards": [ { "item": "rock", "min": 2, "max": 3, "chance": 0.9 }, { "item": "gem_green", "min": 1, "max": 1, "chance": 0.35 } ] }
+      ]
+    },
+    {
+      "id": "high_red_spring", "zone": "high",
+      "title": "赤泉",
+      "text": "泉水是温的，颜色偏红，水面没有倒影。",
+      "options": [
+        { "label": "装一瓶带回去", "stamina": 8, "san": 12,
+          "result": "水在瓶子里安静下来，颜色慢慢变清了。",
+          "rewards": [ { "item": "gem_red", "min": 1, "max": 2, "chance": 0.7 }, { "item": "potion_life", "min": 1, "max": 1, "chance": 0.3 } ] },
+        { "label": "洗把脸再走", "stamina": 5, "san": -12,
+          "result": "水擦过脸的瞬间，脑子里的杂音全部消失了，整个人轻快很多。",
+          "rewards": [ { "item": "spring_water", "min": 1, "max": 1, "chance": 0.5 } ] }
+      ]
+    },
+    {
+      "id": "high_ancient_forge", "zone": "high",
+      "title": "古代熔炉",
+      "text": "熔炉还是热的，炉膛里有东西在缓慢地流动。",
+      "options": [
+        { "label": "把矿石丢进去重炼", "stamina": 12, "san": 8,
+          "result": "炉火猛地亮了一下，出来一块成色极好的金属。",
+          "rewards": [ { "item": "bar_mithril", "min": 1, "max": 1, "chance": 0.35 }, { "item": "bar_gold", "min": 1, "max": 1, "chance": 0.3 }, { "item": "bar_iron", "min": 1, "max": 2, "chance": 0.6 } ] },
+        { "label": "看看炉边的模具", "stamina": 7, "san": 6,
+          "result": "模具里卡着几块冷却好的料。",
+          "rewards": [ { "item": "bar_copper", "min": 1, "max": 2, "chance": 1.0 }, { "item": "bar_silver", "min": 1, "max": 1, "chance": 0.3 } ] }
+      ]
+    },
+    {
+      "id": "high_ghost_caravan", "zone": "high",
+      "title": "幽灵商队",
+      "text": "一列半透明的驮兽停在路边，赶车的人转头看你，示意可以交换。",
+      "options": [
+        { "label": "用手里的东西交换", "stamina": 4, "san": 10,
+          "result": "你把捡来的杂物递过去，换回一件更值钱的东西。",
+          "rewards": [ { "item": "cup_gold", "min": 1, "max": 1, "chance": 0.35 }, { "item": "bar_silver", "min": 1, "max": 2, "chance": 0.5 } ] },
+        { "label": "婉拒，继续走", "stamina": 4, "san": 3,
+          "result": "商队没有为难你，走远后你才发现路边落了一样东西。",
+          "rewards": [ { "item": "coin_gold", "min": 1, "max": 2, "chance": 0.6 } ] }
+      ]
+    },
+    {
+      "id": "high_sky_tear", "zone": "high",
+      "title": "天裂",
+      "text": "天空裂开一道细缝，缝里流下来的光落在地上，草在瞬间长大又枯萎。",
+      "options": [
+        { "label": "走到光落下的地方", "stamina": 10, "san": 22,
+          "result": "光穿过你身体的一瞬间，你听见了很多不属于自己的记忆。手里多了一块极纯的结晶。",
+          "rewards": [ { "item": "bar_purple", "min": 1, "max": 1, "chance": 0.4 }, { "item": "gem_purple", "min": 1, "max": 2, "chance": 0.7 } ],
+          "risk": { "chance": 0.2, "type": "anomaly", "stamina": 8, "san": 20, "text": "光熄灭时你的手在抖，有一小段时间你记不起自己为什么在这里。" } },
+        { "label": "远远看着，记下位置", "stamina": 8, "san": 10,
+          "result": "你退到安全距离，看清了光的落点，顺手捡了些被光逼出来的碎石。",
+          "rewards": [ { "item": "gem_red", "min": 1, "max": 1, "chance": 0.5 } ] }
+      ]
+    },
+    {
+      "id": "high_bone_field", "zone": "high",
+      "title": "白骨原野",
+      "text": "大片白骨从沙里露出来，排成一行，像是在指路。",
+      "options": [
+        { "label": "沿着白骨走", "stamina": 12, "san": 14,
+          "result": "白骨的尽头插着一把锈住的旧武器，旁边散落着值钱的东西。",
+          "rewards": [ { "item": "cup_silver", "min": 1, "max": 1, "chance": 0.45 }, { "item": "bar_iron", "min": 1, "max": 2, "chance": 0.5 } ],
+          "risk": { "chance": 0.2, "type": "monster", "text": "沙子下面动了一下，一只手抓住你的脚踝——" } },
+        { "label": "绕开，从侧面走", "stamina": 10, "san": 6,
+          "result": "你从侧面绕过去，路上捡到一点被风刮出来的东西。",
+          "rewards": [ { "item": "rock", "min": 1, "max": 2, "chance": 0.7 }, { "item": "coin_gold", "min": 1, "max": 1, "chance": 0.4 } ] }
+      ]
+    },
+    {
+      "id": "high_starfall_crater", "zone": "high",
+      "title": "坠星坑",
+      "text": "坑底嵌着一块还在发烫的石头，坑壁被烧成了玻璃一样的质地。",
+      "options": [
+        { "label": "下到坑底把石头撬出来", "stamina": 14, "san": 10,
+          "result": "石头隔着布也在发烫，但你把它完整地带了出来。",
+          "rewards": [ { "item": "bar_mithril", "min": 1, "max": 1, "chance": 0.3 }, { "item": "gem_red", "min": 1, "max": 2, "chance": 0.6 } ],
+          "risk": { "chance": 0.22, "type": "injury", "stamina": 12, "san": 6, "text": "坑壁的玻璃面比想象中滑，你摔下去一段才抓住边缘。" } },
+        { "label": "在坑边收集散落的碎片", "stamina": 8, "san": 5,
+          "result": "碎片不算值钱，但量足够多。",
+          "rewards": [ { "item": "gem_yellow", "min": 1, "max": 2, "chance": 0.7 }, { "item": "rock", "min": 2, "max": 3, "chance": 0.8 } ] }
+      ]
+    },
+    {
+      "id": "high_silent_village", "zone": "high",
+      "title": "寂静村落",
+      "text": "房子都还完好，灶里有灰，桌上摆着没吃完的饭，但一个人也没有。",
+      "options": [
+        { "label": "挨家挨户找找", "stamina": 12, "san": 16,
+          "result": "你在第三间屋子里找到了一个塞满东西的柜子。",
+          "rewards": [ { "item": "cup_silver", "min": 1, "max": 1, "chance": 0.5 }, { "item": "key_gold", "min": 1, "max": 1, "chance": 0.2 }, { "item": "coin_gold", "min": 1, "max": 3, "chance": 0.7 } ] },
+        { "label": "只拿门口的东西就走", "stamina": 6, "san": 8,
+          "result": "你只取了门口的几件杂物，很快离开了村子。",
+          "rewards": [ { "item": "ration", "min": 1, "max": 1, "chance": 0.5 }, { "item": "branch", "min": 1, "max": 2, "chance": 1.0 } ] }
+      ]
+    },
+    {
+      "id": "high_mirror_lake", "zone": "high",
+      "title": "镜湖",
+      "text": "湖面平得像一块镜子，倒影里的你和现实里的你动作不太一致。",
+      "options": [
+        { "label": "蹲下仔细看倒影", "stamina": 6, "san": 20,
+          "result": "倒影先你一步抬手，把一样东西放在湖边，然后消失了。",
+          "rewards": [ { "item": "gem_purple", "min": 1, "max": 1, "chance": 0.55 }, { "item": "cup_gold", "min": 1, "max": 1, "chance": 0.2 } ] },
+        { "label": "打水洗脸，不再看它", "stamina": 5, "san": 8,
+          "result": "你专心洗脸，水面荡开，倒影恢复正常。",
+          "rewards": [ { "item": "spring_water", "min": 1, "max": 1, "chance": 0.6 } ] }
+      ]
+    },
+    {
+      "id": "high_titan_remains", "zone": "high",
+      "title": "巨兽遗骸",
+      "text": "一副巨大的骨架横在山谷里，肋骨中间挂着还没风化的东西。",
+      "options": [
+        { "label": "爬进骨架里取东西", "stamina": 15, "san": 12,
+          "result": "你在骨架深处找到了一堆被卡住的物资。",
+          "rewards": [ { "item": "bar_iron", "min": 1, "max": 2, "chance": 0.7 }, { "item": "cup_silver", "min": 1, "max": 1, "chance": 0.45 }, { "item": "chest_small", "min": 1, "max": 1, "chance": 0.12 } ],
+          "risk": { "chance": 0.24, "type": "injury", "stamina": 14, "san": 10, "text": "骨架在你头顶错动了一下，你被掉下来的骨片划伤。" } },
+        { "label": "只掰下一段骨头带走", "stamina": 9, "san": 5,
+          "result": "骨材质地很奇怪，你带走了一段。",
+          "rewards": [ { "item": "bar_iron", "min": 1, "max": 1, "chance": 0.6 } ] }
+      ]
+    },
+    {
+      "id": "high_storm_pass", "zone": "high",
+      "title": "风暴隘口",
+      "text": "隘口里风很大，风里夹着细小的沙和说不清的东西。",
+      "options": [
+        { "label": "顶着风冲过去", "stamina": 18, "san": 10,
+          "result": "你冲过隘口，风在后面停了。隘口另一侧散落着被风卷来的杂物。",
+          "rewards": [ { "item": "bar_silver", "min": 1, "max": 1, "chance": 0.45 }, { "item": "gem_red", "min": 1, "max": 1, "chance": 0.4 } ],
+          "risk": { "chance": 0.25, "type": "injury", "stamina": 16, "san": 8, "text": "一块被风卷起的碎石砸在你背上，你差点跪下去。" } },
+        { "label": "等风小一点再走", "stamina": 8, "san": 12,
+          "result": "你缩在岩石后面等了很久，风里一直有人在低声数数。",
+          "rewards": [ { "item": "rock", "min": 1, "max": 2, "chance": 0.7 } ] }
+      ]
+    },
+    {
+      "id": "high_sealed_chest", "zone": "high",
+      "title": "封印的箱子",
+      "text": "箱子半埋在土里，锁扣上还贴着一张完整的符纸。",
+      "options": [
+        { "label": "撕掉符纸开箱", "stamina": 10, "san": 18,
+          "result": "符纸烧成灰，箱子里装的东西沉得出乎意料。",
+          "rewards": [ { "item": "chest_small", "min": 1, "max": 1, "chance": 0.5 }, { "item": "bar_gold", "min": 1, "max": 1, "chance": 0.35 } ],
+          "risk": { "chance": 0.3, "type": "anomaly", "stamina": 10, "san": 18, "text": "灰烬落在手上的一瞬间，你听见有人在耳边笑了一声，脑子像被针扎了一下。" } },
+        { "label": "连同箱子一起搬回去", "stamina": 16, "san": 8,
+          "result": "箱子很沉，你一路换了好几次手，好在完整搬走了。",
+          "rewards": [ { "item": "chest_small", "min": 1, "max": 1, "chance": 0.75 } ] }
+      ]
+    },
+    {
+      "id": "high_mask_trader", "zone": "high",
+      "title": "面具商人",
+      "text": "一个戴面具的人坐在石头上，面前摆着一排东西，他用手势示意你随意换。",
+      "options": [
+        { "label": "用羽饰换他的货", "stamina": 4, "san": 8,
+          "result": "他收下羽毛，推给你一件更实用的东西。",
+          "rewards": [ { "item": "potion_life", "min": 1, "max": 1, "chance": 0.45 }, { "item": "gem_yellow", "min": 1, "max": 2, "chance": 0.6 } ] },
+        { "label": "不换，只观察他", "stamina": 4, "san": 6,
+          "result": "你看不出面具下的脸。离开时，他在你背包里放了一样东西。",
+          "rewards": [ { "item": "medipack", "min": 1, "max": 1, "chance": 0.5 } ] }
+      ]
+    },
+    {
+      "id": "high_mist_stairs", "zone": "high",
+      "title": "雾中阶梯",
+      "text": "一级级石阶向上延伸，走进雾里就看不到尽头。",
+      "options": [
+        { "label": "往上走二十级", "stamina": 14, "san": 16,
+          "result": "数到二十级时你停住了。台阶尽头放着一件东西，像是给敢往上走的人准备的。",
+          "rewards": [ { "item": "bar_gold", "min": 1, "max": 1, "chance": 0.3 }, { "item": "gem_purple", "min": 1, "max": 2, "chance": 0.5 } ] },
+        { "label": "只在台阶下转一圈", "stamina": 7, "san": 6,
+          "result": "台阶下的草丛里有一些被丢弃的东西。",
+          "rewards": [ { "item": "branch", "min": 1, "max": 2, "chance": 0.8 }, { "item": "coin_gold", "min": 1, "max": 1, "chance": 0.35 } ] }
+      ]
+    },
+    {
+      "id": "high_wandering_light", "zone": "high",
+      "title": "游荡的光",
+      "text": "一团柔和的光在空中慢慢飘，你走近它就后退，像在引路。",
+      "options": [
+        { "label": "跟着它走", "stamina": 12, "san": 14,
+          "result": "光把你带到一处塌陷的地窖口，里面堆着没被搬走的东西。",
+          "rewards": [ { "item": "cup_gold", "min": 1, "max": 1, "chance": 0.35 }, { "item": "bar_silver", "min": 1, "max": 2, "chance": 0.55 }, { "item": "chest_small", "min": 1, "max": 1, "chance": 0.15 } ] },
+        { "label": "不跟，原地收集", "stamina": 8, "san": 8,
+          "result": "光等了一会儿就散了。你原地捡了些东西。",
+          "rewards": [ { "item": "rock", "min": 1, "max": 2, "chance": 0.8 }, { "item": "gem_green", "min": 1, "max": 1, "chance": 0.4 } ] }
+      ]
+    },
+    {
+      "id": "deep_gate", "zone": "deep",
+      "title": "门",
+      "text": "边境的尽头立着一扇没有墙的门。门后面是另一种天空，云在很低的地方流动。",
+      "options": [
+        { "label": "跨过去", "stamina": 10, "san": 20,
+          "result": "门后没有路，只有一块平整的石头。石头上刻着：来过的人，可以带走一样东西。",
+          "rewards": [ { "item": "bar_mithril", "min": 1, "max": 2, "chance": 0.8 }, { "item": "bar_purple", "min": 1, "max": 1, "chance": 0.5 }, { "item": "chest_big", "min": 1, "max": 1, "chance": 0.25 } ] },
+        { "label": "在门口停下，先观察", "stamina": 6, "san": 12,
+          "result": "你注意到门框上刻着一整圈细小的名字，最末尾是空白的。",
+          "rewards": [ { "item": "gem_purple", "min": 1, "max": 1, "chance": 0.6 } ] }
+      ]
+    },
+    {
+      "id": "deep_heart", "zone": "deep",
+      "title": "边境之心",
+      "text": "门后最深处悬着一颗缓慢跳动的东西，空气随着它的节奏明暗交替。",
+      "options": [
+        { "label": "伸手触碰它", "stamina": 12, "san": 24,
+          "result": "它没有反抗，只是把一小块光交到你手里，然后重新沉回深处。",
+          "rewards": [ { "item": "frontier_heart", "min": 1, "max": 1, "chance": 1.0, "once": true }, { "item": "bar_purple", "min": 1, "max": 2, "chance": 0.7 }, { "item": "chest_big", "min": 1, "max": 1, "chance": 0.35 } ] },
+        { "label": "远远记下位置，转身返回", "stamina": 8, "san": 16,
+          "result": "你退了出来，心里很清楚自己还会再来。",
+          "rewards": [ { "item": "bar_mithril", "min": 1, "max": 1, "chance": 0.6 } ] }
+      ]
+    }
+  ]
+}

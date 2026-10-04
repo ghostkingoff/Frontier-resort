@@ -1,0 +1,15 @@
+{
+  "keyframes": [
+    { "hour": 0.0, "color": "#3d4668", "note": "00:00 深夜" },
+    { "hour": 3.5, "color": "#333b58", "note": "03:30 凌晨最暗" },
+    { "hour": 5.0, "color": "#5c6288", "note": "05:00 天边泛白" },
+    { "hour": 6.0, "color": "#c99a86", "note": "06:00 日出前的红" },
+    { "hour": 7.0, "color": "#ffdcb4", "note": "07:00 清晨的暖光" },
+    { "hour": 9.5, "color": "#fff3e2", "note": "09:30 上午" },
+    { "hour": 12.0, "color": "#ffffff", "note": "12:00 正午，中性亮度" },
+    { "hour": 16.0, "color": "#fff7ea", "note": "16:00 午后" },
+    { "hour": 19.0, "color": "#ffdcae", "note": "19:00 黄昏" },
+    { "hour": 21.5, "color": "#e5a882", "note": "21:30 入夜，橙红偏暗" },
+    { "hour": 23.5, "color": "#8f8ba8", "note": "23:30 深夜将至" }
+  ]
+}

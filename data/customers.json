@@ -1,0 +1,74 @@
+{
+  "types": [
+	{
+	  "id": "villager",
+	  "name": "边境居民",
+	  "budget": 2000,
+	  "max_nights": 0,
+	  "weight": 34,
+	  "reputation_required": 0,
+	  "spend_multiplier": 1.0,
+	  "prefers": ["food", "shop"],
+	  "sprite": "res://art/placeholder/characters/Villager"
+	},
+	{
+	  "id": "tourist",
+	  "name": "普通游客",
+	  "budget": 6000,
+	  "max_nights": 2,
+	  "weight": 30,
+	  "reputation_required": 0,
+	  "spend_multiplier": 1.1,
+	  "prefers": ["lodging", "food", "leisure", "shop"],
+	  "sprite": "res://art/placeholder/characters/Boy"
+	},
+	{
+	  "id": "family",
+	  "name": "度假家庭",
+	  "budget": 9000,
+	  "max_nights": 2,
+	  "max_nights": 3,
+	  "weight": 18,
+	  "reputation_required": 5,
+	  "spend_multiplier": 1.2,
+	  "prefers": ["lodging", "food", "leisure"],
+	  "sprite": "res://art/placeholder/characters/Woman"
+	},
+	{
+	  "id": "collector",
+	  "name": "收藏家",
+	  "budget": 15000,
+	  "max_nights": 2,
+	  "weight": 9,
+	  "reputation_required": 12,
+	  "attracted_by_showroom": true,
+	  "spend_multiplier": 1.5,
+	  "prefers": ["special", "leisure", "food"],
+	  "sprite": "res://art/placeholder/characters/OldMan"
+	},
+	{
+	  "id": "merchant",
+	  "name": "富商",
+	  "budget": 30000,
+	  "max_nights": 3,
+	  "weight": 6,
+	  "reputation_required": 25,
+	  "attracted_by_showroom": true,
+	  "spend_multiplier": 1.8,
+	  "prefers": ["special", "lodging", "leisure"],
+	  "sprite": "res://art/placeholder/characters/Noble"
+	},
+	{
+	  "id": "celebrity",
+	  "name": "明星",
+	  "budget": 50000,
+	  "max_nights": 5,
+	  "weight": 3,
+	  "reputation_required": 45,
+	  "attracted_by_showroom": true,
+	  "spend_multiplier": 2.2,
+	  "prefers": ["special", "lodging", "leisure"],
+	  "sprite": "res://art/placeholder/characters/Sultan"
+	}
+  ]
+}

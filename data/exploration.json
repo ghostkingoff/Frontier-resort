@@ -1,0 +1,21 @@
+{
+  "settings": {
+    "world_cols": 6,
+    "world_rows": 7,
+    "world_cells_min": 15,
+    "world_cells_max": 21,
+    "local_cols": 5,
+    "local_rows": 5,
+    "local_cells_min": 9,
+    "local_cells_max": 15,
+    "step_cost_new": 2,
+    "step_cost_visited": 1,
+    "event_chance_new": 0.55,
+    "event_chance_revisit": 0.12,
+    "grey_stone_money_rate": 30,
+    "merchant_chance": 0.4,
+    "tent_rest_stamina": 3,
+    "tent_meditate_san": 2,
+    "san_restore_per_day": 25
+  }
+}

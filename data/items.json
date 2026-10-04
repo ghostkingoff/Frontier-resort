@@ -1,0 +1,34 @@
+{
+  "rarities": [
+    { "id": "common", "name": "普通", "color": "#c9cdd4", "weight": 1 },
+    { "id": "uncommon", "name": "优良", "color": "#8fbf6a", "weight": 2 },
+    { "id": "rare", "name": "稀有", "color": "#5fa8d3", "weight": 4 },
+    { "id": "epic", "name": "史诗", "color": "#b58ad8", "weight": 7 },
+    { "id": "legendary", "name": "传说", "color": "#e0a04a", "weight": 12 }
+  ],
+  "items": [
+    { "id": "branch", "name": "枯木枝", "rarity": "common", "value": 120, "icon": "res://art/placeholder/items/branch.png", "desc": "边境随处可见的枯枝，内陆有人收去做柴火。" },
+    { "id": "rock", "name": "粗矿石", "rarity": "common", "value": 200, "icon": "res://art/placeholder/items/rock.png", "desc": "普通的矿石，含有一点金属。" },
+    { "id": "feather", "name": "异鸟羽毛", "rarity": "common", "value": 280, "icon": "res://art/placeholder/items/feather.png", "desc": "边境大鸟的羽毛，色泽特别。" },
+    { "id": "spring_water", "name": "灵泉水", "rarity": "uncommon", "value": 650, "icon": "res://art/placeholder/items/water.png", "desc": "带着凉意的泉水，据说能安神。" },
+    { "id": "gem_green", "name": "翠玉", "rarity": "uncommon", "value": 1200, "icon": "res://art/placeholder/items/gem_green.png", "desc": "温润的绿色玉石，收藏家很感兴趣。" },
+    { "id": "gem_yellow", "name": "琥珀玉", "rarity": "uncommon", "value": 1500, "icon": "res://art/placeholder/items/gem_yellow.png", "desc": "像凝住阳光一样的玉石。" },
+    { "id": "bar_copper", "name": "铜锭", "rarity": "uncommon", "value": 1800, "icon": "res://art/placeholder/items/bar_copper.png", "desc": "边境矿脉炼出的铜锭。" },
+    { "id": "medipack", "name": "急救包", "rarity": "uncommon", "value": 2000, "icon": "res://art/placeholder/items/medipack.png", "desc": "探索前常备的消耗品，能应付轻伤。" },
+    { "id": "coin_gold", "name": "金币", "rarity": "uncommon", "value": 2400, "icon": "res://art/placeholder/items/coin_gold.png", "desc": "边境遗迹里散落的古币。" },
+    { "id": "bar_iron", "name": "铁锭", "rarity": "rare", "value": 2600, "icon": "res://art/placeholder/items/bar_iron.png", "desc": "结实可靠，建筑升级常常要用。" },
+    { "id": "potion_life", "name": "生命药水", "rarity": "rare", "value": 3500, "icon": "res://art/placeholder/items/potion_life.png", "desc": "喝下去伤口会迅速愈合。" },
+    { "id": "gem_red", "name": "赤玉", "rarity": "rare", "value": 4200, "icon": "res://art/placeholder/items/gem_red.png", "desc": "热度不散的红色宝石。" },
+    { "id": "cup_silver", "name": "银杯", "rarity": "rare", "value": 4800, "icon": "res://art/placeholder/items/cup_silver.png", "desc": "边境遗迹里翻出的银器。" },
+    { "id": "gem_purple", "name": "紫晶", "rarity": "rare", "value": 5200, "icon": "res://art/placeholder/items/gem_purple.png", "desc": "夜里会泛出微光的紫色晶体。" },
+    { "id": "bar_silver", "name": "银锭", "rarity": "rare", "value": 6000, "icon": "res://art/placeholder/items/bar_silver.png", "desc": "纯度很高的银锭，内陆商人抢着要。" },
+    { "id": "key_gold", "name": "金钥匙", "rarity": "epic", "value": 9000, "icon": "res://art/placeholder/items/key_gold.png", "desc": "不知道能打开哪扇门，但一定很值钱。" },
+    { "id": "cup_gold", "name": "金杯", "rarity": "epic", "value": 11000, "icon": "res://art/placeholder/items/cup_gold.png", "desc": "富商们最爱的谈资。" },
+    { "id": "chest_small", "name": "小宝箱", "rarity": "epic", "value": 14000, "icon": "res://art/placeholder/items/chest_small.png", "desc": "从遗迹里搬出来的箱子，锁还完好。" },
+    { "id": "bar_gold", "name": "金锭", "rarity": "epic", "value": 16000, "icon": "res://art/placeholder/items/bar_gold.png", "desc": "沉甸甸的金锭。" },
+    { "id": "bar_mithril", "name": "秘银锭", "rarity": "legendary", "value": 26000, "icon": "res://art/placeholder/items/bar_mithril.png", "desc": "只有边境深处才有的金属，泛着冷光。" },
+    { "id": "bar_purple", "name": "紫晶锭", "rarity": "legendary", "value": 30000, "icon": "res://art/placeholder/items/bar_purple.png", "desc": "异象结晶凝成的锭，价值难以估量。" },
+    { "id": "chest_big", "name": "大宝箱", "rarity": "legendary", "value": 36000, "icon": "res://art/placeholder/items/chest_big.png", "desc": "边境最深处的箱子，搬回来就费了半条命。" },
+    { "id": "frontier_heart", "name": "边境之心", "rarity": "legendary", "value": 0, "icon": "res://art/placeholder/items/gem_purple.png", "desc": "第一次抵达边境最深处带回的证明，无法出售。" }
+  ]
+}

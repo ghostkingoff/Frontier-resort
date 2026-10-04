@@ -1,0 +1,36 @@
+{
+  "terrains": [
+    {
+      "id": "forest",
+      "name": "森林",
+      "color": "#3f7a4a",
+      "grey_chance": 0.50,
+      "grey_amount": [1, 2],
+      "desc": "边境常见的密林，树冠遮住了大半天空，脚下有踩出来的小路。"
+    },
+    {
+      "id": "swamp",
+      "name": "沼泽",
+      "color": "#5c6b3c",
+      "grey_chance": 0.45,
+      "grey_amount": [1, 2],
+      "desc": "水草与泥沼交错，走起来费劲，但泥里常有沉下去的东西。"
+    },
+    {
+      "id": "mushroom",
+      "name": "巨型蘑菇地",
+      "color": "#6f5aa8",
+      "grey_chance": 0.35,
+      "grey_amount": [1, 1],
+      "desc": "蘑菇长得比人还高，伞盖下飘着发亮的孢子。"
+    },
+    {
+      "id": "wasteland",
+      "name": "荒地",
+      "color": "#a8834f",
+      "grey_chance": 0.60,
+      "grey_amount": [1, 3],
+      "desc": "碎石与干裂的土地，风一起就扬起沙子，灰石露在地表。"
+    }
+  ]
+}

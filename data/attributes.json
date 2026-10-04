@@ -1,0 +1,98 @@
+{
+  "attributes": [
+    {
+      "id": "stamina",
+      "name": "体力上限",
+      "desc": "决定一次探索能走多远。",
+      "max_level": 5,
+      "base": 100,
+      "per_level": 14,
+      "money_per_level": 9000,
+      "items": { "bar_copper": [2, 1], "spring_water": [1, 1] }
+    },
+    {
+      "id": "san",
+      "name": "SAN 上限",
+      "desc": "精神越稳定，越能扛住边境的幻觉与异象。",
+      "max_level": 5,
+      "base": 100,
+      "per_level": 14,
+      "money_per_level": 12000,
+      "items": { "spring_water": [2, 1], "gem_green": [1, 1] }
+    },
+    {
+      "id": "gather",
+      "name": "采集效率",
+      "desc": "每次采集能带回更多物资。",
+      "max_level": 5,
+      "base": 1.0,
+      "per_level": 0.12,
+      "money_per_level": 10500,
+      "items": { "bar_copper": [3, 1], "bar_iron": [1, 1] }
+    },
+    {
+      "id": "luck",
+      "name": "运气",
+      "desc": "提高遇到好事、拿到稀有物资的概率。",
+      "max_level": 5,
+      "base": 0.0,
+      "per_level": 0.06,
+      "money_per_level": 15000,
+      "items": { "gem_green": [3, 1], "gem_purple": [1, 1] }
+    },
+    {
+      "id": "bargain",
+      "name": "议价能力",
+      "desc": "展厅成交与内陆倾销都能卖得更贵。",
+      "max_level": 5,
+      "base": 1.0,
+      "per_level": 0.08,
+      "money_per_level": 18000,
+      "items": { "bar_silver": [1, 1], "cup_silver": [1, 1] }
+    },
+    {
+      "id": "fame",
+      "name": "声望",
+      "desc": "吸引更多客人，也更容易招来富商与明星。",
+      "max_level": 5,
+      "base": 1.0,
+      "per_level": 0.1,
+      "money_per_level": 24000,
+      "items": { "cup_gold": [1, 1], "bar_gold": [1, 1] }
+    }
+  ],
+  "consumables": [
+    {
+      "id": "ration",
+      "name": "干粮",
+      "icon": "res://art/placeholder/items/ration.png",
+      "desc": "探索中恢复 30 点体力。",
+      "effect": { "stamina": 30 },
+      "recipe": { "money": 600, "items": { "rock": 2 } }
+    },
+    {
+      "id": "tea",
+      "name": "安神茶",
+      "icon": "res://art/placeholder/items/tea.png",
+      "desc": "探索中恢复 25 点 SAN。",
+      "effect": { "san": 25 },
+      "recipe": { "money": 1200, "items": { "spring_water": 2 } }
+    },
+    {
+      "id": "talisman",
+      "name": "护身符",
+      "icon": "res://art/placeholder/items/talisman.png",
+      "desc": "使用后，接下来 3 次 SAN 损失减半。",
+      "effect": { "san_shield": 3 },
+      "recipe": { "money": 2000, "items": { "gem_green": 1, "feather": 2 } }
+    },
+    {
+      "id": "lucky_die",
+      "name": "幸运骰",
+      "icon": "res://art/placeholder/items/lucky_die.png",
+      "desc": "使用后，本次探索运气 +25%。",
+      "effect": { "luck_bonus": 0.25 },
+      "recipe": { "money": 2600, "items": { "gem_yellow": 1, "coin_gold": 1 } }
+    }
+  ]
+}

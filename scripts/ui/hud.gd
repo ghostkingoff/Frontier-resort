@@ -1,0 +1,685 @@
+extends CanvasLayer
+## 界面：顶部信息栏、建造菜单、提示、每日结算面板。
+
+var world: Node2D
+var build_system: Node2D
+var building_panel: CanvasLayer
+var inventory_panel: CanvasLayer
+var exploration_panel: CanvasLayer
+var stats_panel: CanvasLayer
+
+var money_label: Label
+var day_label: Label
+var clock_label: Label
+var facility_label: Label
+var guest_label: Label
+var reputation_label: Label
+var _guest_timer := 0.0
+var pause_button: Button
+var roof_button: Button
+var build_button: Button
+var build_panel: PanelContainer
+var notice_label: Label
+var settlement: Control
+var settlement_box: VBoxContainer
+var speed_buttons: Dictionary = {}
+var pause_menu: Control
+var _cycle_settled := false
+
+
+func _ready() -> void:
+	world = get_tree().get_first_node_in_group("world")
+	build_system = get_node_or_null("../BuildSystem")
+	building_panel = get_node_or_null("../BuildingPanel")
+	inventory_panel = get_node_or_null("../InventoryPanel")
+	exploration_panel = get_node_or_null("../ExplorationPanel")
+	stats_panel = get_node_or_null("../StatsPanel")
+	var root := UIKit.root_control()
+	root.name = "UIRoot"
+	add_child(root)
+
+	_build_top_bar(root)
+	_build_menu(root)
+	_build_hint(root)
+	_build_notice(root)
+	_build_settlement(root)
+	_build_pause_menu(root)
+
+	GameState.money_changed.connect(_on_money_changed)
+	GameState.day_changed.connect(_on_day_changed)
+	GameState.reputation_changed.connect(_on_reputation_changed)
+	GameState.notice.connect(show_notice)
+	GameClock.tick.connect(_on_tick)
+	GameClock.day_finished.connect(_on_day_finished)
+	GameClock.morning_started.connect(_on_morning_started)
+	if world:
+		world.building_placed.connect(func(_b): _refresh_facility_label())
+	_refresh_all()
+	_hide_pause_menu()
+
+
+func _process(delta: float) -> void:
+	# 累计游玩时长（会写进存档，标题界面里显示）
+	if not GameClock.paused:
+		GameState.playtime += delta
+	_guest_timer += delta
+	if _guest_timer >= 1.0:
+		_guest_timer = 0.0
+		_refresh_guest_label()
+
+
+func _make_theme() -> Theme:
+	return UIKit.theme()
+
+
+func _panel_style(bg: Color, border: Color) -> StyleBoxFlat:
+	return UIKit.panel_style(bg, border)
+
+
+func _style_button(b: Button) -> void:
+	var styles := {
+		"normal": _panel_style(Color(0.16, 0.14, 0.20, 0.92), Color(0.42, 0.38, 0.52)),
+		"hover": _panel_style(Color(0.24, 0.21, 0.30, 0.95), Color(0.72, 0.62, 0.35)),
+		"pressed": _panel_style(Color(0.30, 0.26, 0.16, 0.98), Color(0.95, 0.80, 0.40)),
+		"focus": _panel_style(Color(0.22, 0.20, 0.28, 0.95), Color(0.72, 0.62, 0.35)),
+	}
+	b.add_theme_font_size_override("font_size", 24)
+	for key in styles.keys():
+		b.add_theme_stylebox_override(key, styles[key])
+
+
+func _build_top_bar(root: Control) -> void:
+	var bar := PanelContainer.new()
+	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	bar.offset_left = 12
+	bar.offset_top = 12
+	bar.offset_right = -12
+	bar.offset_bottom = 136
+	bar.add_theme_stylebox_override("panel", _panel_style(Color(0.10, 0.09, 0.13, 0.88), Color(0.35, 0.32, 0.42)))
+	root.add_child(bar)
+
+	# 分两行排，避免按钮被挤出屏幕右边
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 8)
+	bar.add_child(column)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	column.add_child(row)
+
+	money_label = _make_label("", 30, Color(0.98, 0.85, 0.35))
+	day_label = _make_label("", 26, Color(0.92, 0.92, 0.96))
+	clock_label = _make_label("", 26, Color(0.80, 0.90, 1.0))
+	reputation_label = _make_label("", 24, Color(0.90, 0.82, 1.0))
+	for l: Label in [money_label, day_label, clock_label, reputation_label]:
+		row.add_child(l)
+
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+
+	pause_button = _make_button("暂停")
+	pause_button.pressed.connect(_toggle_pause)
+	row.add_child(pause_button)
+
+	for pair in [[GameClock.Speed.X1, "1x"], [GameClock.Speed.X2, "2x"], [GameClock.Speed.X4, "4x"]]:
+		var b := _make_button(str(pair[1]))
+		b.pressed.connect(_set_speed.bind(pair[0]))
+		row.add_child(b)
+		speed_buttons[pair[0]] = b
+
+	# 64 倍速：调试 / 测试用，正式发布前删掉
+	var fast := _make_button("64x")
+	fast.tooltip_text = "测试用：64 倍速（正式版会移除）"
+	fast.pressed.connect(_set_speed.bind(GameClock.Speed.X64))
+	row.add_child(fast)
+	speed_buttons[GameClock.Speed.X64] = fast
+
+	# 第二行：设施概况与功能按钮
+	var row2 := HBoxContainer.new()
+	row2.add_theme_constant_override("separation", 18)
+	column.add_child(row2)
+
+	facility_label = _make_label("", 24, Color(0.80, 0.94, 0.80))
+	guest_label = _make_label("", 24, Color(0.95, 0.88, 0.75))
+	for l: Label in [facility_label, guest_label]:
+		row2.add_child(l)
+
+	var spacer2 := Control.new()
+	spacer2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row2.add_child(spacer2)
+
+	roof_button = _make_button("屋顶：开")
+	roof_button.pressed.connect(_toggle_roof)
+	row2.add_child(roof_button)
+
+	var inventory_button := _make_button("物资")
+	inventory_button.pressed.connect(_toggle_inventory)
+	row2.add_child(inventory_button)
+
+	var stats_button := _make_button("属性")
+	stats_button.pressed.connect(_toggle_stats)
+	row2.add_child(stats_button)
+
+	build_button = _make_button("建造 (B)")
+	build_button.pressed.connect(_toggle_build_panel)
+	row2.add_child(build_button)
+
+
+func _build_menu(root: Control) -> void:
+	build_panel = PanelContainer.new()
+	build_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	build_panel.offset_left = 16
+	build_panel.offset_top = 148
+	build_panel.custom_minimum_size = Vector2(420, 0)
+	build_panel.size = Vector2(420, 720)
+	build_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.10, 0.09, 0.13, 0.94), Color(0.40, 0.36, 0.50)))
+	build_panel.visible = false
+	root.add_child(build_panel)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	build_panel.add_child(box)
+
+	box.add_child(_make_label("建造", 32, Color(0.98, 0.88, 0.55)))
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(380, 600)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 8)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+
+	# 地面工具放最前面，铺路是最常用的操作
+	list.add_child(_make_label("地面", 26, Color(0.85, 0.78, 0.55)))
+	var demolish_button := _make_button("")
+	demolish_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	demolish_button.text = "  拆除建筑（返还一半投入）"
+	demolish_button.tooltip_text = "先点建筑选中，再点一次确认拆除。展厅里的展品会退回仓库。"
+	demolish_button.pressed.connect(_on_demolish_selected)
+	list.add_child(demolish_button)
+	var path_button := _make_button("")
+	path_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	path_button.text = "  铺地砖   %s/格" % GameState.format_money(3)
+	path_button.tooltip_text = "客人可以在上面行走。按住左键可以连着铺。"
+	path_button.pressed.connect(_on_ground_selected.bind(World.GROUND_PATH))
+	list.add_child(path_button)
+	var lawn_button := _make_button("")
+	lawn_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	lawn_button.text = "  铺可行走草坪   %s/格" % GameState.format_money(1)
+	lawn_button.tooltip_text = "整理过的草坪，客人可以行走。"
+	lawn_button.pressed.connect(_on_ground_selected.bind(World.GROUND_LAWN))
+	list.add_child(lawn_button)
+	var grass_button := _make_button("")
+	grass_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	grass_button.text = "  恢复普通草坪   %s/格" % GameState.format_money(1)
+	grass_button.tooltip_text = "地图默认的草坪，客人不会走上去。可以用来撤掉铺错的地面。"
+	grass_button.pressed.connect(_on_ground_selected.bind(World.GROUND_WILD))
+	list.add_child(grass_button)
+	list.add_child(_make_label("客人只走地砖和可行走草坪，记得把店门口连到主路。", 19, Color(0.85, 0.85, 0.9)))
+
+	for cat_id in DataRegistry.category_order:
+		var cat: Dictionary = DataRegistry.categories[cat_id]
+		var header := _make_label(str(cat.get("name", cat_id)), 26, DataRegistry.get_category_color(cat_id))
+		list.add_child(header)
+		for id in DataRegistry.building_order:
+			var data: Dictionary = DataRegistry.get_building(id)
+			if str(data.get("category", "")) != str(cat_id):
+				continue
+			var b := _make_button("")
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.text = "  %s   %s" % [str(data.get("name", id)), GameState.format_money(int(data.get("cost", 0)))]
+			b.tooltip_text = "%s\n造价 %s ｜ 容量 %d ｜ 平均消费 %d" % [
+				str(data.get("description", "")),
+				GameState.format_money(int(data.get("cost", 0))),
+				int(data.get("capacity", 0)),
+				int(data.get("spend", 0)),
+			]
+			b.pressed.connect(_on_build_selected.bind(id))
+			list.add_child(b)
+
+
+func _build_hint(root: Control) -> void:
+	var hint := _make_label("点击建筑查看详情 ｜ B 建造（含铺地 / 拆除）｜ V 物资 ｜ 属性 ｜ R 屋顶 ｜ 空格暂停 ｜ 1/2/3/4 倍速 ｜ WASD 移动 ｜ 滚轮缩放 ｜ ESC 菜单", 20, Color(0.85, 0.85, 0.92, 0.85))
+	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	hint.offset_top = -46
+	hint.offset_bottom = -12
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(hint)
+
+
+func _build_pause_menu(root: Control) -> void:
+	pause_menu = Control.new()
+	pause_menu.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(pause_menu)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0.04, 0.04, 0.06, 0.82)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pause_menu.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pause_menu.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.12, 0.11, 0.16, 0.98), Color(0.85, 0.72, 0.40)))
+	center.add_child(panel)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 16)
+	panel.add_child(box)
+
+	box.add_child(_make_label("游戏暂停", 52, Color(0.98, 0.88, 0.55)))
+	box.add_child(_make_label("时间已经停住，慢慢安排就好。按 ESC 也可以回到游戏。", 22, Color(0.85, 0.88, 0.95)))
+	box.add_child(_make_label("提示：点建筑可以升级、雇员工；右上角「物资」「属性」是仓库与属性面板。", 20, Color(0.78, 0.80, 0.88)))
+	box.add_child(UIKit.spacer(6))
+
+	var resume := _make_button("继续游戏")
+	resume.custom_minimum_size = Vector2(360, 64)
+	resume.pressed.connect(_toggle_pause_menu)
+	box.add_child(resume)
+
+	var save_button := _make_button("保存进度")
+	save_button.custom_minimum_size = Vector2(360, 64)
+	save_button.pressed.connect(_manual_save)
+	box.add_child(save_button)
+
+	var menu_button := _make_button("回到主菜单")
+	menu_button.custom_minimum_size = Vector2(360, 64)
+	menu_button.pressed.connect(_back_to_title)
+	box.add_child(menu_button)
+
+	box.add_child(_make_label("每天 24 点结算时会自动保存到当前存档。", 20, Color(0.8, 0.83, 0.9)))
+
+
+func _hide_pause_menu() -> void:
+	# 主菜单已经在标题界面处理，这里不再弹开始菜单
+	pause_menu.visible = false
+	GameClock.paused = false
+	pause_button.text = "暂停"
+
+
+func _toggle_pause_menu() -> void:
+	pause_menu.visible = not pause_menu.visible
+	GameClock.paused = pause_menu.visible
+	pause_button.text = "继续" if pause_menu.visible else "暂停"
+
+
+func _manual_save() -> void:
+	if SaveManager.save_game():
+		GameState.notice.emit("已保存到存档 %d" % SaveManager.active_slot)
+		show_notice("已保存到存档 %d（第 %d 天）" % [SaveManager.active_slot, GameState.day])
+	else:
+		GameState.notice.emit("保存失败")
+
+
+func _back_to_title() -> void:
+	SaveManager.save_game()
+	pause_menu.visible = false
+	GameClock.paused = false
+	get_tree().change_scene_to_file("res://scenes/title.tscn")
+
+
+func _toggle_inventory() -> void:
+	if inventory_panel:
+		inventory_panel.toggle()
+
+
+func _toggle_stats() -> void:
+	if stats_panel:
+		stats_panel.toggle()
+
+
+func _build_notice(root: Control) -> void:
+	notice_label = _make_label("", 26, Color(1, 1, 1))
+	notice_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	notice_label.offset_top = -110
+	notice_label.offset_bottom = -70
+	notice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	notice_label.modulate.a = 0.0
+	root.add_child(notice_label)
+
+
+func _build_settlement(root: Control) -> void:
+	settlement = Control.new()
+	settlement.set_anchors_preset(Control.PRESET_FULL_RECT)
+	settlement.visible = false
+	root.add_child(settlement)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	settlement.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	settlement.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.12, 0.11, 0.16, 0.98), Color(0.85, 0.72, 0.40)))
+	panel.custom_minimum_size = Vector2(720, 0)
+	center.add_child(panel)
+
+	settlement_box = VBoxContainer.new()
+	settlement_box.add_theme_constant_override("separation", 14)
+	panel.add_child(settlement_box)
+
+
+func _make_label(text: String, size: int, color: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("outline_size", 5)
+	return l
+
+
+func _make_button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(96, 56)
+	_style_button(b)
+	return b
+
+
+# ---------- 交互 ----------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if pause_menu and pause_menu.visible:
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			_toggle_pause_menu()
+		return
+	if exploration_panel and exploration_panel.is_open():
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			exploration_panel.close()
+		return
+	if stats_panel and stats_panel.is_open():
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			stats_panel.close()
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_handle_world_click(event.position)
+		return
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	var key: int = event.keycode
+	match key:
+		KEY_SPACE:
+			_toggle_pause()
+		KEY_R:
+			_toggle_roof()
+		KEY_B:
+			_toggle_build_panel()
+		KEY_V:
+			_toggle_inventory()
+		KEY_ESCAPE:
+			if building_panel:
+				building_panel.close()
+			if inventory_panel:
+				inventory_panel.close()
+			if build_system and (build_system.selected_id != "" or build_system.is_painting() or build_system.is_demolishing()):
+				build_system.cancel()
+			else:
+				_toggle_pause_menu()
+		KEY_F:
+			GameClock.skip_to_end_of_day()
+		KEY_1:
+			_set_speed(GameClock.Speed.X1)
+		KEY_2:
+			_set_speed(GameClock.Speed.X2)
+		KEY_3:
+			_set_speed(GameClock.Speed.X4)
+		KEY_4:
+			_set_speed(GameClock.Speed.X64)
+
+
+func _handle_world_click(screen_pos: Vector2) -> void:
+	if world == null:
+		return
+	if build_system and build_system.selected_id != "":
+		return   # 建造模式下点击由建造系统处理
+	var canvas := get_viewport().get_canvas_transform()
+	var world_pos: Vector2 = canvas.affine_inverse() * screen_pos
+	var cell: Vector2i = world.world_to_cell(world_pos)
+	var picked: Building = world.building_at(cell)
+	if picked:
+		if building_panel:
+			building_panel.open(picked)
+	elif building_panel and building_panel.is_open():
+		building_panel.close()
+
+
+func _toggle_pause() -> void:
+	GameClock.toggle_pause()
+	pause_button.text = "继续" if GameClock.paused else "暂停"
+
+
+func _set_speed(speed: int) -> void:
+	GameClock.set_speed(speed)
+	for key in speed_buttons.keys():
+		var b: Button = speed_buttons[key]
+		b.modulate = Color(1, 1, 1) if key == speed else Color(0.62, 0.62, 0.68)
+
+
+func _toggle_roof() -> void:
+	if world == null:
+		return
+	world.toggle_roof_mode()
+	roof_button.text = "屋顶：开" if world.show_roofs else "屋顶：关"
+
+
+func _toggle_build_panel() -> void:
+	build_panel.visible = not build_panel.visible
+
+
+func _on_build_selected(id: String) -> void:
+	if build_system:
+		build_system.select(id)
+	show_notice("已选择：%s ｜ 点击地面放置，右键或 ESC 取消" % str(DataRegistry.get_building(id).get("name", id)))
+
+
+func _on_ground_selected(kind: String) -> void:
+	if build_system:
+		build_system.select_ground(kind)
+	var name := "地砖"
+	if kind == World.GROUND_LAWN:
+		name = "可行走草坪"
+	elif kind == World.GROUND_WILD:
+		name = "普通草坪"
+	show_notice("铺设%s：点击或按住左键刷，右键 / ESC 取消" % name)
+
+
+func _on_demolish_selected() -> void:
+	if build_system:
+		build_system.select_demolish()
+	show_notice("拆除模式：点建筑选中，再点一次确认；ESC 取消")
+
+
+func _on_money_changed(_value: int) -> void:
+	_refresh_money()
+
+
+func _on_day_changed(_day: int) -> void:
+	_refresh_day()
+
+
+func _on_reputation_changed(_value: float) -> void:
+	_refresh_reputation()
+
+
+func _on_tick(_progress: float, _hour: float) -> void:
+	clock_label.text = "时间 %s" % GameClock.time_text()
+
+
+func _refresh_all() -> void:
+	_refresh_money()
+	_refresh_day()
+	_refresh_facility_label()
+	_refresh_guest_label()
+	_refresh_reputation()
+	clock_label.text = "时间 %s" % GameClock.time_text()
+
+
+func _refresh_money() -> void:
+	money_label.text = "资金 %s" % GameState.format_money(GameState.money)
+
+
+func _refresh_day() -> void:
+	day_label.text = "第 %d 天" % GameState.day
+
+
+func _refresh_facility_label() -> void:
+	var count: int = world.buildings.size() if world else 0
+	facility_label.text = "设施 %d 座" % count
+
+
+func _refresh_guest_label() -> void:
+	if world == null:
+		return
+	guest_label.text = "游客 %d 人" % world.customers_root.get_child_count()
+
+
+func _refresh_reputation() -> void:
+	reputation_label.text = "口碑 %.1f" % GameState.reputation
+
+
+func show_notice(text: String) -> void:
+	notice_label.text = text
+	notice_label.modulate.a = 1.0
+	var tween := create_tween()
+	tween.tween_interval(2.2)
+	tween.tween_property(notice_label, "modulate:a", 0.0, 0.8)
+
+
+func _on_day_finished() -> void:
+	# 每日结算顺序：展厅成交 → 发工资 → 夜间带回物资 → 生成结算报告 → 自动存档
+	if world and not _cycle_settled:
+		_cycle_settled = true
+		world.settle_showroom_sales()
+		world.pay_daily_wages()
+		var gained: Array = world.night_yield()
+		if not gained.is_empty():
+			var parts: Array = []
+			for entry in gained:
+				parts.append("%s×%d" % [DataRegistry.item_name(str(entry.get("id", ""))), int(entry.get("count", 1))])
+			GameState.notice.emit("夜间带回：" + ", ".join(parts))
+	var report := GameState.day_report()
+	SaveManager.save_game()
+	GameClock.paused = true
+	pause_button.text = "继续"
+	_show_settlement(report)
+
+
+func _show_settlement(report: Dictionary) -> void:
+	for child in settlement_box.get_children():
+		child.queue_free()
+	settlement.visible = true
+	settlement_box.add_child(_make_label("第 %d 天 · 结算" % int(report.get("day", 1)), 40, Color(0.98, 0.88, 0.55)))
+	settlement_box.add_child(_make_label("本日营业额：%s" % GameState.format_money(int(report.get("revenue", 0))), 28, Color(0.98, 0.85, 0.35)))
+	settlement_box.add_child(_make_label("其中展厅成交：%s" % GameState.format_money(int(report.get("item_income", 0))), 22, Color(0.90, 0.80, 0.95)))
+	settlement_box.add_child(_make_label("员工工资支出：-%s" % GameState.format_money(int(report.get("wages", 0))), 22, Color(0.95, 0.75, 0.75)))
+	settlement_box.add_child(_make_label("到访客人：%d 位" % int(report.get("visitors", 0)), 26, Color(0.90, 0.92, 1.0)))
+	settlement_box.add_child(_make_label("当前口碑：%.1f" % float(report.get("reputation", 0.0)), 26, Color(0.90, 0.82, 1.0)))
+	settlement_box.add_child(_make_label("仓库物资：%d 种，估值 %s" % [GameState.inventory.size(), GameState.format_money(GameState.inventory_value())], 22, Color(0.85, 0.92, 1.0)))
+	settlement_box.add_child(_make_label("自动存档已完成（探索系统开放后会另存一个探索前的存档点）", 20, Color(0.75, 0.78, 0.85)))
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 16)
+	settlement_box.add_child(actions)
+
+	var rest := _make_button("休息一晚（自动结算夜间收益）")
+	rest.custom_minimum_size = Vector2(360, 64)
+	rest.pressed.connect(_rest_for_night)
+	actions.add_child(rest)
+
+	var explore := _make_button("外出探索")
+	explore.custom_minimum_size = Vector2(260, 64)
+	explore.disabled = false
+	explore.pressed.connect(_open_exploration)
+	actions.add_child(explore)
+
+	if GameClock.night_available():
+		var night := _make_button("夜晚继续管理")
+		night.custom_minimum_size = Vector2(260, 64)
+		night.pressed.connect(_manage_night)
+		actions.add_child(night)
+
+	var night_preview: int = world.night_income_total() if world else 0
+	if GameClock.night_available() and night_preview > 0:
+		settlement_box.add_child(_make_label("若现在休息或出发探索：酒吧等夜间店铺自动结算约 %s" % GameState.format_money(night_preview), 22, Color(0.95, 0.85, 0.6)))
+	elif not GameClock.night_available():
+		settlement_box.add_child(_make_label("夜晚已经营业结束，直接开始第二天。", 22, Color(0.85, 0.88, 0.95)))
+
+
+func _open_exploration() -> void:
+	if exploration_panel == null:
+		GameState.notice.emit("探索界面不可用")
+		return
+	_apply_auto_night_income()
+	settlement.visible = false
+	exploration_panel.open()
+
+
+func _apply_auto_night_income() -> int:
+	# 选择休息 / 探索时，夜间营业的店铺（酒吧等）自动结算一次
+	if world == null or not GameClock.night_available():
+		return 0
+	var total: int = world.apply_night_income()
+	if total > 0:
+		GameState.notice.emit("夜间自动营业收益 +%s" % GameState.format_money(total))
+	return total
+
+
+func _rest_for_night() -> void:
+	_apply_auto_night_income()
+	_start_next_day()
+
+
+func _manage_night() -> void:
+	settlement.visible = false
+	# 天数先翻页：0 点到 6 点的收益算进新的一天，合并到下一次 24 点结算
+	GameState.finish_day()
+	GameState.start_next_day()
+	_cycle_settled = false
+	GameClock.resume_night()
+	GameClock.paused = false
+	pause_button.text = "暂停"
+	show_notice("夜晚继续经营：只有酒吧这类夜间店铺接客；0 点到 6 点的收益会并到下一次 24 点结算")
+
+
+func _on_morning_started() -> void:
+	# 夜里走到早上 6 点：不再弹结算，直接开始新一天的营业
+	if world:
+		world.rest_all_staff()
+	PlayerStats.daily_restore()
+	show_notice("早上 6 点，度假村开门营业")
+
+
+func on_exploration_closed() -> void:
+	# 从探索界面返回时，如果还停在当天结算，就把结算面板重新显示出来
+	if GameClock.phase == GameClock.Phase.SETTLEMENT and not GameState.last_report().is_empty():
+		settlement.visible = true
+
+
+func begin_next_day() -> void:
+	_start_next_day()
+
+
+func _start_next_day() -> void:
+	settlement.visible = false
+	if world:
+		world.rest_all_staff()
+	PlayerStats.daily_restore()
+	GameState.finish_day()
+	_cycle_settled = false
+	GameState.start_next_day()
+	GameClock.start_new_day()
+	GameClock.paused = false
+	pause_button.text = "暂停"
+	_refresh_all()
+	show_notice("第 %d 天开始了" % GameState.day)

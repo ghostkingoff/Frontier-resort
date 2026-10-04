@@ -1,0 +1,18 @@
+{
+  "config": {
+    "base_chance": 0.035,
+    "crowding_chance": 0.012,
+    "deadline_hours": 12.0,
+    "max_level": 2,
+    "cured_mood": 12.0,
+    "failed_reputation": -1.5
+  },
+  "illnesses": [
+    { "id": "cold", "name": "风寒", "level": 1, "treat_hours": 1.0, "fee": 400, "weight": 30 },
+    { "id": "stomach", "name": "腹痛", "level": 1, "treat_hours": 1.5, "fee": 600, "weight": 26 },
+    { "id": "sprain", "name": "跌伤", "level": 2, "treat_hours": 2.0, "fee": 1000, "weight": 20 },
+    { "id": "border_fever", "name": "边境热", "level": 2, "treat_hours": 3.0, "fee": 1600, "weight": 14 },
+    { "id": "anomaly_curse", "name": "异象侵扰", "level": 3, "treat_hours": 4.0, "fee": 3000, "weight": 6 },
+    { "id": "old_wound", "name": "旧伤复发", "level": 3, "treat_hours": 5.0, "fee": 3800, "weight": 4 }
+  ]
+}
