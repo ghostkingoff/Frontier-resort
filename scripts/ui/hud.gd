@@ -13,18 +13,23 @@ var day_label: Label
 var clock_label: Label
 var facility_label: Label
 var guest_label: Label
+var fame_label: Label
 var reputation_label: Label
 var _guest_timer := 0.0
 var pause_button: Button
 var roof_button: Button
 var build_button: Button
 var build_panel: PanelContainer
+var build_list: VBoxContainer
 var notice_label: Label
 var settlement: Control
 var settlement_box: VBoxContainer
 var speed_buttons: Dictionary = {}
 var pause_menu: Control
 var _cycle_settled := false
+var ui_root: Control
+var hide_button: Button
+var ui_hidden := false
 
 
 func _ready() -> void:
@@ -38,16 +43,25 @@ func _ready() -> void:
 	root.name = "UIRoot"
 	add_child(root)
 
-	_build_top_bar(root)
-	_build_menu(root)
-	_build_hint(root)
-	_build_notice(root)
-	_build_settlement(root)
-	_build_pause_menu(root)
+	# 常规界面统一挂在 ui_root 下，方便一键隐藏
+	ui_root = Control.new()
+	ui_root.name = "GameUI"
+	ui_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ui_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(ui_root)
+
+	_build_top_bar(ui_root)
+	_build_menu(ui_root)
+	_build_hint(ui_root)
+	_build_notice(ui_root)
+	_build_settlement(ui_root)
+	_build_pause_menu(ui_root)
+	_build_hide_button(root)
 
 	GameState.money_changed.connect(_on_money_changed)
 	GameState.day_changed.connect(_on_day_changed)
 	GameState.reputation_changed.connect(_on_reputation_changed)
+	GameState.fame_changed.connect(_on_fame_changed)
 	GameState.notice.connect(show_notice)
 	GameClock.tick.connect(_on_tick)
 	GameClock.day_finished.connect(_on_day_finished)
@@ -142,7 +156,8 @@ func _build_top_bar(root: Control) -> void:
 
 	facility_label = _make_label("", 24, Color(0.80, 0.94, 0.80))
 	guest_label = _make_label("", 24, Color(0.95, 0.88, 0.75))
-	for l: Label in [facility_label, guest_label]:
+	fame_label = _make_label("", 24, Color(0.98, 0.86, 0.98))
+	for l: Label in [facility_label, guest_label, fame_label]:
 		row2.add_child(l)
 
 	var spacer2 := Control.new()
@@ -221,17 +236,36 @@ func _build_menu(root: Control) -> void:
 	list.add_child(grass_button)
 	list.add_child(_make_label("客人只走地砖和可行走草坪，记得把店门口连到主路。", 19, Color(0.85, 0.85, 0.9)))
 
+	# 建筑清单单独放一个容器：知名度涨上去以后要能重新生成，
+	# 否则「（知名度 XXX 解锁）」的置灰按钮会一直灰着，直到重开游戏。
+	build_list = VBoxContainer.new()
+	build_list.add_theme_constant_override("separation", 8)
+	build_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_child(build_list)
+	_refresh_build_list()
+
+
+func _refresh_build_list() -> void:
+	for child in build_list.get_children():
+		child.queue_free()
 	for cat_id in DataRegistry.category_order:
 		var cat: Dictionary = DataRegistry.categories[cat_id]
 		var header := _make_label(str(cat.get("name", cat_id)), 26, DataRegistry.get_category_color(cat_id))
-		list.add_child(header)
+		build_list.add_child(header)
 		for id in DataRegistry.building_order:
 			var data: Dictionary = DataRegistry.get_building(id)
 			if str(data.get("category", "")) != str(cat_id):
 				continue
+			if bool(data.get("hidden", false)):
+				continue      # 已淘汰的旧建筑不再显示
 			var b := _make_button("")
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			b.text = "  %s   %s" % [str(data.get("name", id)), GameState.format_money(int(data.get("cost", 0)))]
+			var unlock_fame := int(data.get("unlock_fame", 0))
+			if GameState.fame < float(unlock_fame):
+				b.text = "  %s   （知名度 %d 解锁）" % [str(data.get("name", id)), unlock_fame]
+				b.disabled = true
+			else:
+				b.text = "  %s   %s" % [str(data.get("name", id)), GameState.format_money(int(data.get("cost", 0)))]
 			b.tooltip_text = "%s\n造价 %s ｜ 容量 %d ｜ 平均消费 %d" % [
 				str(data.get("description", "")),
 				GameState.format_money(int(data.get("cost", 0))),
@@ -239,16 +273,46 @@ func _build_menu(root: Control) -> void:
 				int(data.get("spend", 0)),
 			]
 			b.pressed.connect(_on_build_selected.bind(id))
-			list.add_child(b)
+			build_list.add_child(b)
 
 
 func _build_hint(root: Control) -> void:
-	var hint := _make_label("点击建筑查看详情 ｜ B 建造（含铺地 / 拆除）｜ V 物资 ｜ 属性 ｜ R 屋顶 ｜ 空格暂停 ｜ 1/2/3/4 倍速 ｜ WASD 移动 ｜ 滚轮缩放 ｜ ESC 菜单", 20, Color(0.85, 0.85, 0.92, 0.85))
+	var hint := _make_label("点击建筑查看详情 ｜ B 建造（含铺地 / 拆除）｜ V 物资 ｜ 属性 ｜ R 屋顶 ｜ 空格暂停 ｜ 1/2/3/4 倍速 ｜ 按住中键移动视角 ｜ WASD ｜ 滚轮缩放 ｜ ESC 菜单", 20, Color(0.85, 0.85, 0.92, 0.85))
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	hint.offset_top = -46
 	hint.offset_bottom = -12
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(hint)
+
+
+func _build_hide_button(root: Control) -> void:
+	# 右下角：一键隐藏 / 显示界面（放在 ui_root 之外，隐藏后依然能点回来）
+	hide_button = _make_button("隐藏界面 (H)")
+	hide_button.custom_minimum_size = Vector2(200, 56)
+	hide_button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	hide_button.offset_left = -220
+	hide_button.offset_right = -16
+	hide_button.offset_top = -74
+	hide_button.offset_bottom = -18
+	hide_button.pressed.connect(_toggle_ui)
+	root.add_child(hide_button)
+
+
+func _toggle_ui() -> void:
+	ui_hidden = not ui_hidden
+	ui_root.visible = not ui_hidden
+	for panel in [building_panel, inventory_panel, stats_panel, exploration_panel]:
+		if panel and ui_hidden:
+			panel.visible = false
+	hide_button.text = "显示界面 (H)" if ui_hidden else "隐藏界面 (H)"
+	if ui_hidden:
+		show_notice("界面已隐藏，按 H 或点右下角按钮可以恢复")
+		notice_label.modulate.a = 1.0
+		var tween := create_tween()
+		tween.tween_interval(2.0)
+		tween.tween_property(notice_label, "modulate:a", 0.0, 0.8)
+		if pause_menu:
+			pause_menu.visible = false
 
 
 func _build_pause_menu(root: Control) -> void:
@@ -417,6 +481,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_build_panel()
 		KEY_V:
 			_toggle_inventory()
+		KEY_H:
+			_toggle_ui()
 		KEY_ESCAPE:
 			if building_panel:
 				building_panel.close()
@@ -475,6 +541,8 @@ func _toggle_roof() -> void:
 
 func _toggle_build_panel() -> void:
 	build_panel.visible = not build_panel.visible
+	if build_panel.visible:
+		_refresh_build_list()      # 打开时重算一次解锁状态
 
 
 func _on_build_selected(id: String) -> void:
@@ -512,6 +580,13 @@ func _on_reputation_changed(_value: float) -> void:
 	_refresh_reputation()
 
 
+func _on_fame_changed(_value: float) -> void:
+	_refresh_fame()
+	# 知名度跨过门槛时，建造菜单里的置灰项要立刻变成可点
+	if build_panel and build_panel.visible:
+		_refresh_build_list()
+
+
 func _on_tick(_progress: float, _hour: float) -> void:
 	clock_label.text = "时间 %s" % GameClock.time_text()
 
@@ -522,6 +597,7 @@ func _refresh_all() -> void:
 	_refresh_facility_label()
 	_refresh_guest_label()
 	_refresh_reputation()
+	_refresh_fame()
 	clock_label.text = "时间 %s" % GameClock.time_text()
 
 
@@ -548,6 +624,10 @@ func _refresh_reputation() -> void:
 	reputation_label.text = "口碑 %.1f" % GameState.reputation
 
 
+func _refresh_fame() -> void:
+	fame_label.text = "知名度 %.0f" % GameState.fame
+
+
 func show_notice(text: String) -> void:
 	notice_label.text = text
 	notice_label.modulate.a = 1.0
@@ -569,10 +649,15 @@ func _on_day_finished() -> void:
 				parts.append("%s×%d" % [DataRegistry.item_name(str(entry.get("id", ""))), int(entry.get("count", 1))])
 			GameState.notice.emit("夜间带回：" + ", ".join(parts))
 	var report := GameState.day_report()
+	var fame_report := GameState.apply_daily_fame()
 	SaveManager.save_game()
 	GameClock.paused = true
 	pause_button.text = "继续"
 	_show_settlement(report)
+	if not fame_report.is_empty():
+		show_notice("知名度 %+.0f（游客 %d 人 ｜ 明星 +%d ｜ 日常 -1）" % [
+			float(fame_report.get("delta", 0.0)), int(fame_report.get("visitors", 0)),
+			int(fame_report.get("star", 0.0))])
 
 
 func _show_settlement(report: Dictionary) -> void:
@@ -636,7 +721,15 @@ func _apply_auto_night_income() -> int:
 
 
 func _rest_for_night() -> void:
-	_apply_auto_night_income()
+	# 先结算夜间营业收益，再把场地上的顾客位置统一重置：
+	# 有房间的回房睡觉，当日往返的直接离开（回来时已经是第二天早上）
+	var night_income := _apply_auto_night_income()
+	if world:
+		var reset: Dictionary = world.rest_night()
+		if int(reset.get("slept", 0)) + int(reset.get("left", 0)) > 0:
+			show_notice("住客回房休息 %d 位 ｜ 当日往返 %d 位已在夜里离开%s" % [
+				int(reset.get("slept", 0)), int(reset.get("left", 0)),
+				"" if night_income <= 0 else " ｜ 夜间收益 +%s" % GameState.format_money(night_income)])
 	_start_next_day()
 
 

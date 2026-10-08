@@ -4,6 +4,8 @@ extends Control
 
 const MUSIC_PATH := "res://art/placeholder/audio/bgm_clearing.ogg"
 
+const MAIN_SCENE := "res://scenes/main.tscn"
+
 var bg_layer: Node2D
 var curtain: ColorRect
 var title_box: VBoxContainer
@@ -14,14 +16,16 @@ var settings_panel: PanelContainer
 var slot_mode := "new"     # new / load
 var confirm_slot := 0      # 覆盖确认用
 var intro_done := false
+var mode_row: HBoxContainer
+var mode_hint: Label
 
 
 func _ready() -> void:
-	# 自动化测试：直接以存档 1 开新游戏并进入游戏场景
-	if OS.get_cmdline_user_args().has("--smoke"):
+	# 自动化测试 / 专项体检：直接以存档 1 开新游戏并进入游戏场景，不放开场动画也不放音乐
+	if _is_dev_tool():
 		GameState.smoke_mode = true
-		SaveManager.begin_new_game(1)
-		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		SaveManager.begin_new_game(1, _mode_from_args())
+		_go_to_game()
 		return
 
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -220,6 +224,15 @@ func _build_slot_panel() -> void:
 	var header := UIKit.label("存档", 36, Color(0.98, 0.88, 0.55))
 	header.name = "Header"
 	box.add_child(header)
+
+	# 开局模式：只在「新游戏」时出现，选完存档位再进游戏
+	mode_row = HBoxContainer.new()
+	mode_row.add_theme_constant_override("separation", 12)
+	mode_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(mode_row)
+	mode_hint = UIKit.paragraph("", 19, Color(0.78, 0.80, 0.88), 800.0)
+	box.add_child(mode_hint)
+
 	slot_list = VBoxContainer.new()
 	slot_list.add_theme_constant_override("separation", 10)
 	box.add_child(slot_list)
@@ -244,7 +257,8 @@ func _refresh_slot_list() -> void:
 		child.queue_free()
 	var header: Label = slot_panel.find_child("Header", true, false)
 	if header:
-		header.text = "新游戏：选择存档位" if slot_mode == "new" else "读取存档"
+		header.text = "新游戏：选择开局模式与存档位" if slot_mode == "new" else "读取存档"
+	_refresh_mode_row()
 	for slot in range(1, SaveManager.SLOT_COUNT + 1):
 		var info := SaveManager.slot_summary(slot)
 		var row := HBoxContainer.new()
@@ -279,6 +293,38 @@ func _refresh_slot_list() -> void:
 		slot_list.add_child(row)
 
 
+func _refresh_mode_row() -> void:
+	for child in mode_row.get_children():
+		child.queue_free()
+	mode_row.visible = slot_mode == "new"
+	mode_hint.visible = slot_mode == "new"
+	if slot_mode != "new":
+		return
+	for entry in [
+		{"mode": SaveManager.MODE_INITIAL, "text": "初始模式"},
+		{"mode": SaveManager.MODE_FULL_TEST, "text": "完全测试"},
+	]:
+		var picked: bool = SaveManager.new_game_mode == str(entry["mode"])
+		var b := UIKit.button(str(entry["text"]), Vector2(220, 52))
+		b.toggle_mode = true
+		b.button_pressed = picked
+		if picked:
+			b.text = "▶ %s" % str(entry["text"])
+		b.pressed.connect(func():
+			Settings.play_click()
+			SaveManager.new_game_mode = str(entry["mode"])
+			confirm_slot = 0
+			_refresh_slot_list())
+		mode_row.add_child(b)
+	mode_hint.text = _mode_description(SaveManager.new_game_mode)
+
+
+func _mode_description(mode: String) -> String:
+	if mode == SaveManager.MODE_FULL_TEST:
+		return "完全测试：知名度 1000，建造菜单里全部 28 栋建筑都已建好并接好路，员工招满，每种物资各 1000 件。用来快速验证各个系统。"
+	return "初始模式：知名度 100，正常的开局配置（8 栋常用建筑 + 招待厅），门口小路已接好。正式玩就用这个。"
+
+
 func _format_playtime(seconds: float) -> String:
 	var total := int(seconds)
 	var hours := total / 3600
@@ -295,14 +341,35 @@ func _on_new_game_slot(slot: int) -> void:
 		confirm_slot = slot
 		_refresh_slot_list()
 		return
-	SaveManager.begin_new_game(slot)
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	SaveManager.begin_new_game(slot, SaveManager.new_game_mode)
+	_go_to_game()
 
 
 func _on_load_slot(slot: int) -> void:
 	Settings.play_click()
 	SaveManager.begin_load_game(slot)
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	_go_to_game()
+
+
+func _go_to_game() -> void:
+	# 必须延迟一帧：_ready() 期间场景树正在把本场景挂到根节点上，
+	# 这时直接 change_scene_to_file() 会报
+	# 「Parent node is busy adding/removing children, remove_child() can't be called at this time」。
+	get_tree().change_scene_to_file.call_deferred(MAIN_SCENE)
+
+
+func _mode_from_args() -> String:
+	# 自动化测试用：-- --smoke --mode=full_test 可以直接用完全测试模式跑回归
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--mode="):
+			return arg.split("=")[1]
+	return SaveManager.MODE_INITIAL
+
+
+func _is_dev_tool() -> bool:
+	# 开发工具都不走标题界面：冒烟测试 / 截图 / 住客作息专项体检
+	var args := OS.get_cmdline_user_args()
+	return args.has("--smoke") or args.has("--screenshot") or args.has("--wake")
 
 
 # ---------- 设置 ----------

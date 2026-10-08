@@ -1,5 +1,7 @@
 extends Node2D
 class_name Building
+
+const JANITOR := preload("res://scripts/customers/janitor.gd")
 ## 单栋建筑：外观、屋顶开关、容量、员工、升级、展厅展示位、诊所治疗。
 
 
@@ -36,6 +38,8 @@ var patients: Array = []       # 候诊顾客（医院）
 var treating: Array = []       # 正在治疗的顾客（医院）
 var guests: Array = []         # 已入住的客人（度假屋）
 var check_ins: int = 0         # 办过多少次入住（招待厅）
+var cleaned_total: int = 0     # 保洁间累计清理的垃圾数（汇总自保洁工人）
+var janitors: Array = []       # 保洁间雇的工人（在外面走动扫地）
 var cured_count: int = 0
 var failed_count: int = 0
 var understaffed_notice := false
@@ -54,10 +58,13 @@ func setup(building_data: Dictionary, at_cell: Vector2i, world_ref: Node2D) -> v
 	_build_visuals()
 	_apply_roof(bool(world.show_roofs))
 	_refresh_label()
-	set_process(is_clinic())    # 只有医院需要逐帧推进治疗
+	set_process(is_clinic() or service() == "cleaning")   # 医院推进治疗，保洁间维持保洁工人
 
 
 func _process(delta: float) -> void:
+	if service() == "cleaning":
+		_process_cleaning(delta)
+		return
 	if treating.is_empty():
 		return
 	if GameClock.phase == GameClock.Phase.SETTLEMENT or GameClock.paused:
@@ -69,6 +76,63 @@ func _process(delta: float) -> void:
 			treating.erase(patient)
 			patient.finish_treatment(self)
 	_promote_patient()
+
+
+func _process_cleaning(_delta: float) -> void:
+	# 保洁间本身不再"自动扫地"，改由雇来的保洁工人在外面走动清扫：
+	# 几位员工就有几位工人，人走了工人也跟着消失。
+	_sync_janitors()
+
+
+func _sync_janitors() -> void:
+	# 清掉已经失效的引用
+	var alive: Array = []
+	for j in janitors:
+		if j != null and is_instance_valid(j):
+			alive.append(j)
+	janitors = alive
+	# 员工数变化时补齐 / 减少工人
+	while janitors.size() < staff.size():
+		if world == null or world.staff_root == null:
+			return
+		var j: Node2D = JANITOR.new()
+		j.name = "Janitor_%s_%d" % [id, janitors.size()]
+		world.staff_root.add_child(j)
+		j.setup(self, world)
+		janitors.append(j)
+	while janitors.size() > staff.size():
+		var extra: Node = janitors.pop_back()
+		if extra != null and is_instance_valid(extra):
+			extra.queue_free()
+
+
+func janitor_total_cleaned() -> int:
+	var total := cleaned_total
+	for j in janitors:
+		if j != null and is_instance_valid(j):
+			total += int(j.cleaned_total)
+	return total
+
+
+func remove_janitors() -> void:
+	# 建筑被拆掉时调用：工人一并撤走
+	for j in janitors:
+		if j != null and is_instance_valid(j):
+			j.home = null          # 断开引用，工人下一帧会自己清理掉
+			j.queue_free()
+	janitors.clear()
+
+
+func unlock_fame() -> int:
+	return int(data.get("unlock_fame", 0))
+
+
+func is_unlocked() -> bool:
+	return GameState.fame >= float(unlock_fame())
+
+
+func service() -> String:
+	return str(data.get("service", ""))
 
 
 func _build_visuals() -> void:
@@ -242,12 +306,27 @@ func is_reception() -> bool:
 
 
 func room_capacity() -> int:
-	# 一间度假屋只接待一位客人
-	return 1
+	# 能住几位客人：普通 1 人、自然风 2 人、现代风 3 人
+	return maxi(1, int(data.get("room_slots", 1)))
 
 
-func has_free_room() -> bool:
-	return is_lodging() and guests.size() < room_capacity()
+func has_free_room(party_size: int = 1) -> bool:
+	return is_lodging() and guests.size() + party_size <= room_capacity()
+
+
+func needs_staff() -> bool:
+	# 度假屋和招待厅不需要雇员工
+	return not (is_lodging() or is_reception())
+
+
+func staff_slots() -> int:
+	return int(data.get("staff_slots", 1))
+
+
+func is_self_service() -> bool:
+	# 自助设施（公共卫生间、共享单车租借所）：压根没有员工编制，
+	# 所以既不该因为「没人上班」被扣心情，也不该因为「有人上班」被加心情。
+	return staff_slots() <= 0
 
 
 func add_guest(customer: Node2D) -> void:
@@ -319,6 +398,10 @@ func mood_bonus() -> float:
 
 
 func staff_mood_bonus() -> float:
+	if not needs_staff():
+		return 0.0      # 度假屋 / 招待厅没有员工也不影响心情
+	if is_self_service():
+		return 0.0      # 自助设施（卫生间 / 共享单车）没有员工编制
 	if staff.is_empty():
 		return -14.0    # 一个人都没有，客人体验很差
 	var energy := staff_energy()
@@ -342,6 +425,8 @@ func remove_visitor(customer: Node2D) -> void:
 
 
 func on_guest_served() -> void:
+	if is_self_service():
+		return          # 自助设施没有员工编制，不算「没人上班」
 	if staff.is_empty():
 		if not understaffed_notice:
 			understaffed_notice = true
@@ -354,10 +439,6 @@ func on_guest_served() -> void:
 
 # ---------- 员工 ----------
 
-func staff_slots() -> int:
-	return int(data.get("staff_slots", 1))
-
-
 func hire_staff(quality: int = 1) -> bool:
 	if staff.size() >= staff_slots():
 		return false
@@ -365,6 +446,14 @@ func hire_staff(quality: int = 1) -> bool:
 	understaffed_notice = false
 	_refresh_label()
 	return true
+
+
+func fill_staff() -> int:
+	# 按编制把员工招满（完全测试模式用：所有建筑直接进入「人员齐备」状态）
+	var hired := 0
+	while hire_staff():
+		hired += 1
+	return hired
 
 
 func fire_staff() -> bool:
@@ -500,6 +589,7 @@ func evacuate() -> void:
 		if is_instance_valid(guest):
 			guest.force_leave(self)
 	guests.clear()
+	remove_janitors()      # 保洁间被拆：工人一并撤走
 
 
 # ---------- 展厅 ----------

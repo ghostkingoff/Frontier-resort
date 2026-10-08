@@ -1,5 +1,7 @@
 extends CanvasLayer
-## 建筑详情面板：升级、员工、展厅展示位、医院治疗信息。
+## 建筑详情面板：升级、员工、展厅展示位、医院治疗信息、保洁工人。
+
+const JANITOR := preload("res://scripts/customers/janitor.gd")
 
 var world: Node2D
 var building: Building = null
@@ -71,7 +73,7 @@ func _refresh() -> void:
 	content.add_child(UIKit.label("客人 %d / %d ｜ 平均消费 %s ｜ 心情加成 %+.0f" % [
 		b.visitors.size(), b.capacity(), GameState.format_money(b.spend_value()), b.mood_bonus()], 22, Color(0.85, 0.92, 1.0)))
 	if b.is_lodging():
-		content.add_child(UIKit.label("住客 %d / %d 间 ｜ 住宿费 %s / 晚（结账时进账）" % [
+		content.add_child(UIKit.label("住客 %d / %d 人 ｜ 住宿费 %s / 晚（结账时进账）" % [
 			b.guests.size(), b.room_capacity(), GameState.format_money(b.spend_value())], 22, Color(0.9, 0.92, 0.7)))
 	if b.is_reception():
 		content.add_child(UIKit.label("累计办理入住 %d 次 ｜ 客人在这里登记与结账" % b.check_ins, 22, Color(0.9, 0.92, 0.7)))
@@ -82,11 +84,17 @@ func _refresh() -> void:
 	content.add_child(UIKit.spacer(4))
 
 	_add_upgrade_section(b)
-	_add_staff_section(b)
+	if b.needs_staff():
+		_add_staff_section(b)
+	else:
+		content.add_child(UIKit.label("—— 员工 ——", 24, Color(0.95, 0.85, 0.5)))
+		content.add_child(UIKit.paragraph("度假屋与招待厅由客人自助使用，不需要雇员工。", 20, Color(0.82, 0.86, 0.9), 420.0))
 	if b.is_showroom():
 		_add_showroom_section(b)
 	if b.is_clinic():
 		_add_clinic_section(b)
+	if b.service() == "cleaning":
+		_add_cleaning_section(b)
 
 	var close_button := UIKit.button("关闭面板", Vector2(160, 52))
 	close_button.pressed.connect(close)
@@ -96,6 +104,21 @@ func _refresh() -> void:
 	actions.add_child(close_button)
 	actions.add_child(_make_demolish_button(b))
 	content.add_child(actions)
+
+
+func _add_cleaning_section(b: Building) -> void:
+	content.add_child(UIKit.spacer(6))
+	content.add_child(UIKit.label("—— 保洁 ——", 24, Color(0.95, 0.85, 0.5)))
+	var workers: int = b.janitors.size()
+	if workers <= 0:
+		content.add_child(UIKit.paragraph(
+			"还没有雇保洁。雇了之后会有保洁工人在外面走动，清理半径 %d 格内的垃圾。"
+			% JANITOR.ROAM_RADIUS_CELLS, 20, Color(0.9, 0.8, 0.7), 420.0))
+	else:
+		content.add_child(UIKit.paragraph(
+			"%d 位保洁工人正在外面清扫，负责半径 %d 格；超出范围的垃圾不会去清。"
+			% [workers, JANITOR.ROAM_RADIUS_CELLS], 20, Color(0.82, 0.9, 0.98), 420.0))
+	content.add_child(UIKit.label("累计清理垃圾 %d 个" % b.janitor_total_cleaned(), 20, Color(0.8, 0.92, 0.8)))
 
 
 func _make_demolish_button(b: Building) -> Button:

@@ -1,74 +1,70 @@
 {
-  "types": [
-	{
-	  "id": "villager",
-	  "name": "边境居民",
-	  "budget": 2000,
-	  "max_nights": 0,
-	  "weight": 34,
-	  "reputation_required": 0,
-	  "spend_multiplier": 1.0,
-	  "prefers": ["food", "shop"],
-	  "sprite": "res://art/placeholder/characters/Villager"
-	},
-	{
-	  "id": "tourist",
-	  "name": "普通游客",
-	  "budget": 6000,
-	  "max_nights": 2,
-	  "weight": 30,
-	  "reputation_required": 0,
-	  "spend_multiplier": 1.1,
-	  "prefers": ["lodging", "food", "leisure", "shop"],
-	  "sprite": "res://art/placeholder/characters/Boy"
-	},
-	{
-	  "id": "family",
-	  "name": "度假家庭",
-	  "budget": 9000,
-	  "max_nights": 2,
-	  "max_nights": 3,
-	  "weight": 18,
-	  "reputation_required": 5,
-	  "spend_multiplier": 1.2,
-	  "prefers": ["lodging", "food", "leisure"],
-	  "sprite": "res://art/placeholder/characters/Woman"
-	},
-	{
-	  "id": "collector",
-	  "name": "收藏家",
-	  "budget": 15000,
-	  "max_nights": 2,
-	  "weight": 9,
-	  "reputation_required": 12,
-	  "attracted_by_showroom": true,
-	  "spend_multiplier": 1.5,
-	  "prefers": ["special", "leisure", "food"],
-	  "sprite": "res://art/placeholder/characters/OldMan"
-	},
-	{
-	  "id": "merchant",
-	  "name": "富商",
-	  "budget": 30000,
-	  "max_nights": 3,
-	  "weight": 6,
-	  "reputation_required": 25,
-	  "attracted_by_showroom": true,
-	  "spend_multiplier": 1.8,
-	  "prefers": ["special", "lodging", "leisure"],
-	  "sprite": "res://art/placeholder/characters/Noble"
-	},
-	{
-	  "id": "celebrity",
-	  "name": "明星",
-	  "budget": 50000,
-	  "max_nights": 5,
-	  "weight": 3,
-	  "reputation_required": 45,
-	  "attracted_by_showroom": true,
-	  "spend_multiplier": 2.2,
-	  "prefers": ["special", "lodging", "leisure"],
-	  "sprite": "res://art/placeholder/characters/Sultan"
-	}
+  "tags": {
+	"stay": [
+	  { "id": "day_trip", "name": "单日", "desc": "只来一天，不入住" },
+	  { "id": "multi_day", "name": "多日", "desc": "会在这里住几天" }
+	],
+	"party": [
+	  { "id": "solo", "name": "单人" },
+	  { "id": "duo", "name": "双人" },
+	  { "id": "trio", "name": "三人" }
+	],
+	"identity": [
+	  { "id": "ordinary", "name": "普通游客", "desc": "没有特殊效果" },
+	  { "id": "star", "name": "明星", "desc": "带来知名度，预算极高，消费频繁；不会花完才走，最多住 5 天；到访概率受知名度与口碑影响" },
+	  { "id": "tycoon", "name": "富商", "desc": "预算多、消费多，最多住 5 天；不带来知名度；大量购买展厅物品，到访概率受知名度与展厅展品总价值影响" }
+	]
+  },
+  "guests": [
+	{ "id": "shen_qing", "names": ["沈青"], "stay": "day_trip", "party": "solo", "identities": ["ordinary"],
+	  "budget": 2000, "spend_frequency": 0.55, "prefers": ["food", "shop"], "sprite": "res://art/placeholder/characters/Boy", "weight": 10, "reputation_required": 0, "fame_required": 0 },
+	{ "id": "chen_xiaoman", "names": ["陈小满"], "stay": "day_trip", "party": "solo", "identities": ["ordinary"],
+	  "budget": 2600, "spend_frequency": 0.55, "prefers": ["food", "shop", "leisure"], "sprite": "res://art/placeholder/characters/Villager", "weight": 10, "reputation_required": 0, "fame_required": 0 },
+	{ "id": "zhao_tieniu", "names": ["赵铁牛"], "stay": "day_trip", "party": "solo", "identities": ["ordinary"],
+	  "budget": 3200, "spend_frequency": 0.6, "prefers": ["food", "leisure"], "sprite": "res://art/placeholder/characters/Villager", "weight": 8, "reputation_required": 0, "fame_required": 0 },
+	{ "id": "zhou_xi", "names": ["周喜"], "stay": "day_trip", "party": "solo", "identities": ["ordinary"],
+	  "budget": 2400, "spend_frequency": 0.5, "prefers": ["shop", "food"], "sprite": "res://art/placeholder/characters/Boy", "weight": 8, "reputation_required": 0, "fame_required": 0 },
+	{ "id": "li_family", "names": ["李有田", "李秀兰"], "stay": "day_trip", "party": "duo", "identities": ["ordinary"],
+	  "budget": 4200, "spend_frequency": 0.6, "prefers": ["food", "shop"], "sprite": "res://art/placeholder/characters/Villager", "weight": 7, "reputation_required": 0, "fame_required": 0 },
+	{ "id": "sun_brothers", "names": ["孙大勇", "孙小勇"], "stay": "day_trip", "party": "duo", "identities": ["ordinary"],
+	  "budget": 5000, "spend_frequency": 0.65, "prefers": ["leisure", "food"], "sprite": "res://art/placeholder/characters/Boy", "weight": 6, "reputation_required": 5, "fame_required": 0 },
+	{ "id": "zhang_brothers", "names": ["张大山", "张二山", "张三山"], "stay": "day_trip", "party": "trio", "identities": ["ordinary"],
+	  "budget": 6000, "spend_frequency": 0.6, "prefers": ["food", "leisure"], "sprite": "res://art/placeholder/characters/Villager", "weight": 5, "reputation_required": 10, "fame_required": 0 },
+	{ "id": "liu_brothers", "names": ["刘福", "刘禄", "刘寿"], "stay": "day_trip", "party": "trio", "identities": ["ordinary"],
+	  "budget": 6600, "spend_frequency": 0.6, "prefers": ["shop", "food", "leisure"], "sprite": "res://art/placeholder/characters/Villager", "weight": 4, "reputation_required": 15, "fame_required": 0 },
+
+	{ "id": "lin_qinghe", "names": ["林清和"], "stay": "multi_day", "party": "solo", "identities": ["ordinary"],
+	  "budget": 9000, "max_nights": 2, "spend_frequency": 0.5, "prefers": ["lodging", "food", "leisure"], "sprite": "res://art/placeholder/characters/Boy", "weight": 9, "reputation_required": 0, "fame_required": 0 },
+	{ "id": "su_wanqing", "names": ["苏晚晴"], "stay": "multi_day", "party": "solo", "identities": ["ordinary"],
+	  "budget": 12000, "max_nights": 3, "spend_frequency": 0.55, "prefers": ["lodging", "leisure", "shop"], "sprite": "res://art/placeholder/characters/Woman", "weight": 8, "reputation_required": 5, "fame_required": 0 },
+	{ "id": "gu_changfeng", "names": ["顾长风"], "stay": "multi_day", "party": "solo", "identities": ["ordinary"],
+	  "budget": 14000, "max_nights": 3, "spend_frequency": 0.6, "prefers": ["lodging", "food"], "sprite": "res://art/placeholder/characters/OldMan", "weight": 6, "reputation_required": 10, "fame_required": 0 },
+	{ "id": "xie_yunzhou", "names": ["谢云舟"], "stay": "multi_day", "party": "solo", "identities": ["ordinary"],
+	  "budget": 16000, "max_nights": 3, "spend_frequency": 0.6, "prefers": ["lodging", "leisure", "food"], "sprite": "res://art/placeholder/characters/Boy", "weight": 5, "reputation_required": 15, "fame_required": 0 },
+	{ "id": "zheng_family", "names": ["郑明远", "郑明霞"], "stay": "multi_day", "party": "duo", "identities": ["ordinary"],
+	  "budget": 20000, "max_nights": 3, "spend_frequency": 0.55, "prefers": ["lodging", "food", "leisure"], "sprite": "res://art/placeholder/characters/Woman", "weight": 7, "reputation_required": 10, "fame_required": 0 },
+	{ "id": "he_family", "names": ["何家兴", "何家旺"], "stay": "multi_day", "party": "duo", "identities": ["ordinary"],
+	  "budget": 18000, "max_nights": 2, "spend_frequency": 0.6, "prefers": ["lodging", "shop"], "sprite": "res://art/placeholder/characters/Villager", "weight": 6, "reputation_required": 8, "fame_required": 0 },
+	{ "id": "ma_brothers", "names": ["马长风", "马长云", "马长星"], "stay": "multi_day", "party": "trio", "identities": ["ordinary"],
+	  "budget": 26000, "max_nights": 3, "spend_frequency": 0.55, "prefers": ["lodging", "leisure", "food"], "sprite": "res://art/placeholder/characters/Boy", "weight": 5, "reputation_required": 18, "fame_required": 0 },
+	{ "id": "luo_brothers", "names": ["罗志远", "罗志高", "罗志强"], "stay": "multi_day", "party": "trio", "identities": ["ordinary"],
+	  "budget": 28000, "max_nights": 3, "spend_frequency": 0.6, "prefers": ["lodging", "food", "shop"], "sprite": "res://art/placeholder/characters/Villager", "weight": 4, "reputation_required": 22, "fame_required": 0 },
+
+	{ "id": "bai_shuang", "names": ["白霜"], "stay": "multi_day", "party": "solo", "identities": ["star"],
+	  "budget": 1000000, "max_nights": 5, "spend_frequency": 0.9, "prefers": ["lodging", "leisure", "shop", "food"], "sprite": "res://art/placeholder/characters/Sultan", "weight": 3, "reputation_required": 20, "fame_required": 20 },
+	{ "id": "liu_jinghong", "names": ["柳惊鸿"], "stay": "multi_day", "party": "solo", "identities": ["star"],
+	  "budget": 1200000, "max_nights": 5, "spend_frequency": 0.9, "prefers": ["lodging", "leisure", "food"], "sprite": "res://art/placeholder/characters/Sultan", "weight": 2, "reputation_required": 35, "fame_required": 45 },
+	{ "id": "huo_duo", "names": ["霍云舒", "霍云卷"], "stay": "multi_day", "party": "duo", "identities": ["star"],
+	  "budget": 1600000, "max_nights": 4, "spend_frequency": 0.85, "prefers": ["lodging", "leisure", "shop"], "sprite": "res://art/placeholder/characters/Sultan", "weight": 2, "reputation_required": 40, "fame_required": 60 },
+
+	{ "id": "jin_wanguan", "names": ["金万贯"], "stay": "multi_day", "party": "solo", "identities": ["tycoon"],
+	  "budget": 300000, "max_nights": 5, "spend_frequency": 0.85, "prefers": ["special", "lodging", "leisure"], "sprite": "res://art/placeholder/characters/Noble", "weight": 4, "reputation_required": 15, "fame_required": 10 },
+	{ "id": "qian_tonghai", "names": ["钱通海"], "stay": "multi_day", "party": "solo", "identities": ["tycoon"],
+	  "budget": 420000, "max_nights": 5, "spend_frequency": 0.85, "prefers": ["special", "lodging"], "sprite": "res://art/placeholder/characters/Noble", "weight": 3, "reputation_required": 25, "fame_required": 25 },
+	{ "id": "zhu_duo", "names": ["朱满仓", "朱满囤"], "stay": "multi_day", "party": "duo", "identities": ["tycoon"],
+	  "budget": 520000, "max_nights": 4, "spend_frequency": 0.8, "prefers": ["special", "lodging", "food"], "sprite": "res://art/placeholder/characters/Noble", "weight": 2, "reputation_required": 30, "fame_required": 40 },
+
+	{ "id": "qin_jiuxiao", "names": ["秦九霄"], "stay": "multi_day", "party": "solo", "identities": ["star", "tycoon"],
+	  "budget": 2000000, "max_nights": 5, "spend_frequency": 0.95, "prefers": ["special", "lodging", "leisure", "food"], "sprite": "res://art/placeholder/characters/Sultan", "weight": 1, "reputation_required": 50, "fame_required": 80 }
   ]
 }

@@ -5,6 +5,7 @@ extends Node
 const SPRITE_SCALE := 2.0      # 占位素材 16px → 正式规格 32px，统一放大 2 倍
 
 const BUILDINGS_PATH := "res://data/buildings.json"
+const BUILDINGS_EXTRA_PATH := "res://data/buildings_extra.json"
 const CUSTOMERS_PATH := "res://data/customers.json"
 const SPRITES_PATH := "res://data/sprites.json"
 const ITEMS_PATH := "res://data/items.json"
@@ -20,6 +21,7 @@ var category_order: Array = []
 var buildings: Dictionary = {}
 var building_order: Array = []
 var customer_types: Array = []
+var customer_tags: Dictionary = {}
 var sprites: Dictionary = {}
 var items: Dictionary = {}
 var item_order: Array = []
@@ -59,13 +61,45 @@ func _load_buildings() -> void:
 	for item in raw.get("buildings", []):
 		buildings[item["id"]] = item
 		building_order.append(item["id"])
+	# 扩充建筑放在单独文件里：即使它有问题，也不会影响原有建筑表
+	var extra := _read_json(BUILDINGS_EXTRA_PATH)
+	for item in extra.get("buildings", []):
+		var id := str(item.get("id", ""))
+		if id == "":
+			continue
+		if not buildings.has(id):
+			building_order.append(id)
+		buildings[id] = item
+	_check_shadowed_buildings(raw, extra)
 	print("[DataRegistry] 建筑 %d 种，分类 %d 个" % [building_order.size(), category_order.size()])
+
+
+func _check_shadowed_buildings(main: Dictionary, extra: Dictionary) -> void:
+	# 两处都定义了同名 id 时，扩充表的定义会静默生效，
+	# 主表那份就变成了「改了数据却没反应」的陷阱。这里主动报出来。
+	# 注：剩下这两条是有意保留的——旧存档里存的是同一批 id，主表那份还负责把老建筑解析出来，
+	# 所以不能删、也不能改 id（改了旧档里的边境酒吧/边境诊所就会消失）。
+	var main_names: Dictionary = {}
+	for item in main.get("buildings", []):
+		main_names[str(item.get("id", ""))] = str(item.get("name", ""))
+	var shadowed: Array = []
+	for item in extra.get("buildings", []):
+		var id := str(item.get("id", ""))
+		if main_names.has(id):
+			shadowed.append("%s（主表 %s → 扩充表 %s）" % [id, main_names[id], str(item.get("name", ""))])
+	if not shadowed.is_empty():
+		print("[DataRegistry] 同名建筑 id %d 个，生效的是扩充表那份：%s" % [shadowed.size(), "；".join(shadowed)])
 
 
 func _load_customers() -> void:
 	var raw := _read_json(CUSTOMERS_PATH)
-	customer_types = raw.get("types", [])
-	print("[DataRegistry] 顾客类型 %d 种" % customer_types.size())
+	customer_tags = raw.get("tags", {})
+	customer_types = raw.get("guests", [])
+	print("[DataRegistry] 游客名册 %d 组（停留 %d ｜ 人数 %d ｜ 身份 %d 个标签）" % [
+		customer_types.size(),
+		(customer_tags.get("stay", []) as Array).size(),
+		(customer_tags.get("party", []) as Array).size(),
+		(customer_tags.get("identity", []) as Array).size()])
 
 
 func _sprites_load() -> void:

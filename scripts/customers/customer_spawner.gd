@@ -45,26 +45,69 @@ func _next_interval() -> float:
 func _try_spawn() -> void:
 	if world.reception() == null:
 		return      # 没有招待厅就没法入住，先不来客人
-	var customer_type := _pick_type()
-	if customer_type.is_empty():
+	var entry := _pick_type()
+	if entry.is_empty():
 		return
-	var customer := Customer.new()
-	customer.name = "Customer_%s" % str(customer_type.get("id", "x"))
-	world.customers_root.add_child(customer)
-	customer.setup(customer_type, world, world.random_entrance())
-	GameState.register_visit()
+	# 一组客人共享预算（双人 / 三人），离开时一起走
+	var party := Party.new()
+	party.setup(int(entry.get("budget", 2000)))
+	var names: Array = entry.get("names", [])
+	if names.is_empty():
+		names = [str(entry.get("id", "游客"))]
+	for i in range(names.size()):
+		var customer := Customer.new()
+		customer.name = "Customer_%s_%d" % [str(entry.get("id", "x")), i]
+		world.customers_root.add_child(customer)
+		customer.setup(entry, world, world.random_entrance(), str(names[i]), party)
 
 
 func _pick_type() -> Dictionary:
+	# 先掷「特殊客人」（明星 / 富商）：概率由知名度函数给出，最高 20%
+	var special := _pick_special()
+	if not special.is_empty():
+		return special
 	var pool: Array = []
-	var showroom: int = world.showroom_score()
 	for t in DataRegistry.customer_types:
+		if _is_special(t):
+			continue          # 特殊客人只走上面的概率通道
 		if GameState.reputation < float(t.get("reputation_required", 0)):
 			continue
 		var weight := float(t.get("weight", 1))
-		if bool(t.get("attracted_by_showroom", false)):
-			# 展厅里的珍贵展品越多，富商与明星越容易被吸引过来
-			weight *= 1.0 + 0.35 * float(showroom)
+		for _i in range(maxi(1, int(round(weight)))):
+			pool.append(t)
+	if pool.is_empty():
+		return {}
+	return pool[randi() % pool.size()]
+
+
+func _is_special(entry: Dictionary) -> bool:
+	var ids: Array = entry.get("identities", [])
+	return ids.has("star") or ids.has("tycoon")
+
+
+func _pick_special() -> Dictionary:
+	var chance := GameState.star_arrival_chance()
+	if chance <= 0.0:
+		return {}
+	if randf() > chance:
+		return {}
+	var showroom_value: int = world.showroom_display_value()
+	var showroom_score: int = world.showroom_score()
+	var pool: Array = []
+	for t in DataRegistry.customer_types:
+		if not _is_special(t):
+			continue
+		if GameState.reputation < float(t.get("reputation_required", 0)):
+			continue          # 口碑门槛仍然要满足
+		var ids: Array = t.get("identities", [])
+		var weight := float(t.get("weight", 1))
+		if ids.has("star"):
+			# 明星：知名度和口碑越高越容易来
+			weight *= 1.0 + GameState.fame * 0.003 + GameState.reputation * 0.02
+		if ids.has("tycoon"):
+			# 富商：知名度 + 展厅展品总价值（以及稀有度分）
+			weight *= 1.0 + GameState.fame * 0.002 + float(showroom_value) / 200000.0 + float(showroom_score) * 0.05
+		weight = maxf(weight, 0.05)
 		for _i in range(maxi(1, int(round(weight)))):
 			pool.append(t)
 	if pool.is_empty():

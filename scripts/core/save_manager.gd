@@ -9,9 +9,14 @@ const TEST_SAVE_DIR := "user://saves_test"   # 自动化测试专用，绝不动
 const SLOT_COUNT := 3
 const EXPLORE_OFFSET := 100     # 槽位 + 100 = 该槽的探索前存档
 
+# 开局模式：初始模式是正常玩法，完全测试模式铺满建筑 + 满员工 + 满物资，方便测系统
+const MODE_INITIAL := "initial"
+const MODE_FULL_TEST := "full_test"
+
 var active_slot := 1
 var pending_mode := ""          # "new" / "load"，由标题界面设置，进入游戏后执行
 var pending_slot := 1
+var new_game_mode := MODE_INITIAL   # 标题界面选的开局模式，仅对「新游戏」有效
 var save_dir := SAVE_DIR
 var read_only := false          # 截图等开发工具用：只读，绝不写存档
 
@@ -125,16 +130,14 @@ func slot_summary(slot: int) -> Dictionary:
 	}
 
 
-func begin_new_game(slot: int) -> void:
-	# 标题界面点「新游戏」：清掉这个槽、重置全局状态，进游戏后从第一天开始
+func begin_new_game(slot: int, mode: String = MODE_INITIAL) -> void:
+	# 标题界面点「新游戏」：清掉这个槽、记下开局模式，
+	# 真正的状态重置放在 main.gd 的 _enter_tree()（必须在 World 子节点 _ready 之前完成）
 	delete_save(slot)
 	active_slot = slot
 	pending_mode = "new"
 	pending_slot = slot
-	GameState.reset()
-	PlayerStats.reset()
-	Exploration.reset()
-	GameClock.start_new_day()
+	new_game_mode = mode
 
 
 func begin_load_game(slot: int) -> void:

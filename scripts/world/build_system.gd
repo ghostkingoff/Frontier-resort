@@ -222,6 +222,13 @@ func _try_place() -> void:
 			GameState.notice.emit("资金不足，无法建造 %s" % str(DataRegistry.get_building(selected_id).get("name", "")))
 		return
 	var cost := _cost()
+	var build_data := DataRegistry.get_building(selected_id)
+	if GameState.fame < float(build_data.get("unlock_fame", 0)):
+		GameState.notice.emit("知名度不足，暂时无法建造 %s" % str(build_data.get("name", "")))
+		return
+	if not GameState.can_afford(cost):
+		GameState.notice.emit("资金不足")
+		return
 	if not GameState.spend(cost, "建造"):
 		return
 	var building: Node2D = world.place_building(selected_id, _cell)

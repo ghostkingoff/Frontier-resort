@@ -28,14 +28,21 @@ func _process(delta: float) -> void:
 		2:
 			if elapsed > 5.2:
 				_capture("title_03_slots.png")
-				title._open_settings()
+				SaveManager.new_game_mode = SaveManager.MODE_FULL_TEST
+				title._refresh_slot_list()
 				step = 3
 		3:
 			if elapsed > 5.9:
-				_capture("title_04_settings.png")
+				_capture("title_05_new_game_full_test.png")
+				SaveManager.new_game_mode = SaveManager.MODE_INITIAL
+				title._open_settings()
 				step = 4
 		4:
-			if elapsed > 6.3:
+			if elapsed > 6.6:
+				_capture("title_04_settings.png")
+				step = 5
+		5:
+			if elapsed > 7.0:
 				get_tree().quit()
 
 
