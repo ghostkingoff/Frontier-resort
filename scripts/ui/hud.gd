@@ -26,7 +26,11 @@ var settlement: Control
 var settlement_box: VBoxContainer
 var speed_buttons: Dictionary = {}
 var pause_menu: Control
+var pause_menu_button: Button
+var pan_button: Button
+var build_status: Label
 var _cycle_settled := false
+var _settlement_can_choose := true     # 当天还没做过选择时才显示「休息 / 探索 / 夜晚管理」
 var ui_root: Control
 var hide_button: Button
 var ui_hidden := false
@@ -68,8 +72,37 @@ func _ready() -> void:
 	GameClock.morning_started.connect(_on_morning_started)
 	if world:
 		world.building_placed.connect(func(_b): _refresh_facility_label())
+	if build_system and build_system.has_signal("selection_changed"):
+		build_system.selection_changed.connect(_on_build_selection_changed)
 	_refresh_all()
 	_hide_pause_menu()
+
+
+func _on_build_selection_changed(_what: String) -> void:
+	_refresh_build_status()
+
+
+func _refresh_build_status() -> void:
+	# 明确告诉玩家：现在处于建造模式、拿着什么工具、怎么退出
+	if build_status == null or build_system == null:
+		return
+	var what := ""
+	if build_system.is_demolishing():
+		what = "拆除建筑：先点建筑选中，再点一次确认"
+	elif build_system.is_painting():
+		what = "铺地面：点或按住拖动地面生效"
+	elif str(build_system.selected_id) != "":
+		var data: Dictionary = DataRegistry.get_building(str(build_system.selected_id))
+		what = "放置 %s：点地面放下" % str(data.get("name", build_system.selected_id))
+	if what == "":
+		build_status.text = "未选择工具：点上面的项目开始建造。"
+		build_status.add_theme_color_override("font_color", Color(0.78, 0.80, 0.88))
+	else:
+		build_status.text = "▶ %s　｜　右键（或 ESC）退出建造模式" % what
+		build_status.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+	# 建造模式下把顶栏按钮高亮，一眼能看出当前状态
+	if build_button:
+		build_button.text = "建造中… (B)" if what != "" else "建造 (B)"
 
 
 func _process(delta: float) -> void:
@@ -132,7 +165,9 @@ func _build_top_bar(root: Control) -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
 
-	pause_button = _make_button("暂停")
+	# 注意：这是「时间暂停」，和右上角的「菜单」（暂停菜单）是两件事
+	pause_button = _make_button("暂停时间")
+	pause_button.tooltip_text = "只停住时间，不打开菜单。"
 	pause_button.pressed.connect(_toggle_pause)
 	row.add_child(pause_button)
 
@@ -180,26 +215,58 @@ func _build_top_bar(root: Control) -> void:
 	build_button.pressed.connect(_toggle_build_panel)
 	row2.add_child(build_button)
 
+	# 移动视口模式：进入后按住左键拖动即可平移视角（触控板 / 单键鼠标也方便）
+	pan_button = _make_button("移动视口")
+	pan_button.tooltip_text = "进入后按住鼠标左键拖动即可移动视角，再点一次退出。"
+	pan_button.pressed.connect(_toggle_pan_mode)
+	row2.add_child(pan_button)
+
+	# 暂停菜单的鼠标入口（原本只能按 ESC 打开，纯鼠标玩家无法存盘 / 回主菜单）
+	pause_menu_button = _make_button("菜单")
+	pause_menu_button.tooltip_text = "继续游戏 / 保存进度 / 回到主菜单（等同 ESC）"
+	pause_menu_button.pressed.connect(_toggle_pause_menu)
+	row2.add_child(pause_menu_button)
+
+
+func _toggle_pan_mode() -> void:
+	var cam := get_node_or_null("../Camera")
+	if cam == null or not cam.has_method("toggle_pan_mode"):
+		GameState.notice.emit("找不到相机，无法进入移动视口模式")
+		return
+	var on: bool = cam.toggle_pan_mode()
+	pan_button.text = "移动视口：开" if on else "移动视口"
+	if on:
+		show_notice("移动视口模式：按住左键拖动视角，再点一次按钮退出")
+	else:
+		show_notice("已退出移动视口模式")
+
 
 func _build_menu(root: Control) -> void:
 	build_panel = PanelContainer.new()
 	build_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	build_panel.offset_left = 16
 	build_panel.offset_top = 148
+	# 宽度用 offset_right 钉死。只设 size= 的话和锚点预设会互相覆盖，
+	# 实测面板会缩到约 275 宽，按钮文字右边被切掉。
+	build_panel.offset_right = 16 + 420
+	build_panel.offset_bottom = 148 + 560
 	build_panel.custom_minimum_size = Vector2(420, 0)
-	build_panel.size = Vector2(420, 720)
 	build_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.10, 0.09, 0.13, 0.94), Color(0.40, 0.36, 0.50)))
 	build_panel.visible = false
 	root.add_child(build_panel)
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
+	# 必须显式横向填满：否则 VBox 只按子控件最小宽度排布，
+	# 面板明明 420 宽，按钮和文字却被挤在约 285 宽的位置、右边被切掉
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	build_panel.add_child(box)
 
 	box.add_child(_make_label("建造", 32, Color(0.98, 0.88, 0.55)))
 
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(380, 600)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(scroll)
 
@@ -210,31 +277,37 @@ func _build_menu(root: Control) -> void:
 
 	# 地面工具放最前面，铺路是最常用的操作
 	list.add_child(_make_label("地面", 26, Color(0.85, 0.78, 0.55)))
+	# 当前建造状态：告诉玩家现在拿着什么工具、怎么退出
+	build_status = _make_label("", 21, Color(1.0, 0.85, 0.45))
+	build_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list.add_child(build_status)
 	var demolish_button := _make_button("")
 	demolish_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	demolish_button.text = "  拆除建筑（返还一半投入）"
+	demolish_button.text = "拆除建筑（返还一半投入）"
 	demolish_button.tooltip_text = "先点建筑选中，再点一次确认拆除。展厅里的展品会退回仓库。"
 	demolish_button.pressed.connect(_on_demolish_selected)
 	list.add_child(demolish_button)
 	var path_button := _make_button("")
 	path_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	path_button.text = "  铺地砖   %s/格" % GameState.format_money(3)
+	path_button.text = "铺地砖   %s/格" % GameState.format_money(3)
 	path_button.tooltip_text = "客人可以在上面行走。按住左键可以连着铺。"
 	path_button.pressed.connect(_on_ground_selected.bind(World.GROUND_PATH))
 	list.add_child(path_button)
 	var lawn_button := _make_button("")
 	lawn_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	lawn_button.text = "  铺可行走草坪   %s/格" % GameState.format_money(1)
+	lawn_button.text = "铺可行走草坪   %s/格" % GameState.format_money(1)
 	lawn_button.tooltip_text = "整理过的草坪，客人可以行走。"
 	lawn_button.pressed.connect(_on_ground_selected.bind(World.GROUND_LAWN))
 	list.add_child(lawn_button)
 	var grass_button := _make_button("")
 	grass_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	grass_button.text = "  恢复普通草坪   %s/格" % GameState.format_money(1)
+	grass_button.text = "恢复普通草坪   %s/格" % GameState.format_money(1)
 	grass_button.tooltip_text = "地图默认的草坪，客人不会走上去。可以用来撤掉铺错的地面。"
 	grass_button.pressed.connect(_on_ground_selected.bind(World.GROUND_WILD))
 	list.add_child(grass_button)
-	list.add_child(_make_label("客人只走地砖和可行走草坪，记得把店门口连到主路。", 19, Color(0.85, 0.85, 0.9)))
+	var walk_hint := _make_label("客人只走地砖和可行走草坪，记得把店门口连到主路。", 19, Color(0.85, 0.85, 0.9))
+	walk_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list.add_child(walk_hint)
 
 	# 建筑清单单独放一个容器：知名度涨上去以后要能重新生成，
 	# 否则「（知名度 XXX 解锁）」的置灰按钮会一直灰着，直到重开游戏。
@@ -262,10 +335,10 @@ func _refresh_build_list() -> void:
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			var unlock_fame := int(data.get("unlock_fame", 0))
 			if GameState.fame < float(unlock_fame):
-				b.text = "  %s   （知名度 %d 解锁）" % [str(data.get("name", id)), unlock_fame]
+				b.text = "%s   （知名度 %d 解锁）" % [str(data.get("name", id)), unlock_fame]
 				b.disabled = true
 			else:
-				b.text = "  %s   %s" % [str(data.get("name", id)), GameState.format_money(int(data.get("cost", 0)))]
+				b.text = "%s   %s" % [str(data.get("name", id)), GameState.format_money(int(data.get("cost", 0)))]
 			b.tooltip_text = "%s\n造价 %s ｜ 容量 %d ｜ 平均消费 %d" % [
 				str(data.get("description", "")),
 				GameState.format_money(int(data.get("cost", 0))),
@@ -277,7 +350,8 @@ func _refresh_build_list() -> void:
 
 
 func _build_hint(root: Control) -> void:
-	var hint := _make_label("点击建筑查看详情 ｜ B 建造（含铺地 / 拆除）｜ V 物资 ｜ 属性 ｜ R 屋顶 ｜ 空格暂停 ｜ 1/2/3/4 倍速 ｜ 按住中键移动视角 ｜ WASD ｜ 滚轮缩放 ｜ ESC 菜单", 20, Color(0.85, 0.85, 0.92, 0.85))
+	# 提示条：键盘都是快捷方式，鼠标都能做（右键退出建造、顶栏「菜单」存盘）
+	var hint := _make_label("点建筑查看详情 ｜ 建造：顶栏「建造」→ 点地面，右键退出 ｜ 视角：中键拖 / 「移动视口」后左键拖 / 滚轮缩放 ｜ 顶栏：物资 属性 屋顶 倍速 菜单 ｜ 快捷键 B V R H 空格 1/2/3/4 ESC", 20, Color(0.85, 0.85, 0.92, 0.85))
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	hint.offset_top = -46
 	hint.offset_bottom = -12
@@ -364,13 +438,13 @@ func _hide_pause_menu() -> void:
 	# 主菜单已经在标题界面处理，这里不再弹开始菜单
 	pause_menu.visible = false
 	GameClock.paused = false
-	pause_button.text = "暂停"
+	pause_button.text = "暂停时间"
 
 
 func _toggle_pause_menu() -> void:
 	pause_menu.visible = not pause_menu.visible
 	GameClock.paused = pause_menu.visible
-	pause_button.text = "继续" if pause_menu.visible else "暂停"
+	pause_button.text = "继续时间" if pause_menu.visible else "暂停时间"
 
 
 func _manual_save() -> void:
@@ -522,7 +596,7 @@ func _handle_world_click(screen_pos: Vector2) -> void:
 
 func _toggle_pause() -> void:
 	GameClock.toggle_pause()
-	pause_button.text = "继续" if GameClock.paused else "暂停"
+	pause_button.text = "继续时间" if GameClock.paused else "暂停时间"
 
 
 func _set_speed(speed: int) -> void:
@@ -652,7 +726,8 @@ func _on_day_finished() -> void:
 	var fame_report := GameState.apply_daily_fame()
 	SaveManager.save_game()
 	GameClock.paused = true
-	pause_button.text = "继续"
+	pause_button.text = "继续时间"
+	_settlement_can_choose = true        # 新的一次结算：重新给出三个选择
 	_show_settlement(report)
 	if not fame_report.is_empty():
 		show_notice("知名度 %+.0f（游客 %d 人 ｜ 明星 +%d ｜ 日常 -1）" % [
@@ -661,7 +736,9 @@ func _on_day_finished() -> void:
 
 
 func _show_settlement(report: Dictionary) -> void:
+	# 先藏起来再重建，避免 queue_free 还没生效时新旧按钮同时显示
 	for child in settlement_box.get_children():
+		settlement_box.remove_child(child)
 		child.queue_free()
 	settlement.visible = true
 	settlement_box.add_child(_make_label("第 %d 天 · 结算" % int(report.get("day", 1)), 40, Color(0.98, 0.88, 0.55)))
@@ -672,6 +749,18 @@ func _show_settlement(report: Dictionary) -> void:
 	settlement_box.add_child(_make_label("当前口碑：%.1f" % float(report.get("reputation", 0.0)), 26, Color(0.90, 0.82, 1.0)))
 	settlement_box.add_child(_make_label("仓库物资：%d 种，估值 %s" % [GameState.inventory.size(), GameState.format_money(GameState.inventory_value())], 22, Color(0.85, 0.92, 1.0)))
 	settlement_box.add_child(_make_label("自动存档已完成（探索系统开放后会另存一个探索前的存档点）", 20, Color(0.75, 0.78, 0.85)))
+
+	if not _settlement_can_choose:
+		# 今天已经做过选择（休息过 / 探索回来了）：只给一个「开始第二天」
+		settlement_box.add_child(_make_label("今天已经安排过了。", 22, Color(0.85, 0.88, 0.95)))
+		var actions_done := HBoxContainer.new()
+		actions_done.add_theme_constant_override("separation", 16)
+		settlement_box.add_child(actions_done)
+		var next_day := _make_button("开始第二天")
+		next_day.custom_minimum_size = Vector2(300, 64)
+		next_day.pressed.connect(_start_next_day)
+		actions_done.add_child(next_day)
+		return
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 16)
@@ -741,7 +830,7 @@ func _manage_night() -> void:
 	_cycle_settled = false
 	GameClock.resume_night()
 	GameClock.paused = false
-	pause_button.text = "暂停"
+	pause_button.text = "暂停时间"
 	show_notice("夜晚继续经营：只有酒吧这类夜间店铺接客；0 点到 6 点的收益会并到下一次 24 点结算")
 
 
@@ -754,9 +843,11 @@ func _on_morning_started() -> void:
 
 
 func on_exploration_closed() -> void:
-	# 从探索界面返回时，如果还停在当天结算，就把结算面板重新显示出来
+	# 从探索界面返回时，如果还停在当天结算，就把结算面板重新显示出来。
+	# 这时候今天已经安排过了，只给「开始第二天」，不再重复摆出三个选择。
 	if GameClock.phase == GameClock.Phase.SETTLEMENT and not GameState.last_report().is_empty():
-		settlement.visible = true
+		_settlement_can_choose = false
+		_show_settlement(GameState.last_report())
 
 
 func begin_next_day() -> void:
@@ -773,6 +864,6 @@ func _start_next_day() -> void:
 	GameState.start_next_day()
 	GameClock.start_new_day()
 	GameClock.paused = false
-	pause_button.text = "暂停"
+	pause_button.text = "暂停时间"
 	_refresh_all()
 	show_notice("第 %d 天开始了" % GameState.day)

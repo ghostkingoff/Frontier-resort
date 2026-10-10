@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cpmimfljp0x6s"
-path="res://.godot/imported/3-4视角.png-7166c927f65daba1a225daaf03519dfa.ctex"
+uid="uid://dnfqw7kmou7y2"
+path="res://.godot/imported/light_radial.png-69c96628c92a1199ee50eac162b57b53.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://docs/截图/3-4视角.png"
-dest_files=["res://.godot/imported/3-4视角.png-7166c927f65daba1a225daaf03519dfa.ctex"]
+source_file="res://art/generated/light_radial.png"
+dest_files=["res://.godot/imported/light_radial.png-69c96628c92a1199ee50eac162b57b53.ctex"]
 
 [params]
 

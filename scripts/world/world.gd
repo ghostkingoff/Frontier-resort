@@ -7,6 +7,8 @@ signal roof_mode_changed(show_roof: bool)
 signal building_placed(building)
 
 const CELL := 32
+const LIGHT_RECT := "res://art/generated/light_rect.png"
+const RECT_FLAT_RATIO := 0.667   # 矩形光纹理里「平顶区」占全宽的比例（生成工具保证 1:0.5）
 const TILESET_PATH := "res://art/generated/ground_tileset.tres"
 
 # 地面类型：荒地（不可通行）、草坪（可通行）、地砖（可通行）
@@ -37,6 +39,7 @@ var ground_types: Dictionary = {}      # cell -> GROUND_LAWN / GROUND_PATH（不
 var wall_cells: Dictionary = {}        # 度假村围墙占的格子
 var _astar: AStarGrid2D
 var _astar_dirty := true
+var _astar_dirty_cells: Dictionary = {}  # 只登记「改动过的格子」，寻路时增量更新（见 _ensure_astar）
 var _reachable_cache: Dictionary = {}   # Building -> bool，避免每次生成客人都重算路径
 var _path_cells_cache: Array = []       # 所有可通行的地砖格子，用于闲逛选点
 var litter_cells: Dictionary = {}       # 垃圾：cell -> Sprite2D
@@ -52,6 +55,59 @@ func _ready() -> void:
 	_build_walls()
 	_scatter_decorations()
 	_spawn_starter_buildings()
+	set_process(true)      # 每帧推进店铺灯光
+
+
+func _process(_delta: float) -> void:
+	# 店铺灯光：20:00~20:45 之间各栋陆续亮起；**熄灯时间跟着各栋的 close_hour()**
+	# （常规店 24:00，酒吧 04:00）。集中在这里统一驱动，建筑自己不用每帧算时间。
+	if buildings.is_empty():
+		return
+	var hour := GameClock.hour_of_day()      # 0~24，与 buildings.json 的 open/close_hour 同口径
+	for b in buildings:
+		if b != null and is_instance_valid(b) and b.has_method("update_lights"):
+			b.update_lights(hour)
+
+
+func make_rect_light(inner_size: Vector2, spread: float, color: Color) -> PointLight2D:
+	# 通用矩形光源工厂：后续加路灯 / 移动光源也走这里，保证形状与渐变口径一致。
+	#   inner_size = 要「均匀照亮」的中心矩形（像素），例如建筑占地
+	#   spread     = 四周渐变带的最大厚度（像素），例如 1 格 = 32
+	#
+	# 纹理关系：平顶区 : 渐变带 = 1 : 0.5，即 平顶区宽 = 纹理全宽 × (2/3)。
+	# 公式推导：设渐变带厚 band、平顶区宽 inner，则 全宽 = inner + 2*band，
+	# 且纹理里 平顶区/(平顶区+2*band) = (2/3)。
+	# 于是 全宽 = inner * 3/2 * ... 直接把「平顶区」对到 inner 即可：
+	#   全宽 = inner / (2/3) = inner * 1.5
+	# 对 4×4 建筑（inner=128）：全宽 = 192，外圈每边 = (192-128)/2 = 32 = 正好 1 格。
+	if not ResourceLoader.exists(LIGHT_RECT):
+		return null
+	var tex: Texture2D = load(LIGHT_RECT)
+	if tex == null:
+		return null
+	var light := PointLight2D.new()
+	light.texture = tex
+	light.color = color
+	light.energy = 0.0
+	light.blend_mode = Light2D.BLEND_MODE_ADD
+	# 让灯「先画」：z_index 压到接近下限，后面的地面/建筑画在它上面，
+	# 于是开屋顶时屋顶能盖住灯光（屋顶不被照亮）。
+	# 注意 Godot 的 z_index 合法范围是 [-4096, 4096]，写 -100000 会刷
+	# `Tried to set Z index to an invalid value` 错误（设值失败，顺序也不受控）。
+	light.z_index = -4000
+	# range_z 已放开，所以压低 z_index 不影响它能照到哪些对象。
+	# 关键：PointLight2D 默认的 range_z_min/range_z_max 只覆盖很小的 z 范围，
+	# 而建筑的 z_index = int(position.y)（可达 2000+），所以灯会被 z 范围过滤掉、
+	# 完全不影响任何东西（表现为「代码全对、参数也对，但渲染毫无变化」）。
+	# 这里放开到整幅画布，让灯能照到任意 z 的对象。
+	light.range_z_min = -8192
+	light.range_z_max = 8192
+	var tex_w := float(tex.get_width())
+	# 平顶区对到 inner_size ⇒ 全宽 = inner / RECT_FLAT_RATIO
+	var full := Vector2(inner_size.x / RECT_FLAT_RATIO, inner_size.y / RECT_FLAT_RATIO)
+	light.texture_scale = full.x / tex_w
+	light.scale = Vector2(1.0, full.y / full.x)
+	return light
 
 
 func _create_layers() -> void:
@@ -182,7 +238,7 @@ func set_ground(cell: Vector2i, kind: String) -> void:
 	else:
 		ground_types[cell] = kind
 	_paint_ground_tile(cell)
-	_astar_dirty = true
+	_mark_astar_cell(cell)
 
 
 func ground_type(cell: Vector2i) -> String:
@@ -218,16 +274,51 @@ func _ensure_astar() -> void:
 		_astar.cell_size = Vector2(CELL, CELL)
 		_astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
 		_astar.update()
-		_astar_dirty = true
+		# 新建的 AStarGrid2D 里所有点都是「可通行」的，必须立刻按地图填一遍。
+		# 不能只置 _astar_dirty 就走增量分支：那时候脏格表是空的，会直接返回，
+		# 网格就一直是全空 = 客人能穿过建筑（实测 10240 格里 9488 格状态是错的）。
+		for y in range(grid_size.y):
+			for x in range(grid_size.x):
+				var c := Vector2i(x, y)
+				_astar.set_point_solid(c, not is_walkable(c))
+		_astar_dirty = false
+		_astar_dirty_cells.clear()
+		return
+	# 增量优先：改了哪几格就只更新哪几格。
+	# 全量重建要遍历 10240 格，实测 5.48 毫秒；铺一格地只影响 1 格，
+	# 增量更新后连续铺路从 5.45 毫秒/格降到接近零。
+	if not _astar_dirty_cells.is_empty():
+		for c in _astar_dirty_cells.keys():
+			var cc: Vector2i = c
+			if _astar.region.has_point(cc):
+				_astar.set_point_solid(cc, not is_walkable(cc))
+		_astar_dirty_cells.clear()
+		_astar_dirty = false
+		_reachable_cache.clear()
+		_path_cells_cache.clear()
+		return
 	if not _astar_dirty:
 		return
+	# 兜底：整表重建（读档、或调用方直接置脏时）
 	for y in range(grid_size.y):
 		for x in range(grid_size.x):
-			var c := Vector2i(x, y)
-			_astar.set_point_solid(c, not is_walkable(c))
+			var c2 := Vector2i(x, y)
+			_astar.set_point_solid(c2, not is_walkable(c2))
 	_astar_dirty = false
 	_reachable_cache.clear()
 	_path_cells_cache.clear()
+
+
+func _mark_astar_cell(cell: Vector2i) -> void:
+	_astar_dirty_cells[cell] = true
+	_astar_dirty = true
+
+
+func _mark_astar_cells(cells: Array) -> void:
+	for c in cells:
+		var cc: Vector2i = c
+		_astar_dirty_cells[cc] = true
+	_astar_dirty = true
 
 
 func find_path_cells(from: Vector2i, to: Vector2i) -> Array:
@@ -263,14 +354,59 @@ func entrance_cell(for_cell: Vector2i) -> Vector2i:
 
 
 func building_reachable(b: Building) -> bool:
+	# 只要外圈任意一格能走通，就算这栋楼可达（门口优先，但不强求）
 	if b == null or not is_instance_valid(b):
 		return false
 	if _reachable_cache.has(b):
 		return bool(_reachable_cache[b])
-	var door: Vector2i = b.door_cell()
-	var ok := is_walkable(door) and not find_path_cells(entrance_cell(door), door).is_empty()
+	var ok: bool = best_entry_cell(b, b.global_position).x != -9999
 	_reachable_cache[b] = ok
 	return ok
+
+
+func best_entry_cell(b: Building, from: Vector2) -> Vector2i:
+	# 选一个「能走到的」出入口：优先贴图上的门口，不通再从外圈里挑离 from 最近的。
+	# 返回 (-9999, -9999) 表示这栋楼现在一个口都进不去。
+	if b == null or not is_instance_valid(b):
+		return Vector2i(-9999, -9999)
+	var door: Vector2i = b.door_cell()
+	if is_walkable(door) and not find_path_cells(entrance_cell(door), door).is_empty():
+		return door
+	# 门口不通：外圈里按离 from 的距离依次试
+	var candidates: Array = []
+	for c in b.perimeter_cells():
+		if not is_walkable(c):
+			continue
+		candidates.append(c)
+	candidates.sort_custom(func(a: Vector2i, c: Vector2i) -> bool:
+		return cell_center(a).distance_to(from) < cell_center(c).distance_to(from))
+	for c in candidates:
+		if not find_path_cells(entrance_cell(c), c).is_empty():
+			return c
+	return Vector2i(-9999, -9999)
+
+
+func nearest_entry_cell(b: Building, from: Vector2i, radius: int = 12) -> Vector2i:
+	# 从建筑里出来时用：找离 from 最近的一个可通行出入口（同样优先门口）
+	if b == null or not is_instance_valid(b):
+		return Vector2i(-9999, -9999)
+	var door: Vector2i = b.door_cell()
+	if is_walkable(door):
+		return door
+	var best := Vector2i(-9999, -9999)
+	var best_dist := INF
+	for c in b.perimeter_cells():
+		if not is_walkable(c):
+			continue
+		var d: float = cell_center(c).distance_to(cell_center(from))
+		if d < best_dist:
+			best_dist = d
+			best = c
+	if best.x != -9999:
+		return best
+	# 外圈全不可通行（很少见）：退回「最近的可通行格」，同样要检查哨兵值
+	var fallback: Vector2i = nearest_walkable(from, radius)
+	return fallback if fallback.x != -9999 else Vector2i(-9999, -9999)
 
 
 func _scatter_decorations() -> void:
@@ -530,15 +666,20 @@ func _footprint_of(data: Dictionary) -> Vector2i:
 func _mark_occupied(cell: Vector2i, footprint: Vector2i, owner: Node) -> void:
 	for y in range(cell.y, cell.y + footprint.y):
 		for x in range(cell.x, cell.x + footprint.x):
-			occupancy[Vector2i(x, y)] = owner
+			var c := Vector2i(x, y)
+			occupancy[c] = owner
+			_mark_astar_cell(c)      # 占格后这些格子不可通行
 
 
 func remove_building(b: Node2D) -> void:
-	_astar_dirty = true
 	var footprint: Vector2i = b.footprint
+	var freed: Array = []
 	for y in range(b.cell.y, b.cell.y + footprint.y):
 		for x in range(b.cell.x, b.cell.x + footprint.x):
-			occupancy.erase(Vector2i(x, y))
+			var c := Vector2i(x, y)
+			occupancy.erase(c)
+			freed.append(c)          # 拆掉后这些格子恢复成「看地面类型」
+	_mark_astar_cells(freed)
 	buildings.erase(b)
 	b.queue_free()
 

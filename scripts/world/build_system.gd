@@ -162,6 +162,12 @@ func _cost() -> int:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# 右键：退出建造 / 铺地 / 拆除模式（和 ESC 等价，方便纯鼠标操作）
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		if demolish_mode or is_painting() or selected_id != "":
+			cancel()
+			get_viewport().set_input_as_handled()
+		return
 	if demolish_mode:
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 			cancel()

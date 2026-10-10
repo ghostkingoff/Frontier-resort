@@ -33,7 +33,140 @@ func _ready() -> void:
 	_run_build_checks()
 
 
+func _run_build_mode_checks() -> void:
+	# 建造模式的进入 / 退出：右键必须和 ESC 等价（纯鼠标操作），且三种模式都要能退出
+	var bs := get_node_or_null("../BuildSystem")
+	var cam := get_node_or_null("../Camera")
+	if bs == null:
+		checks.append("建造模式：找不到 BuildSystem，跳过")
+		return
+	var results: Array = []
+	for mode in ["demolish", "paint", "place"]:
+		match mode:
+			"demolish": bs.select_demolish()
+			"paint": bs.select_ground(World.GROUND_PATH)
+			_: bs.select("shop_general")
+		var entered: bool = bs.is_demolishing() or bs.is_painting() or str(bs.selected_id) != ""
+		var right_click := InputEventMouseButton.new()
+		right_click.button_index = MOUSE_BUTTON_RIGHT
+		right_click.pressed = true
+		bs._unhandled_input(right_click)
+		var exited: bool = not (bs.is_demolishing() or bs.is_painting() or str(bs.selected_id) != "")
+		results.append("%s：进入 %s → 右键退出 %s" % [mode, str(entered), str(exited)])
+	checks.append("右键退出建造模式：%s" % " ｜ ".join(results))
+
+	# 移动视口模式：按钮切换后左键按住应能平移相机，且起步不是瞬间拉满
+	if cam == null or not cam.has_method("toggle_pan_mode"):
+		checks.append("移动视口模式：找不到相机或接口，跳过")
+		return
+	var cam_ref: Camera2D = cam
+	# headless 下 warp_mouse 无效（鼠标固定 0,0），只能测「恒定推力」的情形。
+	# 为避免相机撞到边界把位移吃掉，测试期间把边界临时放大，测完还原。
+	var lim_backup := [cam_ref.limit_left, cam_ref.limit_top, cam_ref.limit_right, cam_ref.limit_bottom]
+	cam_ref.limit_left = -1000000
+	cam_ref.limit_top = -1000000
+	cam_ref.limit_right = 1000000
+	cam_ref.limit_bottom = 1000000
+	var on: bool = cam_ref.toggle_pan_mode()
+	get_viewport().warp_mouse(Vector2(
+		get_viewport().get_visible_rect().size.x * 0.95,
+		get_viewport().get_visible_rect().size.y * 0.25))
+	cam_ref.set("_drag_held", true)
+	var pos_before: Vector2 = cam_ref.position
+	cam_ref._process(0.05)
+	var step_early: float = pos_before.distance_to(cam_ref.position)
+	var pos_mid: Vector2 = cam_ref.position
+	for _i in range(12):
+		cam_ref._process(0.05)
+	var step_late: float = pos_mid.distance_to(cam_ref.position)
+	# 松手：应该继续滑一段（惯性），然后停下来。
+	# 注意要累计「从松手到完全停住」的总滑行距离：只测松手后 0.05 秒的位移会被
+	# 起步冲量主导，反映不出衰减参数的变化（实测那样测只差 12%，不是真正的滑行量）。
+	cam_ref.set("_drag_held", false)
+	var pos_release: Vector2 = cam_ref.position
+	var glide_total := 0.0
+	for _i in range(200):
+		var before_step: Vector2 = cam_ref.position
+		cam_ref._process(0.05)
+		glide_total += before_step.distance_to(cam_ref.position)
+		if (cam_ref.get("_glide") as Vector2) == Vector2.ZERO:
+			break
+	var step_glide: float = glide_total
+	var rest_pos: Vector2 = cam_ref.position
+	var glide_end: Vector2 = cam_ref.get("_glide")
+	cam_ref._process(0.2)
+	var drift: float = rest_pos.distance_to(cam_ref.position)
+	var pan_enabled: bool = bool(cam_ref.get("pan_mode"))
+	var off: bool = cam_ref.toggle_pan_mode()
+	checks.append("移动视口模式：开启 %s ｜ 起步 0.05 秒走了 %.0f 像素（应远小于中段）｜ 稳定后 0.05 秒 %.0f 像素 ｜ 松手后总滑行 %.1f 像素（衰减率翻倍应约减半）｜ 最终停住（残余 %.1f，再推 0.2 秒漂移 %.1f）｜ 再点关闭 %s" % [
+		str(pan_enabled), step_early, step_late, step_glide,
+		glide_end.length(), drift, str(not off)])
+
+	# 缩放范围：两端都应是原来的 0.7 倍（1.0→0.7、4.0→2.8）
+	for _i in range(40):
+		cam_ref._zoom_by(2.0)
+	var zmax: float = float(cam_ref.get("_zoom_target"))
+	for _i in range(40):
+		cam_ref._zoom_by(0.5)
+	var zmin: float = float(cam_ref.get("_zoom_target"))
+	checks.append("缩放倍率：拉到最大 %.2f（期望 2.80）｜ 拉到最小 %.2f（期望 0.70）" % [zmax, zmin])
+	cam_ref.set("_zoom_target", 2.0)
+	cam_ref.set("zoom", Vector2(2.0, 2.0))
+
+	# 中键：速度常量为原本的 1700 → 2550（+50%），松手后同样有惯性滑行
+	checks.append("中键速度常量：%.0f（原 1700，+50%% = 2550）" % float(cam_ref.get("middle_drag_max_speed")))
+	cam_ref.set("_glide", Vector2.ZERO)
+	cam_ref.set("_pan_ramp", 0.0)
+	cam_ref.set("_pan_held", true)
+	for _i in range(20):        # 先跑到稳定速度
+		cam_ref._process(0.05)
+	var m_pos: Vector2 = cam_ref.position
+	cam_ref._process(0.05)
+	var mid_step: float = m_pos.distance_to(cam_ref.position)
+	var mid_speed: float = (cam_ref.get("_glide") as Vector2).length()
+	cam_ref.set("_pan_held", false)
+	var mid_glide := 0.0
+	for _i in range(200):
+		var before_mid: Vector2 = cam_ref.position
+		cam_ref._process(0.05)
+		mid_glide += before_mid.distance_to(cam_ref.position)
+		if (cam_ref.get("_glide") as Vector2) == Vector2.ZERO:
+			break
+	checks.append("中键移动：稳定速度 %.0f 像素/秒 ｜ 0.05 秒位移 %.0f 像素 ｜ 松手后总滑行 %.1f 像素 ｜ 最终残余 %.1f" % [
+		mid_speed, mid_step, mid_glide, (cam_ref.get("_glide") as Vector2).length()])
+	cam_ref.limit_left = int(lim_backup[0])
+	cam_ref.limit_top = int(lim_backup[1])
+	cam_ref.limit_right = int(lim_backup[2])
+	cam_ref.limit_bottom = int(lim_backup[3])
+
+
+func _run_astar_sync_check() -> void:
+	# 寻路网格是「增量更新」的（改了哪几格只更新哪几格，见 World._ensure_astar）。
+	# 这里逐格对比「增量结果」与「全量重建结果」——只要有人漏标记一格，
+	# 网格就会过期、客人会穿墙，而普通玩法测试很难发现。
+	world._ensure_astar()
+	var a: Array = _snapshot_solid()
+	world._astar_dirty_cells.clear()
+	world._astar_dirty = true
+	world._ensure_astar()
+	var b: Array = _snapshot_solid()
+	var diff := 0
+	for i in range(a.size()):
+		if a[i] != b[i]:
+			diff += 1
+	checks.append("寻路网格同步：%d 格中增量与全量重建不一致 %d 格（必须为 0）" % [a.size(), diff])
+
+
+func _snapshot_solid() -> Array:
+	var out: Array = []
+	for y in range(world.grid_size.y):
+		for x in range(world.grid_size.x):
+			out.append(world._astar.is_point_solid(Vector2i(x, y)))
+	return out
+
+
 func _run_build_checks() -> void:
+	_run_build_mode_checks()
 	# 1. 建造
 	var money_before := GameState.money
 	var cost := int(DataRegistry.get_building("shop_general").get("cost", 0))
@@ -153,7 +286,11 @@ func _finish() -> void:
 	_run_day_night_checks()
 	_run_ground_checks()
 	_run_exploration_checks()
-	_run_content_checks()
+	# 内容回归（建筑表 / 解锁 / 服务设施 / 保洁工人 / 垃圾）已拆到单独文件
+	var content: Node = load("res://tools/smoke_content.gd").new()
+	add_child(content)
+	content.setup(self)
+	content.run()
 
 	for line in checks:
 		print("[smoke] %s" % line)
@@ -319,6 +456,7 @@ func _run_ground_checks() -> void:
 	world.set_ground(wild, World.GROUND_LAWN)
 	checks.append("铺草坪后：可通行 %s ｜ 类型 %s" % [
 		str(world.is_walkable(wild)), world.ground_kind_name(wild)])
+	_run_astar_sync_check()
 
 	# 3. 新建建筑不再自动铺路：先断开，再手动铺路接通
 	var shop: Building = world.place_building("shop_general", Vector2i(50, 24))
@@ -337,6 +475,29 @@ func _run_ground_checks() -> void:
 		var path: Array = world.find_path_cells(world.entrance_cell(door), door)
 		checks.append("手动铺路 %d 格后：客人能到 %s ｜ 路径 %d 步" % [
 			paved, str(world.building_reachable(shop)), path.size()])
+
+		# 3.4 出入口不再限定门口：把门口那一格堵死，客人应该从外圈其它面进
+		var ring: Array = shop.perimeter_cells()
+		var door_was: Vector2i = shop.door_cell()
+		# 先把左侧那一面也铺一条竖路通到主路（模拟玩家在侧面也开了条路）
+		var side_x: int = door_was.x - 2
+		var side_paved := 0
+		for y in range(shop.cell.y, world.road_row + 1):
+			var c := Vector2i(side_x, y)
+			if world.occupancy.has(c):
+				continue
+			if world.ground_type(c) != World.GROUND_PATH:
+				world.set_ground(c, World.GROUND_PATH)
+				side_paved += 1
+		world.set_ground(door_was, World.GROUND_WILD)          # 门口那格改成不可通行
+		var alt: Vector2i = world.best_entry_cell(shop, world.cell_center(door_was))
+		checks.append("出入口不再限定门口：外圈 %d 格 ｜ 另铺侧面路 %d 格 ｜ 堵掉门口 %s 后改从 %s 进（%s）" % [
+			ring.size(), side_paved, str(door_was), str(alt),
+			"能进" if alt.x != -9999 and alt != door_was else "没找到替代入口"])
+		# 门口可通行时应优先选门口
+		world.set_ground(door_was, World.GROUND_PATH)
+		var preferred: Vector2i = world.best_entry_cell(shop, world.cell_center(door_was))
+		checks.append("出入口优先走门口：门口可通行时选的入口就是门口 = %s" % str(preferred == door_was))
 
 		# 3.5 从建筑里被请出来时也要走小路
 		var illness_backup := float(DataRegistry.illness_config.get("base_chance", 0.035))
@@ -775,202 +936,9 @@ func _run_demolish_checks() -> void:
 	checks.append("最深处门槛：属性未满时 all_maxed=%s" % str(PlayerStats.all_maxed()))
 
 
-# ---------- 内容扩充回归（10-07：23 栋建筑 / 知名度解锁 / 卫生间 / 保洁 / 共享单车 / 垃圾） ----------
-
-func _free_spot(size: Vector2i) -> Vector2i:
-	# 找一块空着的可建造地，避免和初始地图上的建筑撞位
-	for y in range(4, 76):
-		for x in range(4, 124):
-			if world.can_place(Vector2i(x, y), size):
-				return Vector2i(x, y)
-	return Vector2i(-1, -1)
 
 
-func _run_content_checks() -> void:
-	# 1. 两份建筑配置不能有同名 id（有的话扩充表会静默覆盖主表，改了数据却没反应）
-	var extra_ids: Dictionary = {}
-	for item in _read_data_file("res://data/buildings_extra.json").get("buildings", []):
-		extra_ids[str(item.get("id", ""))] = true
-	var clashes: Array = []
-	for item in _read_data_file("res://data/buildings.json").get("buildings", []):
-		var id := str(item.get("id", ""))
-		if extra_ids.has(id):
-			clashes.append(id)
-	checks.append("建筑配置冲突：同名 id %d 个%s" % [
-		clashes.size(), "" if clashes.is_empty() else "（%s，实际生效的是扩充表）" % ", ".join(clashes)])
-
-	# 2. 建造菜单里实际会显示多少栋（hidden 的不显示）
-	var visible := 0
-	var hidden := 0
-	for id in DataRegistry.building_order:
-		if bool(DataRegistry.get_building(id).get("hidden", false)):
-			hidden += 1
-		else:
-			visible += 1
-	checks.append("建筑表：%d 种（建造菜单显示 %d ｜ 已淘汰 hidden %d）" % [
-		DataRegistry.building_order.size(), visible, hidden])
-
-	# 3. 知名度解锁门槛：构造玩家知名度 500，核对门槛判定
-	var fame_before: float = GameState.fame
-	GameState.fame = 500.0
-	var want := 0
-	var mismatched: Array = []
-	for id in DataRegistry.building_order:
-		var data: Dictionary = DataRegistry.get_building(id)
-		var need := int(data.get("unlock_fame", 0))
-		if need <= 0 or need > 600:
-			continue
-		want += 1
-		if (GameState.fame >= float(need)) != (need <= 500):
-			mismatched.append("%s(%d)" % [str(data.get("name", id)), need])
-	checks.append("知名度解锁：门槛在 (0, 600] 的建筑 %d 栋 ｜ 知名度 500 时判定不一致 %d 个%s" % [
-		want, mismatched.size(), "" if mismatched.is_empty() else "（%s）" % ", ".join(mismatched)])
-	GameState.fame = fame_before
-
-	# 4. 占地格数（10-07 已从代码里的临时覆盖搬进 data/*.json）
-	var lodge_cells: Array = []
-	for id in ["lodge_ordinary", "lodge_nature", "lodge_modern"]:
-		lodge_cells.append("%s %s" % [
-			str(DataRegistry.get_building(id).get("name", id)),
-			_str_footprint(DataRegistry.get_building(id))])
-	checks.append("度假屋规格：%s" % " ｜ ".join(lodge_cells))
-	var too_big: Array = []
-	for id in DataRegistry.building_order:
-		var f: Array = DataRegistry.get_building(id).get("footprint", [4, 4])
-		if int(f[0]) <= 0 or int(f[1]) <= 0 or int(f[0]) > 8 or int(f[1]) > 8:
-			too_big.append("%s%s" % [id, f])
-	checks.append("占地格数：全部在 1~8 格内 = %s%s" % [
-		str(too_big.is_empty()), "" if too_big.is_empty() else "（越界：%s）" % ", ".join(too_big)])
-
-	# 5. 三个新机制：公共卫生间 / 共享单车 / 保洁间
-	#    注意：客人只会去「门口连得上主路」的建筑，所以测试里必须像玩家一样把路铺到门口，
-	#    否则 random_target_building() 根本不会把它们放进候选池。
-	var toilet: Building = _place_and_connect("amenity_toilet")
-	var bike: Building = _place_and_connect("amenity_bike")
-	# 保洁间直接盖在已经有地砖的地方，这样它门口就是客人会走的路（垃圾也只落在这里）
-	var cleaner: Building = _place_on_pavement("amenity_cleaning")
-	checks.append("服务设施：公共卫生间 %s ｜ 共享单车 %s ｜ 保洁间 %s ｜ 三家都接上主路 %s" % [
-		str(toilet != null), str(bike != null), str(cleaner != null),
-		str(toilet != null and world.building_reachable(toilet)
-			and bike != null and world.building_reachable(bike)
-			and cleaner != null and world.building_reachable(cleaner))])
-	if toilet and bike and cleaner and world.reception():
-		checks.append("自助设施：卫生间/单车 员工编制 %d/%d ｜ 缺员工心情惩罚 %d/%d（应为 0）｜ 保洁间编制 %d" % [
-			toilet.staff_slots(), bike.staff_slots(),
-			int(toilet.staff_mood_bonus()), int(bike.staff_mood_bonus()), cleaner.staff_slots()])
-		# 客人真的会挑中这三个设施（random_target_building 的池子里必须包含它们）
-		var picked: Dictionary = {}
-		for _i in range(240):
-			var target_b: Building = world.random_target_building([], 12.0)
-			if target_b:
-				picked[target_b.id] = true
-		checks.append("客人可选：卫生间进池 %s ｜ 共享单车进池 %s ｜ 保洁间进池 %s" % [
-			str(picked.has("amenity_toilet")), str(picked.has("amenity_bike")),
-			str(picked.has("amenity_cleaning"))])
-
-		# 卫生间：不花钱，只涨心情（服务效果在客人「离开设施」时结算）
-		var guest := Customer.new()
-		world.customers_root.add_child(guest)
-		guest.setup(DataRegistry.customer_types[0], world, world.random_entrance())
-		var money_0 := GameState.money
-		var budget_0: int = guest.budget_left
-		var mood_0: float = guest.mood
-		guest.target = toilet
-		guest.purpose = Customer.Purpose.CONSUME
-		guest._enter_facility()
-		guest._finish_consume()
-		checks.append("公共卫生间：心情 %.1f → %.1f（+%.1f）｜ 客人预算 %d → %d ｜ 收入 %d（应为 0）" % [
-			mood_0, guest.mood, guest.mood - mood_0, budget_0, guest.budget_left,
-			GameState.money - money_0])
-
-		# 共享单车：租一次，速度翻倍
-		var speed_0: float = guest.speed
-		guest.target = bike
-		guest.purpose = Customer.Purpose.CONSUME
-		guest._enter_facility()
-		guest._finish_consume()
-		checks.append("共享单车：速度 %.0f → %.0f（×%.1f）｜ 已租 %s" % [
-			speed_0, guest.speed, guest.speed / maxf(speed_0, 1.0), str(guest.has_bike)])
-		guest.queue_free()
-	else:
-		checks.append("服务设施：建造或接路失败，跳过机制检查")
-
-	# 6. 保洁工人：雇了人才会出现，会在外面走动，只清负责范围（半径 40 格）内的垃圾
-	var sweep_setup: Dictionary = _setup_cleaning_scene(cleaner)
-	cleaner = sweep_setup.get("cleaner")
-	if cleaner:
-		_run_janitor_checks(cleaner)
-	else:
-		checks.append("保洁工人：没找到能贴着地砖的保洁间位置，跳过（场地排不下）")
-
-	# 7. 垃圾会持续掉心情：同一个客人、同一位置，做「干净 vs 脏」两次对照
-	var mood_at := _nearest_walkable(world.cell_center(Vector2i(world.ENTRANCE_X0, world.road_row)))
-	var guest2 := Customer.new()
-	world.customers_root.add_child(guest2)
-	if world.reception():
-		guest2.setup(DataRegistry.customer_types[0], world, world.random_entrance())
-		guest2.position = world.cell_center(mood_at)
-		# 先在客人脚下种几个垃圾，否则「脏」这一组根本没东西可脏
-		var seeded := 0
-		for dx in range(-1, 2):
-			for dy in range(-1, 2):
-				var c: Vector2i = mood_at + Vector2i(dx, dy)
-				if world.is_walkable(c) and not world.litter_cells.has(c):
-					world.spawn_litter(c)
-					seeded += 1
-		var dirty_at: int = world.litter_near(guest2.global_position, 6.0 * 32.0)
-		guest2.mood = 80.0
-		guest2._tick_mood(60.0)
-		var decay_dirty := 80.0 - guest2.mood
-		# 把这一带的垃圾清空，再测一次「干净」的衰减做对照
-		var cleaned := 0
-		for cell in world.litter_cells.keys():
-			if guest2.global_position.distance_to(world.cell_center(cell)) <= 6.0 * 32.0:
-				var s: Node = world.litter_cells[cell]
-				if is_instance_valid(s):
-					s.queue_free()
-				world.litter_cells.erase(cell)
-				cleaned += 1
-		guest2.mood = 80.0
-		guest2._tick_mood(60.0)
-		var decay_clean := 80.0 - guest2.mood
-		checks.append("脏乱掉心情：站在 %s，种下 %d 个垃圾（6 格内 %d 个，清掉 %d 个）｜ 1 分钟心情 -%.2f（脏）vs -%.2f（干净）" % [
-			str(mood_at), seeded, dirty_at, cleaned, decay_dirty, decay_clean])
-	guest2.queue_free()
-
-
-# 找一块空地建起来，并像玩家一样把门口铺路接到主路（接不上就拆掉还原）
-# 优先挑靠近主路的位置：铺路格数少，也贴近玩家真实的摆法（否则会挑到地图最上沿，
-# 要铺六十多格才能接上主路，保洁间测垃圾时附近根本没有地砖）。
-# 完全测试模式下这类建筑开局就已经摆好了，直接借用现成的那栋，不再重复建造。
-func _place_and_connect(id: String) -> Building:
-	var existing := _find_building(id)
-	if existing:
-		return existing
-	var data: Dictionary = DataRegistry.get_building(id)
-	var f: Array = data.get("footprint", [3, 3])
-	var size := Vector2i(int(f[0]), int(f[1]))
-	var spots: Array = []
-	for y in range(3, 62):
-		for x in range(4, 124):
-			var cell := Vector2i(x, y)
-			if world.can_place(cell, size):
-				spots.append(cell)
-	spots.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-		return absi(a.y - world.road_row) < absi(b.y - world.road_row))
-	for cell in spots:
-		if world.place_building(id, cell) == null:
-			continue
-		var b: Building = world.buildings[world.buildings.size() - 1]
-		for py in range(b.door_cell().y, world.road_row + 1):
-			var c := Vector2i(b.door_cell().x, py)
-			if not world.occupancy.has(c) and world.ground_type(c) != World.GROUND_PATH:
-				world.set_ground(c, World.GROUND_PATH)
-		if world.building_reachable(b):
-			return b
-		world.demolish(b)      # 接不上就还原，继续找下一块
-	return null
-
+# ---------- 通用小工具（内容回归那边也用，见 tools/smoke_content.gd） ----------
 
 func _nearest_walkable(pos: Vector2) -> Vector2i:
 	var best := Vector2i(-9999, -9999)
@@ -983,32 +951,6 @@ func _nearest_walkable(pos: Vector2) -> Vector2i:
 	return best
 
 
-# 直接把建筑盖在现成的地砖上（门口天然就是客人走的路），用于测试「附近有垃圾」一类机制。
-# 优先挑「旁边还有别的可通行格」的位置——垃圾只能落在可通行格上，
-# 光秃秃一条单格路会让保洁间附近没有东西可扫。
-func _place_on_pavement(id: String) -> Building:
-	var existing := _find_building(id)
-	if existing:
-		return existing
-	var data: Dictionary = DataRegistry.get_building(id)
-	var f: Array = data.get("footprint", [2, 2])
-	var size := Vector2i(int(f[0]), int(f[1]))
-	var fallback: Building = null
-	for cell in world.walkable_path_cells():
-		if not world.can_place(cell, size):
-			continue
-		var b: Building = world.place_building(id, cell)
-		if b == null or not world.building_reachable(b):
-			continue
-		if _walkable_neighbours(cell, size) >= 3:
-			return b
-		if fallback == null:
-			fallback = b      # 先留住一个能用的，实在没有更好的就用它
-	if fallback:
-		return fallback
-	return null
-
-
 func _walkable_neighbours(cell: Vector2i, size: Vector2i) -> int:
 	var count := 0
 	for dx in range(-1, size.x + 1):
@@ -1018,122 +960,6 @@ func _walkable_neighbours(cell: Vector2i, size: Vector2i) -> int:
 			if world.is_walkable(cell + Vector2i(dx, dy)):
 				count += 1
 	return count
-
-
-# 摆一个「保洁间紧贴地砖」的场景，返回 {"cleaner": Building, "cells": Array}。
-# cells 是确实落在保洁间 40 像素清扫半径内的可通行格。原位置放不下就换一个，
-# 换来换去都不行就返回空，让调用方跳过这一项而不是给出假的通过。
-func _setup_cleaning_scene(fallback: Building) -> Dictionary:
-	var size := Vector2i(2, 2)
-	var pavement: Array = world.walkable_path_cells().duplicate()
-	for anchor in pavement:
-		for offset in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(0, 0)]:
-			var cell: Vector2i = anchor + offset
-			if not world.can_place(cell, size):
-				continue
-			if not world.is_walkable(anchor):
-				continue
-			var b: Building = world.place_building("amenity_cleaning", cell)
-			if b == null:
-				continue
-			if not world.building_reachable(b):
-				world.demolish(b)
-				continue
-			# 只挑真正在 40 像素半径内的地砖来种垃圾
-			var cells: Array = []
-			for dy in range(-2, 3):
-				for dx in range(-2, 3):
-					var probe: Vector2i = anchor + Vector2i(dx, dy)
-					if not world.is_walkable(probe):
-						continue
-					if b.global_position.distance_to(world.cell_center(probe)) <= 40.0:
-						cells.append(probe)
-			if not cells.is_empty():
-				if fallback and is_instance_valid(fallback):
-					world.demolish(fallback)     # 用这个新位置，把原来那间拆掉
-				return {"cleaner": b, "cells": cells}
-			world.demolish(b)
-	return {"cleaner": null, "cells": []}
-
-
-# 保洁工人的回归检查：出现 / 走动 / 只清范围内 / 走了就消失
-func _run_janitor_checks(cleaner: Building) -> void:
-	# 1) 雇人才有工人，人走了工人也消失
-	cleaner.hire_staff()
-	cleaner._sync_janitors()
-	var after_hire: int = cleaner.janitors.size()
-	cleaner.fire_staff()
-	cleaner._sync_janitors()
-	var after_fire: int = cleaner.janitors.size()
-	cleaner.hire_staff()
-	cleaner._sync_janitors()
-	checks.append("保洁工人：雇 1 人 → 工人 %d 位 ｜ 解雇 → %d 位（应为 1 / 0）" % [after_hire, after_fire])
-
-	# 2) 会在外面走动：给足时间看位置有没有变化
-	var janitor: Node2D = null
-	for j in cleaner.janitors:
-		if j != null and is_instance_valid(j):
-			janitor = j
-			break
-	if janitor == null:
-		checks.append("保洁工人：没拿到工人实例，跳过走动检查")
-		return
-	var start_pos: Vector2 = janitor.global_position
-	var moved := 0.0
-	for _i in range(40):
-		janitor._process(0.25)
-		moved = maxf(moved, start_pos.distance_to(janitor.global_position))
-	checks.append("保洁工人：40 次推进后累计走动 %.0f 像素（会动 %s）｜ 负责半径 %.0f 格" % [
-		moved, str(moved > 8.0), janitor.roam_radius() / 32.0])
-
-	# 3) 范围内的垃圾会被清掉
-	var near_cell: Vector2i = _nearest_walkable(janitor.global_position)
-	var near_planted := 0
-	for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
-		var c: Vector2i = near_cell + d
-		if world.is_walkable(c) and not world.litter_cells.has(c):
-			world.spawn_litter(c)
-			near_planted += 1
-	var janitor_ref: Node2D = janitor
-	var real_total: int = janitor.cleaned_total
-	for _i in range(30):
-		janitor_ref._process(0.4)
-		if janitor_ref.cleaned_total > real_total:
-			break
-	# 兜底：万一寻路没走到，直接站到垃圾上确认清扫动作本身有效
-	if janitor_ref.cleaned_total == real_total and world.litter_cells.has(near_cell):
-		janitor_ref.global_position = world.cell_center(near_cell)
-		janitor_ref._look_for_litter()
-	var near_left: int = 0
-	for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
-		if world.litter_cells.has(near_cell + d):
-			near_left += 1
-	checks.append("保洁工人清扫：范围内种下 %d 个 ｜ 走了一轮后剩 %d 个 ｜ 工人累计清掉 %d 个" % [
-		near_planted, near_left, janitor_ref.cleaned_total])
-
-	# 4) 负责范围外的垃圾不清（放在离保洁间 40 格以外的地方）
-	var far_cell := Vector2i(-9999, -9999)
-	for cell in world.walkable_path_cells():
-		if world.litter_cells.has(cell):
-			continue
-		if world.cell_center(cell).distance_to(cleaner.global_position) > float(JANITOR_SCRIPT.ROAM_RADIUS_CELLS + 5) * 32.0:
-			far_cell = cell
-			break
-	if far_cell.x != -9999:
-		world.spawn_litter(far_cell)
-		janitor_ref.global_position = world.cell_center(_nearest_walkable(cleaner.global_position))
-		var found := Vector2i(-9999, -9999)
-		for _i in range(30):
-			janitor_ref._look_for_litter()
-			found = janitor_ref.current_target()
-			if found.x != -9999:
-				break
-		checks.append("保洁工人范围：范围外 %d 格外放 1 个垃圾 ｜ 工人是否去清 = %s（应为 false）" % [
-			int(world.cell_center(far_cell).distance_to(cleaner.global_position) / 32.0),
-			str(found == far_cell)])
-		world.remove_litter_at(far_cell)
-	else:
-		checks.append("保洁工人范围：地图上找不到 40 格以外的可通行格，跳过")
 
 
 func _find_building(id: String) -> Building:
@@ -1164,11 +990,6 @@ func _place_building_near(id: String, preferred: Vector2i) -> Building:
 				if b:
 					return b
 	return null
-
-
-func _read_data_file(path: String) -> Dictionary:
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
-	return parsed if typeof(parsed) == TYPE_DICTIONARY else {}
 
 
 func _str_footprint(data: Dictionary) -> String:

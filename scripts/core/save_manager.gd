@@ -78,7 +78,8 @@ func save_game(slot: int = -1) -> bool:
 		return false
 	f.store_string(JSON.stringify(data, "\t"))
 	f.close()
-	print("[存档] 第 %d 天已保存到存档 %d" % [GameState.day, slot])
+	if GameState.verbose_log:
+		print("[存档] 第 %d 天已保存到存档 %d" % [GameState.day, slot])
 	return true
 
 

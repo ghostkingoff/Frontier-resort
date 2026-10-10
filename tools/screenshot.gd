@@ -258,8 +258,22 @@ func _process(_delta: float) -> void:
 	if frames == 1180:
 		_capture("shot_17_build_menu_unlocked.png")
 	if frames == 1200:
+		# 夜晚 + 透视（关屋顶）：检查店铺室内是否也亮起来
+		var hud2 := main.get_node_or_null("HUD")
+		if hud2 and hud2.build_panel.visible:
+			hud2._toggle_build_panel()
+		var w3: Node2D = main.get_node("World")
+		w3.set_roof_mode(false)
+		GameClock.progress = 0.62      # 约 20:53，灯都亮了
+		for b in w3.buildings:
+			if b.has_method("update_lights"):
+				b.update_lights(GameClock.current_hour())
+		var cam3: Camera2D = main.get_node("Camera")
+		cam3.position = w3.cell_center(Vector2i(58, 39))
+	if frames == 1230:
+		_capture("shot_20_night_interior.png")
+	if frames == 1280:
 		get_tree().quit()
-
 
 func _force_transition() -> void:
 	# 直接走到一个能出图的位置，然后出图，方便截图看过渡区

@@ -10,6 +10,8 @@ func _enter_tree() -> void:
 	var dev_tool: bool = args.has("--smoke") or args.has("--screenshot") or args.has("--wake")
 	if dev_tool:
 		GameState.smoke_mode = true
+	# 详细日志：默认关掉「每次花钱 / 每次存盘」这类刷屏输出，需要排查时加 --verbose
+	GameState.verbose_log = args.has("--verbose") or dev_tool
 	# 开局模式必须在这里应用：World 是子节点，它的 _ready() 会先于本节点的 _ready() 跑，
 	# 而摆建筑时要读 GameState.fame（例如完全测试模式要一次给到 1000）。
 	# 开发工具（冒烟测试 / 截图）是直接实例化 main.tscn 的，不走标题界面，

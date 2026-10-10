@@ -1,26 +1,18 @@
-extends Node2D
+extends "res://scripts/actors/actor.gd"
 class_name Customer
 ## 住客：带着预算来到度假村，在招待厅办理入住，住进度假屋之后四处消费，
 ## 直到「预算花完」或「心情掉到谷底」才回招待厅结账离开。
 ## 度假屋的钱按住宿天数在结账时结算。
+## 走位（寻路 / 行走 / 取帧 / 卡住检测）继承自 actor.gd，和保洁工人共用一套。
 
 enum State { TO_TARGET, INSIDE, SEEK_CLINIC, WAITING_CURE, TREATMENT, LEAVING, DONE }
 enum Purpose { NONE, CHECK_IN, TO_ROOM, CONSUME, REST, CHECK_OUT, WANDER }
-
-const CELL := 32
-# 这套素材的走路图是「列 = 方向，行 = 走路帧」
-const DIR_DOWN := 0
-const DIR_UP := 1
-const DIR_LEFT := 2
-const DIR_RIGHT := 3
-# 视角风格：false = 按移动方向取帧（上下左右四方向，素材自带）；
-#           true  = 开罗式正面视角（永远正面朝镜头，只播走路帧 + 小跳步）。
-const FRONT_FACING_ONLY := false
 
 const MOOD_START := 70.0
 const MOOD_LEAVE := 25.0        # 心情低于这个值就提前退房
 const BUDGET_LEAVE := 300       # 预算少于这个数就当作花完了
 const MOOD_DECAY_PER_HOUR := 0.35
+const INSIDE_TIMEOUT := 25.0    # 在建筑里待超过这么久就被强行请出来
 # 住客早上陆续醒来：不早于最早时间，且在 [最早, 最晚) 内随机
 const WAKE_EARLIEST := 6.5      # 06:30
 const WAKE_LATEST := 7.5        # 07:30
@@ -42,7 +34,6 @@ var has_bike := false
 var _litter_accum := 0.0
 var _litter_interval := 0.0
 
-var world: Node2D
 var target: Building = null
 var purpose: int = Purpose.NONE
 var state: int = State.TO_TARGET
@@ -50,18 +41,13 @@ var lodge: Building = null
 var nights := 0
 var exit_point := Vector2.ZERO
 
-var sprite: Sprite2D
-var speed := 74.0
 var action_left := 0.0
-var _path: Array = []
-var _path_index := 0
 var _entrance_cell := Vector2i.ZERO
-var _walk_clock := 0.0
+var _entry_cell := Vector2i.ZERO          # 这次要去的是哪个出入口（门口优先，否则外圈最近一格）
+var _no_path_time := 0.0                  # 「该走路却没路径」持续了多久，用于重新决策
 var _in_night := false
 var _wake_hour := 0.0            # 今晚这位住客几点醒（06:30~07:30）
 var _last_facility: Building = null
-var _stuck_time := 0.0
-var _last_pos := Vector2.ZERO
 var _inside_building: Building = null    # 当前是否在某个建筑内部（用于保证能走出来）
 var _fail_count := 0                     # 连续找不到路的次数
 var _inside_time := 0.0                  # 在建筑里待了多久（防止卡在室内）
@@ -107,16 +93,32 @@ func setup(customer_type: Dictionary, world_ref: Node2D, spawn_pos: Vector2,
 
 
 func _build_sprite() -> void:
-	sprite = Sprite2D.new()
-	sprite.name = "Sprite"
 	var base := str(type_data.get("sprite", "res://art/placeholder/characters/Boy"))
-	sprite.texture = load(base + "/walk.png")
-	sprite.hframes = 4
-	sprite.vframes = 4
-	sprite.frame = DIR_DOWN
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	sprite.scale = Vector2(DataRegistry.SPRITE_SCALE, DataRegistry.SPRITE_SCALE)
-	add_child(sprite)
+	_build_sprite_base(base + "/walk.png")
+
+
+func _start_cell_candidates(from_cell: Vector2i) -> Array:
+	# 从建筑里走出来时，把这栋楼的所有出入口都当候选（门口排第一），
+	# 逐个试到「既能走、又能算到目标」的那个为止。
+	var out: Array = []
+	if _inside_building != null and is_instance_valid(_inside_building):
+		var door: Vector2i = _inside_building.door_cell()
+		out.append(door)
+		var ring: Array = _inside_building.perimeter_cells()
+		ring.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			return world.cell_center(a).distance_to(world.cell_center(from_cell)) \
+				< world.cell_center(b).distance_to(world.cell_center(from_cell)))
+		for c in ring:
+			if c != door:
+				out.append(c)
+	out.append(world.nearest_walkable(from_cell, 12))
+	return out
+
+
+func _on_start_cell_moved(_to_cell: Vector2i) -> void:
+	# 已经离开建筑：挂回场地层并清掉「在建筑内」的标记
+	reparent(world.customers_root, true)
+	_inside_building = null
 
 
 # ---------- 主循环 ----------
@@ -129,6 +131,7 @@ func _process(delta: float) -> void:
 	_tick_mood(scaled)
 	_check_stuck(delta)
 	_tick_litter(scaled)
+	_recover_if_no_path(delta)
 	match state:
 		State.TO_TARGET:
 			if purpose == Purpose.WANDER:
@@ -139,8 +142,10 @@ func _process(delta: float) -> void:
 				_choose_activity()
 				return
 			elif _follow_path(scaled):
-				_step_towards(target.door_point(), scaled)
-				if global_position.distance_to(target.door_point()) < 6.0:
+				# 走到选定的那个出入口（门口优先，或外圈上最近的一格）
+				var entry_point: Vector2 = world.cell_center(_entry_cell)
+				_step_towards(entry_point, scaled)
+				if global_position.distance_to(entry_point) < 6.0:
 					_arrive()
 		State.INSIDE:
 			# 夜里睡觉：到了自己的醒来时间（06:30~07:30 之间随机）才出门
@@ -155,8 +160,9 @@ func _process(delta: float) -> void:
 				state = State.WAITING_CURE
 				return
 			if _follow_path(scaled):
-				_step_towards(clinic.door_point(), scaled)
-				if global_position.distance_to(clinic.door_point()) < 6.0:
+				var clinic_entry: Vector2 = world.cell_center(_entry_cell)
+				_step_towards(clinic_entry, scaled)
+				if global_position.distance_to(clinic_entry) < 6.0:
 					_enter_clinic()
 		State.WAITING_CURE:
 			cure_left -= scaled
@@ -175,29 +181,60 @@ func _process(delta: float) -> void:
 
 func _check_stuck(delta: float) -> void:
 	if state == State.INSIDE or state == State.TREATMENT:
-		# 在建筑里：夜里睡觉属于正常停留，其余情况超过 25 秒就强行请出来
+		# 在建筑里：夜里睡觉属于正常停留，其余情况超时就被强行请出来
 		var sleeping := purpose == Purpose.REST and GameClock.is_night()
 		_inside_time = 0.0 if sleeping else _inside_time + delta
-		if _inside_time > 25.0:
+		if _inside_time > INSIDE_TIMEOUT:
 			_inside_time = 0.0
 			_force_exit()
-		_stuck_time = 0.0
-		_last_pos = global_position
+		reset_stuck_timer()
 		return
 	_inside_time = 0.0
-	if global_position.distance_to(_last_pos) < 0.5:
-		_stuck_time += delta
-	else:
-		_stuck_time = 0.0
-		_last_pos = global_position
-	if _stuck_time < 5.0:
+	# 走路时踩在不可通行格上（典型原因：路线中途被新盖的建筑压住，或缓存过期）：
+	# 立刻纠正到最近的可通行格，不要等 5 秒看门狗，否则会看到客人站在墙里
+	if state == State.TO_TARGET and not world.is_walkable(world.world_to_cell(global_position)):
+		var fixed: Vector2i = world.nearest_walkable(world.world_to_cell(global_position), 12)
+		if fixed.x != -9999:
+			reparent(world.customers_root, true)
+			global_position = world.cell_center(fixed)
+			clear_path()
+			_inside_building = null
+			reset_stuck_timer()
+			return
+	# 室外的卡住检测用基类那套（阈值与「站着不动不算卡住」的判断都在 actor.gd）
+	super._check_stuck(delta)
+
+
+func _recover_if_no_path(delta: float) -> void:
+	# 该走路却没有路径（路线中途被新建筑压住、缓存过期、目标临时不可达…）：
+	# 持续一小段时间就重新决策一次，避免客人永远杵在原地。
+	if state != State.TO_TARGET and state != State.SEEK_CLINIC and state != State.LEAVING:
+		_no_path_time = 0.0
 		return
+	if has_path():
+		_no_path_time = 0.0
+		return
+	_no_path_time += delta
+	if _no_path_time < 1.5:
+		return
+	_no_path_time = 0.0
+	match state:
+		State.LEAVING:
+			_leave_world()                 # 重新取一次离场路径，再不行就按进场口走
+		State.SEEK_CLINIC:
+			if clinic != null and is_instance_valid(clinic):
+				_start_path_to_building(clinic)
+			else:
+				_finish_action()
+		_:
+			# 去设施 / 回房：重算一次；目标没了就重新挑事做
+			if target != null and is_instance_valid(target) and _start_path_to_building(target):
+				return
+			_choose_activity()
+
+
+func _on_stuck() -> void:
 	# 卡住超过 5 秒：先纠正位置，再重新算路，还不行就闲逛 / 直接离场
-	_stuck_time = 0.0
-	_recover_from_stuck()
-
-
-func _recover_from_stuck() -> void:
 	_last_pos = global_position
 	if _inside_building != null and is_instance_valid(_inside_building):
 		_force_exit()
@@ -212,13 +249,25 @@ func _recover_from_stuck() -> void:
 	if purpose == Purpose.CHECK_OUT:
 		_leave_world()
 		return
-	if target != null and is_instance_valid(target) and _start_path_to(target.door_cell()):
+	if target != null and is_instance_valid(target) and _start_path_to_building(target):
 		state = State.TO_TARGET
 		return
-	if lodge != null and is_instance_valid(lodge) and _start_path_to(lodge.door_cell()):
+	if lodge != null and is_instance_valid(lodge) and _start_path_to_building(lodge):
 		state = State.TO_TARGET
 		return
 	_start_wander()
+
+
+func _start_path_to_building(building: Building) -> bool:
+	# 去某栋建筑：出入口优先门口，门口走不通就从外圈其它面进（全开放）。
+	# 选中的口记进 _entry_cell，到达判定与 State.TO_TARGET 都用它。
+	if building == null or not is_instance_valid(building):
+		return false
+	var entry: Vector2i = world.best_entry_cell(building, global_position)
+	if entry.x == -9999:
+		return false
+	_entry_cell = entry
+	return _start_path_to(entry)
 
 
 func _force_exit() -> void:
@@ -229,7 +278,9 @@ func _force_exit() -> void:
 	if building != null and is_instance_valid(building):
 		if building.visitors.has(self):
 			building.remove_visitor(self)
-		global_position = world.cell_center(building.door_cell())
+		var _exit_cell: Vector2i = world.nearest_entry_cell(building, world.world_to_cell(global_position))
+		if _exit_cell.x != -9999:
+			global_position = world.cell_center(_exit_cell)
 	else:
 		var fixed: Vector2i = world.nearest_walkable(world.world_to_cell(global_position), 12)
 		if fixed.x != -9999:
@@ -337,10 +388,24 @@ func _go_to(building: Building, what: int) -> void:
 	if building == null or not is_instance_valid(building):
 		_choose_activity()
 		return
+	# 出入口：优先贴图上的门口，门口走不通就从外圈其它面进（全开放）
+	var entry: Vector2i = world.best_entry_cell(building, global_position)
+	if entry.x == -9999:
+		# 一个口都进不去：先换个地方闲逛，连续三次都找不到路就干脆回家
+		_fail_count += 1
+		target = null
+		purpose = Purpose.NONE
+		if _fail_count >= 3:
+			_fail_count = 0
+			_leave_world()
+		else:
+			_start_wander()
+		return
 	target = building
 	purpose = what
-	if not _start_path_to(building.door_cell()):
-		# 走不过去：先换个地方闲逛，连续三次都找不到路就干脆回家
+	_entry_cell = entry
+	if not _start_path_to(entry):
+		# 走不过去：先换个地方闲逛，连续几次都找不到路就干脆回家
 		_fail_count += 1
 		target = null
 		purpose = Purpose.NONE
@@ -452,7 +517,9 @@ func _finish_consume() -> void:
 		return
 	b.remove_visitor(self)
 	reparent(world.customers_root, true)
-	global_position = world.cell_center(b.door_cell())
+	var _exit_cell: Vector2i = world.nearest_entry_cell(b, world.world_to_cell(global_position))
+	if _exit_cell.x != -9999:
+		global_position = world.cell_center(_exit_cell)
 	_inside_building = null
 	# 特殊设施：卫生间不花钱只涨心情，单车租借所给加速
 	if b.service() == "toilet":
@@ -479,7 +546,9 @@ func _finish_rest() -> void:
 	var room := lodge if (lodge != null and is_instance_valid(lodge)) else null
 	if room:
 		reparent(world.customers_root, true)
-		global_position = world.cell_center(room.door_cell())
+		var _exit_cell: Vector2i = world.nearest_entry_cell(room, world.world_to_cell(global_position))
+		if _exit_cell.x != -9999:
+			global_position = world.cell_center(_exit_cell)
 		_inside_building = null
 	_gain_mood(8.0)
 	_choose_activity()
@@ -489,7 +558,9 @@ func _finish_checkout() -> void:
 	var reception := target
 	if reception:
 		reparent(world.customers_root, true)
-		global_position = world.cell_center(reception.door_cell())
+		var _exit_cell: Vector2i = world.nearest_entry_cell(reception, world.world_to_cell(global_position))
+		if _exit_cell.x != -9999:
+			global_position = world.cell_center(_exit_cell)
 		_inside_building = null
 	# 结算住宿费：按住的天数算，钱在结账时进账
 	if lodge != null and is_instance_valid(lodge):
@@ -568,12 +639,13 @@ func follow_to(building: Building, what: int) -> void:
 func _start_wander() -> void:
 	var cell: Vector2i = world.wander_cell_near(global_position)
 	if cell.x == -9999:
-		# 实在找不到闲逛点，就回招待厅门口待着，不因此赶客人走
+		# 实在找不到闲逛点，就回招待厅旁边待着，不因此赶客人走
 		var reception: Building = world.reception()
 		if reception == null:
 			_leave_world()
 			return
-		cell = reception.door_cell()
+		var entry: Vector2i = world.best_entry_cell(reception, global_position)
+		cell = entry if entry.x != -9999 else reception.door_cell()
 	target = null
 	purpose = Purpose.WANDER
 	_start_path_to(cell)
@@ -660,23 +732,15 @@ func force_leave(from_building: Building) -> void:
 		lodge = null
 	reparent(world.customers_root, true)
 	if from_building and is_instance_valid(from_building):
-		global_position = world.cell_center(from_building.door_cell())
+		var _exit_cell: Vector2i = world.nearest_entry_cell(from_building, world.world_to_cell(global_position))
+		if _exit_cell.x != -9999:
+			global_position = world.cell_center(_exit_cell)
 	_leave_world()
 
 
 # ---------- 移动 ----------
-
-func _step_towards(point: Vector2, delta: float) -> void:
-	var from := global_position
-	var dist := from.distance_to(point)
-	if dist < 1.0:
-		return
-	var dir := (point - from) / dist
-	# 高倍速下一帧能走很远，必须夹住步长，否则会冲过路径拐点
-	var step := minf(speed * delta, dist)
-	global_position = from + dir * step
-	_update_animation(dir, delta)
-
+# _step_towards / _update_animation / _start_path_to / _follow_path 都在 actor.gd，
+# 顾客这边只覆盖 _fix_start_cell()（从建筑里走出来）和 _on_stuck()。
 
 func _tick_litter(scaled: float) -> void:
 	# 垃圾：平均每位客人 2~3 个游戏日留下一个
@@ -689,60 +753,6 @@ func _tick_litter(scaled: float) -> void:
 	_litter_accum = 0.0
 	_litter_interval = randf_range(48.0, 72.0)
 	world.spawn_litter(world.world_to_cell(global_position))
-
-
-func _update_animation(dir: Vector2, delta: float) -> void:
-	_walk_clock += delta
-	var column := DIR_DOWN
-	if not FRONT_FACING_ONLY:
-		if absf(dir.x) > absf(dir.y):
-			column = DIR_LEFT if dir.x < 0.0 else DIR_RIGHT
-		else:
-			column = DIR_DOWN if dir.y > 0.0 else DIR_UP
-	var step := int(_walk_clock * 8.0) % 4
-	sprite.frame = step * sprite.hframes + column
-	# 正面视角下用小跳步表现走动，避免看起来像在滑行
-	sprite.position.y = -2.0 if (FRONT_FACING_ONLY and step % 2 == 0) else 0.0
-
-
-func _start_path_to(target_cell: Vector2i) -> bool:
-	var from_cell: Vector2i = world.world_to_cell(global_position)
-	if not world.is_walkable(from_cell):
-		# 站在建筑内部 / 门里（不可通行格）：优先用这栋楼自己的门口那一格走出去
-		var fixed := Vector2i(-9999, -9999)
-		if _inside_building != null and is_instance_valid(_inside_building):
-			fixed = _inside_building.door_cell()
-		if fixed.x == -9999 or not world.is_walkable(fixed):
-			fixed = world.nearest_walkable(from_cell, 12)
-		if fixed.x == -9999:
-			_path = []
-			_path_index = 0
-			return false
-		from_cell = fixed
-		reparent(world.customers_root, true)
-		global_position = world.cell_center(fixed)
-		_inside_building = null
-	var path: Array = world.find_path_cells(from_cell, target_cell)
-	if path.is_empty():
-		_path = []
-		_path_index = 0
-		return false
-	_path = path
-	_path_index = 0
-	return true
-
-
-func _follow_path(delta: float) -> bool:
-	if _path.is_empty():
-		return true
-	while _path_index < _path.size():
-		var waypoint: Vector2 = world.cell_center(_path[_path_index])
-		if global_position.distance_to(waypoint) < 3.0:
-			_path_index += 1
-			continue
-		_step_towards(waypoint, delta)
-		return false
-	return true
 
 
 # ---------- 生病 ----------
@@ -763,7 +773,7 @@ func _roll_illness() -> bool:
 	clinic = world.find_clinic(int(illness.get("level", 1)), global_position)
 	if clinic:
 		state = State.SEEK_CLINIC
-		_start_path_to(clinic.door_cell())
+		_start_path_to_building(clinic)
 		_popup(str(illness.get("name", "生病")), Color(0.95, 0.55, 0.55))
 	else:
 		state = State.WAITING_CURE
@@ -803,7 +813,9 @@ func finish_treatment(building: Building) -> void:
 	reparent(world.customers_root, true)
 	_inside_building = null
 	if building:
-		global_position = world.cell_center(building.door_cell())
+		var _exit_cell: Vector2i = world.nearest_entry_cell(building, world.world_to_cell(global_position))
+		if _exit_cell.x != -9999:
+			global_position = world.cell_center(_exit_cell)
 	_choose_activity()
 
 
@@ -813,7 +825,9 @@ func _fail_cure() -> void:
 	GameState.add_reputation(float(DataRegistry.illness_config.get("failed_reputation", -1.5)))
 	GameState.notice.emit("%s 因病未得到治疗离开了" % customer_name)
 	if clinic:
-		global_position = world.cell_center(clinic.door_cell())
+		var _exit_cell: Vector2i = world.nearest_entry_cell(clinic, world.world_to_cell(global_position))
+		if _exit_cell.x != -9999:
+			global_position = world.cell_center(_exit_cell)
 	_leave_world()
 
 

@@ -26,6 +26,7 @@ var daily_wages: int = 0                # 当日工资支出
 var daily_item_income: int = 0          # 当日展厅成交收入
 var placeholder_night_yield := false    # 探索系统开放前的临时夜间产出（已由探索系统取代，测试时可打开）
 var smoke_mode := false                 # 自动化测试模式：跳过开始菜单
+var verbose_log := false                # 详细日志（--verbose）：打印每次花钱 / 存盘等高频信息
 var playtime := 0.0                     # 累计游玩时长（秒）
 
 var _last_day_report: Dictionary = {}
@@ -75,7 +76,7 @@ func spend(amount: int, reason: String = "") -> bool:
 		return false
 	money -= amount
 	money_changed.emit(money)
-	if reason != "":
+	if reason != "" and verbose_log:
 		print("[花钱] %s -%d，余额 %d" % [reason, amount, money])
 	return true
 

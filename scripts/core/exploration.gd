@@ -244,18 +244,6 @@ func can_exit_from(cell: Vector2i, dir: Vector2i) -> bool:
 	return not current_local_map().has(cell + dir)
 
 
-func exits() -> Array:
-	var out: Array = []
-	for d in DIRS:
-		var target: Vector2i = current_tile + d
-		if not world_map.has(target):
-			continue
-		if not can_exit_from(player_cell, d):
-			continue
-		out.append({"dir": d, "tile": target, "terrain": terrain_at(target)})
-	return out
-
-
 func neighbor_exits() -> Array:
 	# 不管站在哪里，都列出这个地形四周有什么，用来提示方向
 	var out: Array = []

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bne3j22uyf5ea"
-path="res://.godot/imported/场景_屋顶开.png-2b3326e5f1660064509e1ea47312f2df.ctex"
+uid="uid://c2o8vh4lrhe50"
+path="res://.godot/imported/light_rect.png-cf5a7a0137b0d9d35e1fbfc9c7140812.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://docs/截图/场景_屋顶开.png"
-dest_files=["res://.godot/imported/场景_屋顶开.png-2b3326e5f1660064509e1ea47312f2df.ctex"]
+source_file="res://art/generated/light_rect.png"
+dest_files=["res://.godot/imported/light_rect.png-cf5a7a0137b0d9d35e1fbfc9c7140812.ctex"]
 
 [params]
 

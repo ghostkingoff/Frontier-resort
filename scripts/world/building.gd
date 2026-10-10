@@ -2,6 +2,12 @@ extends Node2D
 class_name Building
 
 const JANITOR := preload("res://scripts/customers/janitor.gd")
+const LIGHT_ON_EARLIEST := 20.0    # 20:00 起陆续开灯
+const LIGHT_ON_LATEST := 20.75     # 20:45 全部亮起
+const LIGHT_FADE_HOURS := 0.12     # 每栋楼自己的渐变时长（约 7 分钟游戏时间）
+const LIGHT_SPREAD_CELLS := 1.0    # 光往建筑外扩几格（这一圈就是渐变带）
+const LIGHT_ENERGY := 0.72         # 灯光强度。用加法混合，太高会让外圈过曝成「黄框」
+# 熄灯时间不再写死：直接用各栋自己的 close_hour()（见 update_lights）
 ## 单栋建筑：外观、屋顶开关、容量、员工、升级、展厅展示位、诊所治疗。
 
 
@@ -43,6 +49,8 @@ var janitors: Array = []       # 保洁间雇的工人（在外面走动扫地�
 var cured_count: int = 0
 var failed_count: int = 0
 var understaffed_notice := false
+var night_light: PointLight2D          # 建筑灯光（矩形：内部均匀 + 外圈渐变）
+var light_on_hour := LIGHT_ON_LATEST   # 这栋楼今晚几点开灯（20:00~20:45 之间各自随机）
 
 
 func setup(building_data: Dictionary, at_cell: Vector2i, world_ref: Node2D) -> void:
@@ -56,9 +64,78 @@ func setup(building_data: Dictionary, at_cell: Vector2i, world_ref: Node2D) -> v
 	z_index = int(position.y)
 	invested = int(data.get("cost", 0))
 	_build_visuals()
+	_build_lights()
 	_apply_roof(bool(world.show_roofs))
 	_refresh_label()
 	set_process(is_clinic() or service() == "cleaning")   # 医院推进治疗，保洁间维持保洁工人
+
+
+func _build_lights() -> void:
+	# 用 World 的通用矩形光源工厂：平顶区对到建筑占地（内部均匀），
+	# 渐变带对到外扩的那 1 格（只有周围一圈有渐变）。
+	if world == null or not world.has_method("make_rect_light"):
+		return
+	night_light = world.make_rect_light(
+		Vector2(footprint.x, footprint.y) * CELL,
+		LIGHT_SPREAD_CELLS * float(CELL),
+		Color(1.0, 0.86, 0.62))
+	if night_light == null:
+		return
+	night_light.name = "NightLight"
+	# 灯挂在 world 下（而不是建筑自己下面）：建筑的 z_index = position.y（可达 2000+），
+	# 灯作为它的子节点会继承这个大 z，容易掉出 PointLight2D 的 z 范围而完全失效。
+	# 挂到 world 根、用全局坐标定位；绘制顺序靠 make_rect_light 里压低的 z_index 控制。
+	# 位置 = 建筑中心：cell_center(cell) 已经是建筑左上格的**中心**，
+	# 所以只需再偏移「半个占地」（之前多加了半个占地，导致光偏向右下）。
+	night_light.top_level = true
+	var c: Vector2 = world.cell_center(cell) \
+		+ Vector2(float(footprint.x - 1), float(footprint.y - 1)) * CELL * 0.5
+	world.add_child(night_light)
+	night_light.global_position = c
+	# 层次：地板 → 灯光 → 屋顶/外墙。
+	# 灯光必须夹在中间：开着屋顶时屋顶把灯光和地板一起盖住；
+	# 关了屋顶（透视）时就只剩地板 + 灯光，室内才亮得起来。
+	# 原来的添加顺序是「外墙 → 地板 → 灯」，地板反而盖在灯上面，光进不去。
+	_relayer()
+
+	# 每栋楼一个自己的开灯时间，形成「陆续开灯」的错落感
+	light_on_hour = randf_range(LIGHT_ON_EARLIEST, LIGHT_ON_LATEST)
+
+
+func _relayer() -> void:
+	# 把子节点重排成：interior（地板）→ 灯光 → exterior / 各个面 → 标签
+	# Godot 同 z_index 时按树顺序绘制，后添加的画在上面。
+	for n in [interior, night_light, exterior, side_face, front_face, roof_face]:
+		if n != null and n.get_parent() == self:
+			move_child(n, -1)          # -1 = 移到末尾（最后绘制）
+	for n2 in get_children():
+		if n2 is Label:
+			move_child(n2, -1)         # 名字标签永远在最上面
+
+
+func update_lights(hour: float) -> void:
+	# 由 World 每帧统一驱动。hour = GameClock.hour_of_day()（0~24），
+	# 与 data/buildings*.json 的 open_hour/close_hour 同口径（酒吧是 22→4）。
+	#
+	# 关键：一律换算成「连续小时」再比较。
+	#   凌晨（hour < 12）当作「前一天 24 点之后」→ hour += 24
+	#   跨夜打烊（close < open）→ close += 24
+	# 这样无论普通店还是跨夜店，都变成简单的区间判断，不需要特判。
+	if night_light == null:
+		return
+	var h := hour
+	if h < 12.0:
+		h += 24.0                      # 凌晨 → 算作次日的 24~36 点
+	var c := close_hour()
+	if c < open_hour():
+		c += 24.0                      # 跨夜店：打烊时间算到次日
+	var k := clampf((h - light_on_hour) / LIGHT_FADE_HOURS, 0.0, 1.0)
+	if h >= c:
+		k = clampf(1.0 - (h - c) / LIGHT_FADE_HOURS, 0.0, 1.0)   # 到打烊时间渐渐熄灯
+	if h < light_on_hour:
+		k = 0.0                        # 傍晚之前不点灯
+	var e := k * k * (3.0 - 2.0 * k)   # 平滑渐变（smoothstep）
+	night_light.energy = e * LIGHT_ENERGY
 
 
 func _process(delta: float) -> void:
@@ -710,8 +787,31 @@ func door_point() -> Vector2:
 
 
 func door_cell() -> Vector2i:
-	# 门口：建筑正下方那一格，客人走到这里再进门
+	# 门口：建筑正下方那一格。它是「首选」出入口（贴图上的门在这边），
+	# 但不再是唯一出入口 —— 见 perimeter_cells()。
 	return cell + Vector2i(int(footprint.x / 2), footprint.y)
+
+
+func perimeter_cells() -> Array:
+	# 建筑外圈一圈格子（占地四周各向外一格），也就是「可以进出这栋楼的位置」。
+	# 只返回格子，是否可通行由 world 判断。
+	var out: Array = []
+	var x0 := cell.x - 1
+	var y0 := cell.y - 1
+	var x1 := cell.x + footprint.x
+	var y1 := cell.y + footprint.y
+	for x in range(x0, x1 + 1):
+		out.append(Vector2i(x, y0))
+		out.append(Vector2i(x, y1))
+	for y in range(y0 + 1, y1):
+		out.append(Vector2i(x0, y))
+		out.append(Vector2i(x1, y))
+	return out
+
+
+func entry_point() -> Vector2:
+	# 入口的世界坐标（贴图上的门那一格中心），供朝向/距离判断用
+	return Vector2(door_cell()) * float(CELL) + Vector2(CELL, CELL) * 0.5
 
 
 func interior_point() -> Vector2:
