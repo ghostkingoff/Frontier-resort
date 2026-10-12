@@ -66,14 +66,14 @@ static func button(text: String, min_size: Vector2 = Vector2(104, 52)) -> Button
 
 
 static func icon(path: String, box: Vector2 = Vector2(40, 40)) -> TextureRect:
-	var tr := TextureRect.new()
+	var icon_rect := TextureRect.new()
 	if path != "" and ResourceLoader.exists(path):
-		tr.texture = load(path)
-	tr.custom_minimum_size = box
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	return tr
+		icon_rect.texture = load(path)
+	icon_rect.custom_minimum_size = box
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return icon_rect
 
 
 static func spacer(height: float = 6.0) -> Control:

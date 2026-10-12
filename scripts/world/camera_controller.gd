@@ -25,6 +25,10 @@ var _pinch_distance := 0.0
 var _zoom_target := 2.0                       # 平滑缩放的目标值
 var _glide := Vector2.ZERO                    # 当前平移速度（世界像素/游戏秒），惯性就靠它
 var _pan_ramp := 0.0                          # 「移动视口」按钮模式的起步/收尾进度 0~1
+var follow_target: Node2D = null              # 跟随目标（自我操纵模式）：设置后相机平滑跟随
+var _returning := false                       # 退出跟随后，缓慢回到进入前的位置
+var _return_pos := Vector2.ZERO
+var _return_zoom := 2.0
 
 
 func set_pan_mode(on: bool) -> void:
@@ -39,6 +43,39 @@ func set_pan_mode(on: bool) -> void:
 func toggle_pan_mode() -> bool:
 	set_pan_mode(not pan_mode)
 	return pan_mode
+
+
+func set_follow(target: Node2D, follow_zoom: float = 2.4) -> void:
+	# 进入跟随：记住当前机位与缩放，退出时平滑还回去
+	if target == null:
+		return
+	if follow_target == null:
+		_return_pos = position
+		_return_zoom = _zoom_target
+	follow_target = target
+	_returning = false
+	_glide = Vector2.ZERO
+	_zoom_target = clampf(follow_zoom, min_zoom, max_zoom)
+
+
+func clear_follow() -> void:
+	if follow_target == null:
+		return
+	follow_target = null
+	_returning = true
+	_zoom_target = _return_zoom
+
+
+func clear_follow_here() -> void:
+	# 退出跟随但相机留在原地（游客状态面板用）：不回飞、也不改缩放
+	if follow_target == null:
+		return
+	follow_target = null
+	_returning = false
+
+
+func is_following() -> bool:
+	return follow_target != null
 
 
 func _ready() -> void:
@@ -64,7 +101,9 @@ func _process(delta: float) -> void:
 		dir.y -= 1.0
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
 		dir.y += 1.0
-	if dir != Vector2.ZERO:
+	# 指令台打字时不响应 WASD（Input.is_key_pressed 是全局轮询，输入框拦不住）
+	if dir != Vector2.ZERO and not is_following() and not GameState.text_input_active:
+		_returning = false               # 手动平移会打断「回到原机位」
 		position += dir.normalized() * keyboard_pan_speed * delta / zoom.x
 	# 平移速度的目标值（世界像素/游戏秒）。惯性 = 不直接把目标值当位移，而是让 _glide 平滑追上去
 	var desired := Vector2.ZERO
@@ -73,12 +112,12 @@ func _process(delta: float) -> void:
 	# 按键方向：屏幕边缘跑得越快（中键）与「移动视口」按钮模式
 	var push := Vector2.ZERO
 	var pushing := false
-	if _pan_held:
+	if _pan_held and not is_following():
 		var view := get_viewport_rect().size
 		var ratio := (get_viewport().get_mouse_position() - view * 0.5) / (view * 0.5)
 		push = Vector2(_deadzone_curve(ratio.x), _deadzone_curve(ratio.y))
 		pushing = true
-	elif pan_mode and _drag_held:
+	elif pan_mode and _drag_held and not is_following():
 		# 按钮模式：以鼠标离屏幕中心的方向与距离决定推力，越靠边越快（和中键同一套手感）
 		var view2 := get_viewport_rect().size
 		var ratio2 := (get_viewport().get_mouse_position() - view2 * 0.5) / (view2 * 0.5)
@@ -86,6 +125,7 @@ func _process(delta: float) -> void:
 		pushing = true
 
 	if pushing:
+		_returning = false               # 手动移动会打断「回到原机位」
 		# 起步平滑：按住后 _pan_ramp 从 0 涨到 1，速度不会瞬间拉满
 		_pan_ramp = minf(1.0, _pan_ramp + delta * pan_ramp_rate)
 		var eased := smoothstep(0.0, 1.0, _pan_ramp)
@@ -112,6 +152,16 @@ func _process(delta: float) -> void:
 		var t := 1.0 - exp(-9.0 * delta)
 		var z := lerpf(zoom.x, _zoom_target, t)
 		zoom = Vector2(z, z)
+	# 跟随 / 回落：都走指数插值，帧率无关
+	if follow_target != null and is_instance_valid(follow_target):
+		var tf := 1.0 - exp(-8.0 * delta)
+		position = position.lerp(follow_target.global_position, tf)
+	elif _returning:
+		var tr := 1.0 - exp(-6.0 * delta)
+		position = position.lerp(_return_pos, tr)
+		if position.distance_to(_return_pos) < 2.0:
+			position = _return_pos
+			_returning = false
 	_clamp_position()
 
 
@@ -189,7 +239,7 @@ func _handle_screen_drag(event: InputEventScreenDrag) -> void:
 		if _pinch_distance > 0.0 and d > 0.0:
 			_zoom_by(d / _pinch_distance)
 		_pinch_distance = d
-	elif _touches.size() == 1:
+	elif _touches.size() == 1 and not is_following():
 		position -= event.relative / zoom
 
 

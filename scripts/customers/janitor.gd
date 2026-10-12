@@ -14,6 +14,7 @@ const SEARCH_INTERVAL := 0.5         # 每 0.5 现实秒找一次垃圾
 const PICK_DISTANCE := 1.6           # 走到这个距离（格）内就动手清
 
 var home: Node2D = null              # 所属保洁间
+var shift := "day"                   # 班次："day" 白班 08:00-20:00 ｜ "night" 夜班 20:00-08:00
 
 var state: int = State.IDLE
 var _target_cell := Vector2i(-9999, -9999)

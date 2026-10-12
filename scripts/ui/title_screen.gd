@@ -23,7 +23,6 @@ var mode_hint: Label
 func _ready() -> void:
 	# 自动化测试 / 专项体检：直接以存档 1 开新游戏并进入游戏场景，不放开场动画也不放音乐
 	if _is_dev_tool():
-		GameState.smoke_mode = true
 		SaveManager.begin_new_game(1, _mode_from_args())
 		_go_to_game()
 		return
@@ -327,7 +326,9 @@ func _mode_description(mode: String) -> String:
 
 func _format_playtime(seconds: float) -> String:
 	var total := int(seconds)
+	@warning_ignore("integer_division")
 	var hours := total / 3600
+	@warning_ignore("integer_division")
 	var minutes := (total % 3600) / 60
 	if hours > 0:
 		return "%d 小时 %d 分" % [hours, minutes]

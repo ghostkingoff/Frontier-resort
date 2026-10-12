@@ -69,26 +69,43 @@ func _refresh() -> void:
 
 	var b := building
 	content.add_child(UIKit.label(b.display_name(), 32, Color(0.98, 0.88, 0.55)))
-	content.add_child(UIKit.label(str(b.data.get("description", "")), 20, Color(0.80, 0.82, 0.88)))
-	content.add_child(UIKit.label("客人 %d / %d ｜ 平均消费 %s ｜ 心情加成 %+.0f" % [
-		b.visitors.size(), b.capacity(), GameState.format_money(b.spend_value()), b.mood_bonus()], 22, Color(0.85, 0.92, 1.0)))
+	var desc := str(b.data.get("description", ""))
+	if desc != "":
+		content.add_child(UIKit.label(desc, 20, Color(0.80, 0.82, 0.88)))
+	# 只显示这栋楼「真有的东西」：路灯没有客人/消费，这些行就不会出现
+	var info_parts: Array = []
+	if b.capacity() > 0 and not b.is_lodging() and not b.is_reception():
+		var guest_text := "同时招待 %d / %d 人" % [b.visitors.size(), b.capacity()]
+		if b.reserved > 0:
+			guest_text += "（在途 %d）" % b.reserved
+		info_parts.append(guest_text)
+	if b.spend_value() > 0 and not b.is_lodging() and not b.is_reception():
+		info_parts.append("平均消费 %s" % GameState.format_money(b.spend_value()))
+	if b.mood_bonus() > 0:
+		info_parts.append("心情加成 %+.0f" % b.mood_bonus())
+	if not info_parts.is_empty():
+		content.add_child(UIKit.label(" ｜ ".join(info_parts), 22, Color(0.85, 0.92, 1.0)))
 	if b.is_lodging():
 		content.add_child(UIKit.label("住客 %d / %d 人 ｜ 住宿费 %s / 晚（结账时进账）" % [
 			b.guests.size(), b.room_capacity(), GameState.format_money(b.spend_value())], 22, Color(0.9, 0.92, 0.7)))
 	if b.is_reception():
 		content.add_child(UIKit.label("累计办理入住 %d 次 ｜ 客人在这里登记与结账" % b.check_ins, 22, Color(0.9, 0.92, 0.7)))
-	content.add_child(UIKit.label("营业时间 %s" % b.hours_text(), 20, Color(0.85, 0.88, 0.95)))
-	if world and not world.building_reachable(b):
+	if not (int(b.data.get("open_hour", 0)) == 0 and int(b.data.get("close_hour", 24)) == 24):
+		var hours_title := "照明时间" if str(b.data.get("light_shape", "")) == "circle" else "营业时间"
+		content.add_child(UIKit.label("%s %s" % [hours_title, b.hours_text()], 20, Color(0.85, 0.88, 0.95)))
+	if b.capacity() > 0 and world and not world.building_reachable(b):
 		content.add_child(UIKit.paragraph("客人过不来：门口没有连到主路。用「建造 → 地面」把地砖铺到门口。", 20, Color(0.95, 0.6, 0.6), 420.0))
-	content.add_child(UIKit.label("累计收入 %s ｜ 接待 %d 人" % [GameState.format_money(b.total_earned), b.cured_count + b.visitors.size()], 20, Color(0.9, 0.9, 0.6)))
+	if not b.is_reception() and (b.capacity() > 0 or b.spend_value() > 0):
+		content.add_child(UIKit.label("累计收入 %s ｜ 接待 %d 人" % [
+			GameState.format_money(b.total_earned), b.cured_count + b.visitors.size()], 20, Color(0.9, 0.9, 0.6)))
+	if b.is_rotatable():
+		_add_rotate_section(b)
 	content.add_child(UIKit.spacer(4))
 
-	_add_upgrade_section(b)
-	if b.needs_staff():
+	if b.max_level() > 1:
+		_add_upgrade_section(b)
+	if b.staff_slots() > 0:
 		_add_staff_section(b)
-	else:
-		content.add_child(UIKit.label("—— 员工 ——", 24, Color(0.95, 0.85, 0.5)))
-		content.add_child(UIKit.paragraph("度假屋与招待厅由客人自助使用，不需要雇员工。", 20, Color(0.82, 0.86, 0.9), 420.0))
 	if b.is_showroom():
 		_add_showroom_section(b)
 	if b.is_clinic():
@@ -106,18 +123,34 @@ func _refresh() -> void:
 	content.add_child(actions)
 
 
+func _add_rotate_section(b: Building) -> void:
+	content.add_child(UIKit.spacer(4))
+	content.add_child(UIKit.label("—— 朝向 ——", 24, Color(0.95, 0.85, 0.5)))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.add_child(UIKit.label("当前朝向：%s ｜ 灯光偏在该方向一格" % b.rotation_text(), 20, Color(0.85, 0.92, 1.0)))
+	var btn := UIKit.button("顺时针旋转", Vector2(170, 48))
+	btn.pressed.connect(func() -> void:
+		b.rotate_clockwise()
+		_refresh())
+	row.add_child(btn)
+	content.add_child(row)
+
+
 func _add_cleaning_section(b: Building) -> void:
 	content.add_child(UIKit.spacer(6))
 	content.add_child(UIKit.label("—— 保洁 ——", 24, Color(0.95, 0.85, 0.5)))
-	var workers: int = b.janitors.size()
-	if workers <= 0:
+	var counts := b.shift_counts()
+	content.add_child(UIKit.label("白班 %d 位 ｜ 夜班 %d 位 ｜ 当前在岗 %d 位" % [
+		int(counts.get("day", 0)), int(counts.get("night", 0)), b.janitors.size()], 22, Color(0.85, 0.92, 1.0)))
+	if b.staff.is_empty():
 		content.add_child(UIKit.paragraph(
-			"还没有雇保洁。雇了之后会有保洁工人在外面走动，清理半径 %d 格内的垃圾。"
+			"还没有雇保洁。雇人后他们按班次出来清扫（白班 08:00-20:00、夜班 20:00-08:00），负责半径 %d 格内的垃圾。"
 			% JANITOR.ROAM_RADIUS_CELLS, 20, Color(0.9, 0.8, 0.7), 420.0))
 	else:
 		content.add_child(UIKit.paragraph(
-			"%d 位保洁工人正在外面清扫，负责半径 %d 格；超出范围的垃圾不会去清。"
-			% [workers, JANITOR.ROAM_RADIUS_CELLS], 20, Color(0.82, 0.9, 0.98), 420.0))
+			"当班的工人在外面走动清扫，负责半径 %d 格；下班立即回到保洁间、不在地图上出现，范围外的垃圾不会去清。"
+			% JANITOR.ROAM_RADIUS_CELLS, 20, Color(0.82, 0.9, 0.98), 420.0))
 	content.add_child(UIKit.label("累计清理垃圾 %d 个" % b.janitor_total_cleaned(), 20, Color(0.8, 0.92, 0.8)))
 
 
@@ -182,7 +215,11 @@ func _add_staff_section(b: Building) -> void:
 		content.add_child(UIKit.label("员工状态很低：客人消费后心情会下降", 20, Color(0.95, 0.6, 0.6)))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	var hire := UIKit.button("雇佣（日薪 %d）" % int(b.data.get("staff_wage", 0)), Vector2(240, 52))
+	var hire_text := "雇佣（日薪 %d）" % int(b.data.get("staff_wage", 0))
+	if b.service() == "cleaning":
+		hire_text = "雇佣保洁（日薪 %d ｜ 编入%s班）" % [
+			int(b.data.get("staff_wage", 0)), "白" if b.next_shift() == "day" else "夜"]
+	var hire := UIKit.button(hire_text, Vector2(280, 52))
 	hire.disabled = b.staff.size() >= b.staff_slots()
 	hire.pressed.connect(func():
 		if b.hire_staff():

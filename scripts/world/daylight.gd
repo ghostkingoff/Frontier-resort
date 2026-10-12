@@ -35,11 +35,11 @@ func _sample(frames: Array, hour: float) -> Color:
 		var pa := float(a["hour"])
 		var pb := float(b["hour"])
 		if hour <= pb:
-			var t := 0.0 if pb <= pa else (hour - pa) / (pb - pa)
-			return (a["color"] as Color).lerp(b["color"] as Color, t)
+			var frac := 0.0 if pb <= pa else (hour - pa) / (pb - pa)
+			return (a["color"] as Color).lerp(b["color"] as Color, frac)
 	# 超过最后一帧就朝次日 0 点过渡
 	var last: Dictionary = frames[frames.size() - 1]
 	var first: Dictionary = frames[0]
 	var span := (24.0 - float(last["hour"])) + float(first["hour"])
-	var t := 0.0 if span <= 0.0 else (hour - float(last["hour"])) / span
-	return (last["color"] as Color).lerp(first["color"] as Color, clampf(t, 0.0, 1.0))
+	var wrap_frac := 0.0 if span <= 0.0 else (hour - float(last["hour"])) / span
+	return (last["color"] as Color).lerp(first["color"] as Color, clampf(wrap_frac, 0.0, 1.0))

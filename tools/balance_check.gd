@@ -36,11 +36,11 @@ func _on_day_finished() -> void:
 	days += 1
 	var report := GameState.day_report()
 	var world := main.get_node("World")
-	print("[balance] 第 %d 天：到访 %d 人 ｜ 营业额 %s ｜ 展厅 %s ｜ 工资 %s ｜ 设施 %d 座 ｜ 资金 %s" % [
+	print("[balance] 第 %d 天：到访 %d 人 ｜ 营业额 %s ｜ 展厅 %s ｜ 工资 %s ｜ 设施 %d 座 ｜ 资金 %s ｜ 口碑 %.1f" % [
 		days, int(report.get("visitors", 0)), GameState.format_money(int(report.get("revenue", 0))),
 		GameState.format_money(int(report.get("item_income", 0))),
 		GameState.format_money(int(report.get("wages", 0))),
-		world.buildings.size(), GameState.format_money(GameState.money)])
+		world.buildings.size(), GameState.format_money(GameState.money), GameState.reputation])
 	if days >= target_days:
 		print("[balance] 结束")
 		get_tree().quit(0)

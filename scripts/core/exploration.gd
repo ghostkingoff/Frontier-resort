@@ -123,7 +123,7 @@ func _generate_world() -> void:
 	var rows := int(settings().get("world_rows", 7))
 	var want := _rng.randi_range(int(settings().get("world_cells_min", 15)), int(settings().get("world_cells_max", 21)))
 	want = mini(want, cols * rows)
-	start_tile = Vector2i(int(cols / 2), rows - 1)
+	start_tile = Vector2i(_half(cols), rows - 1)
 	var cells := {start_tile: true}
 	var frontier: Array = [start_tile]
 	while cells.size() < want and not frontier.is_empty():
@@ -220,15 +220,21 @@ func _local_map_for(tile: Vector2i, travel_dir: Vector2i) -> Dictionary:
 	return data
 
 
+func _half(value: int) -> int:
+	# 取一半（网格居中用）；这里的整数除法是有意的
+	@warning_ignore("integer_division")
+	return value / 2
+
+
 func _entry_cell(travel_dir: Vector2i, cols: int, rows: int) -> Vector2i:
 	# 往左走就从这个地形的右边进入，依此类推
 	if travel_dir.x < 0:
-		return Vector2i(cols - 1, int(rows / 2))
+		return Vector2i(cols - 1, _half(rows))
 	if travel_dir.x > 0:
-		return Vector2i(0, int(rows / 2))
+		return Vector2i(0, _half(rows))
 	if travel_dir.y > 0:
-		return Vector2i(int(cols / 2), 0)
-	return Vector2i(int(cols / 2), rows - 1)
+		return Vector2i(_half(cols), 0)
+	return Vector2i(_half(cols), rows - 1)
 
 
 func current_local_map() -> Dictionary:

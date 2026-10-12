@@ -8,8 +8,10 @@ signal building_placed(building)
 
 const CELL := 32
 const LIGHT_RECT := "res://art/generated/light_rect.png"
+const LIGHT_RADIAL := "res://art/generated/light_radial.png"   # 圆形光：中心亮、向外平方衰减（tools/build_light_texture.gd 生成）
 const RECT_FLAT_RATIO := 0.667   # 矩形光纹理里「平顶区」占全宽的比例（生成工具保证 1:0.5）
 const TILESET_PATH := "res://art/generated/ground_tileset.tres"
+const PLAYER_CHARACTER := preload("res://scripts/actors/player_character.gd")
 
 # 地面类型：荒地（不可通行）、草坪（可通行）、地砖（可通行）
 const GROUND_WILD := "grass"
@@ -45,6 +47,7 @@ var _path_cells_cache: Array = []       # 所有可通行的地砖格子，用�
 var litter_cells: Dictionary = {}       # 垃圾：cell -> Sprite2D
 var litter_root: Node2D
 var staff_root: Node2D                   # 保洁工人等在场地上走动的员工
+var player_avatar: Node2D = null         # 玩家角色（常驻招待厅；自我操纵模式里由玩家控制）
 
 
 func _ready() -> void:
@@ -55,7 +58,17 @@ func _ready() -> void:
 	_build_walls()
 	_scatter_decorations()
 	_spawn_starter_buildings()
+	_spawn_player_avatar()
 	set_process(true)      # 每帧推进店铺灯光
+
+
+func _spawn_player_avatar() -> void:
+	# 玩家角色：常驻在招待厅里的 NPC；进入自我操纵模式后由玩家控制
+	var avatar: Node2D = PLAYER_CHARACTER.new()
+	avatar.name = "PlayerAvatar"
+	add_child(avatar)
+	avatar.setup(self)
+	player_avatar = avatar
 
 
 func _process(_delta: float) -> void:
@@ -69,7 +82,7 @@ func _process(_delta: float) -> void:
 			b.update_lights(hour)
 
 
-func make_rect_light(inner_size: Vector2, spread: float, color: Color) -> PointLight2D:
+func make_rect_light(inner_size: Vector2, _spread: float, color: Color) -> PointLight2D:
 	# 通用矩形光源工厂：后续加路灯 / 移动光源也走这里，保证形状与渐变口径一致。
 	#   inner_size = 要「均匀照亮」的中心矩形（像素），例如建筑占地
 	#   spread     = 四周渐变带的最大厚度（像素），例如 1 格 = 32
@@ -107,6 +120,27 @@ func make_rect_light(inner_size: Vector2, spread: float, color: Color) -> PointL
 	var full := Vector2(inner_size.x / RECT_FLAT_RATIO, inner_size.y / RECT_FLAT_RATIO)
 	light.texture_scale = full.x / tex_w
 	light.scale = Vector2(1.0, full.y / full.x)
+	return light
+
+
+func make_circle_light(radius: float, color: Color) -> PointLight2D:
+	# 圆形光源：中心最亮、向外平方衰减到 0（路灯这种「一点发光」的物件用它；
+	# 矩形平顶光是给建筑内部均匀照明用的，不适合小物件）。
+	if not ResourceLoader.exists(LIGHT_RADIAL):
+		return null
+	var tex: Texture2D = load(LIGHT_RADIAL)
+	if tex == null:
+		return null
+	var light := PointLight2D.new()
+	light.texture = tex
+	light.color = color
+	light.energy = 0.0
+	light.blend_mode = Light2D.BLEND_MODE_ADD
+	light.z_index = -4000
+	light.range_z_min = -8192
+	light.range_z_max = 8192
+	# 纹理里光晕到 128px（256/2）处衰减为 0，把目标半径换算成缩放
+	light.texture_scale = radius / (float(tex.get_width()) * 0.5)
 	return light
 
 
@@ -479,15 +513,23 @@ func _spawn_starter_buildings() -> void:
 
 func _spawn_all_buildings() -> void:
 	# 完全测试模式：把建造菜单里能建的所有建筑都摆上去，并自动接好道路。
-	# 用「货架式」排布：从下往上一条条横带，建筑在横带里从左往右排（中间留 2 格缝），
-	# 每栋门口那一列铺一条竖路通到横带，横带之间再由右边一条竖干道串到村里的主街。
+	# 排布原则（10-12 调整）：
+	#   · 建筑**不压任何已有路面**（横向主街 / 中央大道 / 主路 / 小路都不碰），
+	#     所以中间主干道永远是通的、干干净净
+	#   · 建筑全部摆在主街上方的空地里，按「货架」分横带：矮的排下带、高的排上带
+	#   · 左右各先铺一条竖路，每条横带再铺一条横路把两条竖路连通——
+	#     最下面那条横带紧贴主街，正面就是店铺街；上两条横带左右都有出入口，不用绕远路
 	var ids := _full_test_building_ids()
-	var shelf_ys := [59, 52, 45, 38, 31, 24, 17, 10]   # 每条横带的基线（y 越大越靠下）
+	var shelf_ys := [38, 27, 16]        # 横带基线（都在主街 40 上方；间距 11 格，最高的 7 格楼也放得下）
 	var x0: int = build_area.position.x + 1             # 最外圈是围墙，从里面一格开始
 	var x1: int = build_area.end.x - 1
+	var conn_left: int = x0                             # 左侧竖路（贴围墙）
+	var conn_right: int = x1 - 2                        # 右侧竖路
+	# 两条竖路先铺好：保证横带两头都通，也让建筑自动避开它们（_shelf_spot_ok 不许压路面）
+	_pave_column(Vector2i(conn_left, build_area.position.y + 1), STREET_ROW + 1)
+	_pave_column(Vector2i(conn_right, build_area.position.y + 1), STREET_ROW + 1)
 	var shelf_index := 0
-	var cursor := x0
-	var max_x := x0
+	var cursor := conn_left + 2
 	var placed: Array = []
 	var skipped: Array = []
 
@@ -496,59 +538,55 @@ func _spawn_all_buildings() -> void:
 		var f: Array = data.get("footprint", [3, 3])
 		var w := int(f[0])
 		var h := int(f[1])
-		# 找到一条放得下这栋建筑（高度够 + 右边还有宽度）的横带
+		# 找到一条放得下这栋建筑的横带：往右挪到能放为止，挪到头就换上一条横带
+		var spot := Vector2i(-9999, -9999)
+		var base_used := 0
 		while shelf_index < shelf_ys.size():
 			var base: int = shelf_ys[shelf_index]
-			var too_tall: bool = (base - h + 1) < build_area.position.y + 1
-			var too_narrow: bool = (cursor + w) > x1
-			if too_tall or too_narrow:
-				shelf_index += 1
-				cursor = x0        # 换到上一条横带，从最左边重新排
-				continue
-			break
-		if shelf_index >= shelf_ys.size():
-			skipped.append(id)
-			continue
-		var base: int = shelf_ys[shelf_index]
-		var cell := Vector2i(cursor, base - h + 1)
-		# 万一这一格真被占了（围墙拐角之类），往右挪，挪不下就换横带
-		var guard := 0
-		while can_place(cell, Vector2i(w, h)) == false and guard < 40:
+			var cell := Vector2i(cursor, base - h + 1)
+			if cursor + w <= conn_right and cell.y >= build_area.position.y + 1 \
+					and _shelf_spot_ok(cell, Vector2i(w, h)):
+				spot = cell
+				base_used = base
+				break
 			cursor += 1
-			guard += 1
-			if cursor + w > x1:
+			if cursor + w > conn_right:
 				shelf_index += 1
-				cursor = x0
-				if shelf_index >= shelf_ys.size():
-					break
-				base = shelf_ys[shelf_index]
-			cell = Vector2i(cursor, base - h + 1)
-		if shelf_index >= shelf_ys.size():
+				cursor = conn_left + 2        # 换到上一条横带，从最左边重新排
+		if spot.x == -9999:
 			skipped.append(id)
 			continue
-		if place_building(id, cell) == null:
+		if place_building(id, spot) == null:
 			skipped.append(id)
 			cursor += w + 2
 			continue
 		var b: Building = buildings[buildings.size() - 1]
-		# 门口那一列铺一条竖路到横带，再让横带本身成为一条通路
-		_pave_column(b.door_cell(), base + 1)
-		_pave_row(base + 1, cursor, cursor + w - 1)
+		# 门口就在横带路上（建筑底边下一格）：把这一格和整段横带路铺好
+		_pave_cell(b.door_cell())
+		_pave_row(base_used + 1, cursor, cursor + w - 1)
 		placed.append(b)
-		max_x = maxi(max_x, cursor + w - 1)
 		cursor += w + 2
 
-	# 横带之间用一条竖干道串起来，再接到村里的主街上
-	var trunk_x: int = mini(max_x + 3, x1)
-	_pave_column(Vector2i(trunk_x, build_area.position.y + 1), road_row)
+	# 每条横带铺满一条横路：左接左竖路、右接右竖路，中间穿过所有门口
 	for base in shelf_ys:
-		_pave_row(base + 1, x0, trunk_x)
+		_pave_row(base + 1, conn_left, conn_right)
 	for b in placed:
 		if b.needs_staff():
 			b.fill_staff()
-	print("[World] 完全测试模式：放置建筑 %d 栋（干道第 %d 列）%s" % [
-		placed.size(), trunk_x,
+	print("[World] 完全测试模式：放置建筑 %d 栋（竖路第 %d / %d 列）%s" % [
+		placed.size(), conn_left, conn_right,
 		"" if skipped.is_empty() else "，排不下：%s" % ", ".join(skipped)])
+
+
+func _shelf_spot_ok(cell: Vector2i, footprint: Vector2i) -> bool:
+	# 货架摆放的额外限制：不能压到任何已有路面（主干道 / 横带路 / 起始小路），保证路网通畅
+	if not can_place(cell, footprint):
+		return false
+	for y in range(cell.y, cell.y + footprint.y):
+		for x in range(cell.x, cell.x + footprint.x):
+			if ground_type(Vector2i(x, y)) == GROUND_PATH:
+				return false
+	return true
 
 
 func _full_test_building_ids() -> Array:
@@ -663,15 +701,20 @@ func _footprint_of(data: Dictionary) -> Vector2i:
 	return Vector2i(int(f[0]), int(f[1]))
 
 
-func _mark_occupied(cell: Vector2i, footprint: Vector2i, owner: Node) -> void:
+func _mark_occupied(cell: Vector2i, footprint: Vector2i, building_owner: Node) -> void:
 	for y in range(cell.y, cell.y + footprint.y):
 		for x in range(cell.x, cell.x + footprint.x):
 			var c := Vector2i(x, y)
-			occupancy[c] = owner
+			occupancy[c] = building_owner
 			_mark_astar_cell(c)      # 占格后这些格子不可通行
 
 
 func remove_building(b: Node2D) -> void:
+	# 玩家角色如果在被拆的这栋楼里，先把它挪到门口（否则会跟着楼一起被释放）
+	var as_building := b as Building
+	if as_building != null and player_avatar != null and is_instance_valid(player_avatar) \
+			and player_avatar.get_parent() == as_building.interior:
+		player_avatar.detach_to(cell_center(as_building.door_cell()))
 	var footprint: Vector2i = b.footprint
 	var freed: Array = []
 	for y in range(b.cell.y, b.cell.y + footprint.y):
@@ -704,8 +747,8 @@ func demolish(b: Building) -> Dictionary:
 
 
 func building_at(cell: Vector2i) -> Building:
-	var owner: Variant = occupancy.get(cell, null)
-	return owner as Building
+	var occupant: Variant = occupancy.get(cell, null)
+	return occupant as Building
 
 
 # ---------- 每日结算辅助 ----------
@@ -833,6 +876,16 @@ func random_target_building(prefers: Array, hour: float = -1.0, exclude: Buildin
 		return null
 	if hour < 0.0:
 		hour = GameClock.hour_of_day()
+	# 先找「还有使用位」的店；一家都没有，再退而求其次找「还有预定位（排队位）」的店
+	var pool := _target_pool(prefers, hour, exclude, true)
+	if pool.is_empty():
+		pool = _target_pool(prefers, hour, exclude, false)
+	if pool.is_empty():
+		return null
+	return pool[randi() % pool.size()]
+
+
+func _target_pool(prefers: Array, hour: float, exclude: Building, use_slot_only: bool) -> Array:
 	var pool: Array = []
 	for b in buildings:
 		# 度假屋只用来入住、招待厅只用来办手续，都不算消费场所
@@ -840,7 +893,10 @@ func random_target_building(prefers: Array, hour: float = -1.0, exclude: Buildin
 			continue
 		if b == exclude:
 			continue    # 刚消费过的店先不去，避免来回横跳
-		if not b.has_room():
+		if use_slot_only:
+			if not b.has_use_slot():
+				continue
+		elif not b.has_queue_slot():
 			continue
 		if not b.is_open_at(hour):
 			continue    # 还没到营业时间的店不接客
@@ -851,9 +907,7 @@ func random_target_building(prefers: Array, hour: float = -1.0, exclude: Buildin
 			weight = 6
 		for _i in range(weight):
 			pool.append(b)
-	if pool.is_empty():
-		return null
-	return pool[randi() % pool.size()]
+	return pool
 
 
 func walkable_path_cells() -> Array:
@@ -884,20 +938,20 @@ func spawn_litter(cell: Vector2i) -> void:
 	litter_cells[cell] = s
 
 
-func litter_near(position: Vector2, radius: float) -> int:
+func litter_near(at: Vector2, radius: float) -> int:
 	var count := 0
 	for cell in litter_cells.keys():
-		if position.distance_to(cell_center(cell)) <= radius:
+		if at.distance_to(cell_center(cell)) <= radius:
 			count += 1
 	return count
 
 
-func clean_litter_around(position: Vector2, radius: float, max_count: int) -> int:
+func clean_litter_around(at: Vector2, radius: float, max_count: int) -> int:
 	var removed := 0
 	for cell in litter_cells.keys():
 		if removed >= max_count:
 			break
-		if position.distance_to(cell_center(cell)) > radius:
+		if at.distance_to(cell_center(cell)) > radius:
 			continue
 		_erase_litter(cell)
 		removed += 1
@@ -1017,3 +1071,5 @@ func load_data(d: Dictionary) -> void:
 		if built:
 			built.apply_save(entry)
 	set_roof_mode(bool(d.get("show_roofs", true)))
+	if player_avatar != null and is_instance_valid(player_avatar):
+		player_avatar.reset_to_reception()   # 读档后角色回招待厅，新的一天从厅里开始

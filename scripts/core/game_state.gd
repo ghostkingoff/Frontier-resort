@@ -6,15 +6,21 @@ signal day_changed(day: int)
 signal reputation_changed(value: float)
 signal fame_changed(value: float)
 signal notice(message: String)
+signal celebrity_notice(message: String)   # 明星 / 富商到来：更醒目的提示（HUD 里显示 3 秒）
 signal inventory_changed()
 
 const START_MONEY := 35000     # 开局资金：够盖一栋小型建筑 + 铺一些路
 const FULL_TEST_FAME := 1000.0      # 完全测试模式：知名度一次给到 1000（最高门槛是 600）
+const FULL_TEST_MONEY := 99999999   # 完全测试模式：资金直接拉满，随便盖
+const FULL_TEST_REPUTATION := 200.0 # 完全测试模式：口碑拉满（上限 200）
 const FULL_TEST_ITEM_COUNT := 1000  # 完全测试模式：每种物资各 1000 件
+const REPUTATION_START := 50.0      # 口碑：新游戏初始 50
+const REPUTATION_MAX := 200.0       # 口碑上限（下限固定为 0）
 
 var money: int = START_MONEY
 var day: int = 1
-var reputation: float = 0.0
+var reputation: float = REPUTATION_START
+var text_input_active := false      # 指令台等文本输入占用键盘：相机 / 玩家移动会暂停读 WASD
 var fame: float = 100.0          # 知名度：初始 100，每天 -1；游客 +1，明星 +10~20
 var daily_star_fame: float = 0.0 # 当天明星带来的知名度（结算时统一入账）
 var daily_revenue: int = 0
@@ -25,7 +31,6 @@ var inventory: Dictionary = {}          # 物资 id -> 数量
 var daily_wages: int = 0                # 当日工资支出
 var daily_item_income: int = 0          # 当日展厅成交收入
 var placeholder_night_yield := false    # 探索系统开放前的临时夜间产出（已由探索系统取代，测试时可打开）
-var smoke_mode := false                 # 自动化测试模式：跳过开始菜单
 var verbose_log := false                # 详细日志（--verbose）：打印每次花钱 / 存盘等高频信息
 var playtime := 0.0                     # 累计游玩时长（秒）
 
@@ -35,7 +40,7 @@ var _last_day_report: Dictionary = {}
 func reset() -> void:
 	money = START_MONEY
 	day = 1
-	reputation = 0.0
+	reputation = REPUTATION_START
 	fame = 100.0
 	daily_star_fame = 0.0
 	daily_revenue = 0
@@ -57,11 +62,16 @@ func apply_new_game_mode(mode: String) -> void:
 	# 开局模式在 reset() 之后调用：只改「新游戏」的起始条件，读档一律以存档内容为准
 	if mode == SaveManager.MODE_FULL_TEST:
 		fame = FULL_TEST_FAME
+		money = FULL_TEST_MONEY
+		reputation = FULL_TEST_REPUTATION
+		money_changed.emit(money)
+		reputation_changed.emit(reputation)
 		fame_changed.emit(fame)
 		for id in DataRegistry.item_order:
 			add_item(id, FULL_TEST_ITEM_COUNT)
-		print("[GameState] 完全测试模式：知名度 %d ｜ 物资 %d 种各 %d 件" % [
-			int(fame), DataRegistry.item_order.size(), FULL_TEST_ITEM_COUNT])
+		print("[GameState] 完全测试模式：资金 %s ｜ 口碑 %.0f ｜ 知名度 %d ｜ 物资 %d 种各 %d 件" % [
+			format_money(money), reputation, int(fame),
+			DataRegistry.item_order.size(), FULL_TEST_ITEM_COUNT])
 
 
 func can_afford(amount: int) -> bool:
@@ -91,7 +101,7 @@ func earn(amount: int, _reason: String = "") -> void:
 
 
 func add_reputation(value: float) -> void:
-	reputation = max(0.0, reputation + value)
+	reputation = clampf(reputation + value, 0.0, REPUTATION_MAX)
 	reputation_changed.emit(reputation)
 	fame_changed.emit(fame)
 
@@ -257,7 +267,7 @@ func to_dict() -> Dictionary:
 func apply_dict(d: Dictionary) -> void:
 	money = int(d.get("money", START_MONEY))
 	day = int(d.get("day", 1))
-	reputation = float(d.get("reputation", 0.0))
+	reputation = clampf(float(d.get("reputation", REPUTATION_START)), 0.0, REPUTATION_MAX)
 	fame = float(d.get("fame", 100.0))
 	total_revenue = int(d.get("total_revenue", 0))
 	total_visitors = int(d.get("total_visitors", 0))

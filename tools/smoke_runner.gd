@@ -19,18 +19,49 @@ func _ready() -> void:
 	world = get_tree().get_first_node_in_group("world")
 	var spawner := get_tree().get_first_node_in_group("world").get_parent().get_node_or_null("CustomerSpawner")
 	if spawner:
-		spawner.base_interval = 2.5
-		spawner.min_interval = 1.0
+		spawner.test_interval = 2.5      # 测试档：无视客流量，按这个间隔快速来人
 	GameClock.morning_started.connect(_on_morning_started)
 	print("[smoke] 测试开始：初始建筑 %d 座" % world.buildings.size())
 	GameClock.cycle_length_seconds = 80.0    # 24 小时 ≈ 20 秒（4 倍速下约 5 秒到 24 点）
 	GameClock.set_speed(GameClock.Speed.X4)
 	# 让每位客人都会生病，方便验证医院流程（正式数值在 data/illnesses.json）
 	DataRegistry.illness_config["base_chance"] = 1.0
+	_audit_full_test_layout()
 	# 测试资金：直接加钱，不计入当日营业额
 	GameState.money += 120000
 	GameState.money_changed.emit(GameState.money)
 	_run_build_checks()
+
+
+func _audit_full_test_layout() -> void:
+	# 完全测试模式的开局布局检查（放在测试自己开始盖楼之前，量到的才是布局本身）：
+	# 资金 / 口碑拉满；建筑不压任何路面；每栋都能从入口走到
+	if SaveManager.new_game_mode != SaveManager.MODE_FULL_TEST:
+		return
+	var on_road: Array = []
+	var unreachable: Array = []
+	for b in world.buildings:
+		var covers := false
+		for y in range(b.cell.y, b.cell.y + b.footprint.y):
+			for x in range(b.cell.x, b.cell.x + b.footprint.x):
+				if world.ground_type(Vector2i(x, y)) == World.GROUND_PATH:
+					covers = true
+					break
+			if covers:
+				break
+		if covers:
+			on_road.append("%s@%s" % [str(b.id), str(b.cell)])
+		if not world.building_reachable(b):
+			unreachable.append("%s@%s" % [str(b.id), str(b.cell)])
+	var money_ok: bool = GameState.money == GameState.FULL_TEST_MONEY
+	var rep_ok: bool = is_equal_approx(GameState.reputation, GameState.FULL_TEST_REPUTATION)
+	checks.append("完全测试模式布局：资金 %s（应 %s，%s）｜ 口碑 %.0f（应 %.0f，%s）｜ 建筑 %d 栋 ｜ 压住路面 %d 栋%s ｜ 接不上主路 %d 栋%s" % [
+		GameState.format_money(GameState.money), GameState.format_money(GameState.FULL_TEST_MONEY), str(money_ok),
+		GameState.reputation, GameState.FULL_TEST_REPUTATION, str(rep_ok),
+		world.buildings.size(), on_road.size(),
+		"" if on_road.is_empty() else "（%s）" % ", ".join(on_road),
+		unreachable.size(),
+		"" if unreachable.is_empty() else "（%s）" % ", ".join(unreachable)])
 
 
 func _run_build_mode_checks() -> void:
@@ -45,7 +76,7 @@ func _run_build_mode_checks() -> void:
 		match mode:
 			"demolish": bs.select_demolish()
 			"paint": bs.select_ground(World.GROUND_PATH)
-			_: bs.select("shop_general")
+			_: bs.select("shop_small")
 		var entered: bool = bs.is_demolishing() or bs.is_painting() or str(bs.selected_id) != ""
 		var right_click := InputEventMouseButton.new()
 		right_click.button_index = MOUSE_BUTTON_RIGHT
@@ -169,8 +200,8 @@ func _run_build_checks() -> void:
 	_run_build_mode_checks()
 	# 1. 建造
 	var money_before := GameState.money
-	var cost := int(DataRegistry.get_building("shop_general").get("cost", 0))
-	var shop: Building = world.place_building("shop_general", Vector2i(38, 6))
+	var cost := int(DataRegistry.get_building("shop_small").get("cost", 0))
+	var shop: Building = world.place_building("shop_small", Vector2i(38, 6))
 	if shop and GameState.spend(cost, "建造测试"):
 		checks.append("建造：%d 座建筑，资金 %d → %d" % [world.buildings.size(), money_before, GameState.money])
 	else:
@@ -181,14 +212,18 @@ func _run_build_checks() -> void:
 	checks.append("屋顶：关闭后 exterior=%s interior=%s" % [str(shop.exterior.visible), str(shop.interior.visible)])
 	world.set_roof_mode(true)
 
-	# 3. 员工
-	var lodge: Building = null
+	# 3. 员工：挑一栋有员工编制的建筑招人（度假屋/招待厅本来就不雇人）
+	var staffed: Building = null
 	for b in world.buildings:
-		if b.is_lodging():
-			lodge = b
+		if b.staff_slots() > 0:
+			staffed = b
 			break
-	lodge.hire_staff()
-	checks.append("员工：%s 在职 %d 人，日工资 %d" % [lodge.display_name(), lodge.staff.size(), lodge.daily_wage()])
+	if staffed:
+		staffed.hire_staff()
+		checks.append("员工：%s 在职 %d 人，日工资 %d" % [
+			staffed.display_name(), staffed.staff.size(), staffed.daily_wage()])
+	else:
+		checks.append("员工：没有需要员工的建筑（跳过）")
 
 	# 4. 医院 + 建筑升级（升级需要探索物资）
 	var clinic: Building = world.place_building("clinic_small", Vector2i(20, 6))
@@ -217,10 +252,22 @@ func _run_build_checks() -> void:
 	checks.append("倾销：粗矿石 ×4 收入 %d" % (unit * 4))
 
 	# 7. 点击建筑选中（面板打开依赖这个判定）
-	var picked: Building = world.building_at(Vector2i(59, 45))
-	var empty: Building = world.building_at(Vector2i(8, 60))
-	checks.append("点击选中：建筑 %s ｜ 空地 %s" % [
-		str(picked != null), str(empty == null)])
+	# 坐标不再写死：取第一栋真实建筑的落位格；空地则在别处找一格。
+	var sample: Building = null
+	for b in world.buildings:
+		if is_instance_valid(b):
+			sample = b
+			break
+	var picked: Building = null
+	var empty_cell := Vector2i(2, 2)
+	if sample:
+		picked = world.building_at(sample.cell)
+		while world.building_at(empty_cell) != null and empty_cell.x < world.grid_size.x - 2:
+			empty_cell.x += 5
+	var empty: Building = world.building_at(empty_cell)
+	checks.append("点击选中：建筑 %s（%s）｜ 空地 %s（%s）" % [
+		str(picked != null), sample.display_name() if sample else "无样本",
+		str(empty == null), str(empty_cell)])
 
 
 func _process(delta: float) -> void:
@@ -254,8 +301,21 @@ func _finish() -> void:
 		checks.append("医院：治愈 %d 人 ｜ 治疗中 %d 人 ｜ 未治离开 %d 人" % [
 			clinic.cured_count, clinic.treating.size(), failed_total])
 	checks.append("候诊与治疗中合计 %d 人" % waiting_total)
-	var lodge: Building = world.buildings[0]
-	checks.append("员工状态：%s 平均 %.0f" % [lodge.display_name(), lodge.staff_energy()])
+	var staffed_probe: Building = null
+	for b in world.buildings:
+		if not b.staff.is_empty():
+			staffed_probe = b
+			break
+	if staffed_probe == null:
+		for b in world.buildings:
+			if b.staff_slots() > 0:
+				staffed_probe = b
+				break
+	if staffed_probe:
+		checks.append("员工状态：%s 在职 %d 人 ｜ 平均体力 %.0f" % [
+			staffed_probe.display_name(), staffed_probe.staff.size(), staffed_probe.staff_energy()])
+	else:
+		checks.append("员工状态：本轮没有员工编制的建筑（跳过）")
 	checks.append("仓库：%d 种物资，估值 %d" % [GameState.inventory.size(), GameState.inventory_value()])
 	checks.append("同屏顾客峰值：%d" % peak_customers)
 
@@ -350,6 +410,24 @@ func _run_day_night_checks() -> void:
 		checks.append("医院治疗流程：治愈数 %d → %d" % [cured_before, clinic_probe.cured_count])
 		if is_instance_valid(sick):
 			sick.queue_free()
+		# 治疗中的病人被强行带离/释放：诊所不能留悬空引用
+		# （旧 bug：诊所 _process 继续访问已释放的病人 → “previously freed”）
+		var sick2 := Customer.new()
+		world.customers_root.add_child(sick2)
+		sick2.setup(DataRegistry.customer_types[0], world, world.cell_center(clinic_probe.door_cell()))
+		var pool2 := DataRegistry.illness_pool(1)
+		sick2.illness = pool2[0] if not pool2.is_empty() else {"name": "测试", "level": 1, "treat_hours": 1.0, "fee": 400}
+		clinic_probe.accept_patient(sick2)
+		sick2._inside_building = clinic_probe
+		sick2._force_exit()             # 应把病人从诊所的治疗列表里摘掉
+		sick2.free()                    # 模拟该客人随后被直接释放
+		var dangling := 0
+		for p in clinic_probe.treating:
+			if p == null or not is_instance_valid(p):
+				dangling += 1
+		clinic_probe._process(0.1)      # 旧代码在这里会访问已释放对象
+		checks.append("诊所悬空引用：强行带离并释放后 治疗列表 %d 人（原来悬空 %d，应 0）" % [
+			clinic_probe.treating.size(), dangling])
 
 	# 3. 夜间自动收益（选休息 / 探索时结算）
 	if bar:
@@ -408,6 +486,91 @@ func _run_day_night_checks() -> void:
 		var small_hours: Color = daylight.color
 		checks.append("光照：06:30 #%s ｜ 15:00 #%s ｜ 24:00 #%s ｜ 03:20 #%s" % [
 			dawn.to_html(false), noon.to_html(false), midnight.to_html(false), small_hours.to_html(false)])
+
+	# 7. 路灯：1×1 / 1000g / 0 知名度；灯光窗口写在数据里（20:00 亮、04:00 熄）
+	var lamp_data := DataRegistry.get_building("street_lamp")
+	var lamp: Building = null
+	for y in range(20, 40):
+		for x in range(30, 60):
+			var probe_cell := Vector2i(x, y)
+			if world.can_place(probe_cell, Vector2i(1, 1)) and not world.is_walkable(probe_cell):
+				lamp = world.place_building("street_lamp", probe_cell)
+				if lamp:
+					break
+		if lamp:
+			break
+	if lamp and lamp.night_light:
+		var lamp_energy: Array = []
+		for probe_hour in [19.0, 21.0, 2.0, 5.0]:
+			lamp.update_lights(probe_hour)
+			lamp_energy.append("%.2f" % lamp.night_light.energy)
+		var fp: Array = lamp_data.get("footprint", [0, 0])
+		checks.append("路灯：%d×%d ｜ %d g ｜ 解锁 %d ｜ 灯光 19 点 %s ｜ 21 点 %s ｜ 02 点 %s ｜ 05 点 %s（应为 0 / 亮 / 亮 / 0）" % [
+			int(fp[0]), int(fp[1]), int(lamp_data.get("cost", 0)), int(lamp_data.get("unlock_fame", 0)),
+			lamp_energy[0], lamp_energy[1], lamp_energy[2], lamp_energy[3]])
+		# 旋转：每转一档，灯光绕建筑中心偏移到对应方向（偏移量 = 方向 × 32 像素）
+		var dirs: Array = []
+		var moves_ok := true
+		for _i in range(4):
+			var before_dir: Vector2i = lamp.light_offset_cells()
+			var light_pos_before: Vector2 = lamp.night_light.global_position
+			lamp.rotate_clockwise()
+			dirs.append(str(lamp.light_offset_cells()))
+			var want: Vector2 = Vector2(lamp.light_offset_cells() - before_dir) * World.CELL
+			if not (lamp.night_light.global_position - light_pos_before).is_equal_approx(want):
+				moves_ok = false
+		checks.append("路灯旋转：圆形光 %s ｜ 每档灯光移动 = 方向 × 32px %s ｜ 四向 %s" % [
+			str(str(lamp.night_light.texture.resource_path).ends_with("light_radial.png")),
+			str(moves_ok), " → ".join(dirs)])
+		# 四方向素材：转一档换一帧（不做节点旋转），帧顺序来自数据
+		lamp.rot_step = 0
+		lamp._apply_rotation()
+		var got_xs: Array = []
+		for _i in range(4):
+			got_xs.append(int(lamp.exterior.region_rect.position.x))
+			lamp.rotate_clockwise()
+		var sprite_cfg: Dictionary = lamp_data.get("sprite", {})
+		var want_xs: Array = []
+		for r in sprite_cfg.get("dir_rects", []):
+			want_xs.append(int(r[0]))
+		checks.append("路灯四向素材：帧序 %s（数据 %s）｜ 贴图节点未旋转 %s" % [
+			str(got_xs), str(want_xs), str(is_zero_approx(lamp.exterior.rotation))])
+		# 朝向要能进存档（停在「左」，避免和默认朝向 0 撞巧）
+		lamp.rotate_clockwise()
+		var snapshot: Dictionary = lamp.save_data()
+		var saved_rot := int(snapshot.get("rot", -1))
+		lamp.rot_step = 0
+		lamp.apply_save(snapshot)
+		checks.append("路灯朝向存档：写入 %d ｜ 读档恢复 %d ｜ 朝向文本 %s" % [
+			saved_rot, lamp.rot_step, lamp.rotation_text()])
+		# 拆除 / 清场时灯光要一起回收（灯挂在 World 根下，不在建筑子节点里）
+		var probe_lamp := Building.new()
+		world.buildings_root.add_child(probe_lamp)
+		probe_lamp.setup(DataRegistry.get_building("street_lamp"), Vector2i(2, 2), world)
+		var probe_light: PointLight2D = probe_lamp.night_light
+		probe_lamp.free()
+		checks.append("灯光回收：建筑释放后灯已回收 %s" % str(
+			not is_instance_valid(probe_light) or probe_light.is_queued_for_deletion()))
+	else:
+		checks.append("路灯：没找到可放置的空地，灯光检查跳过")
+
+	# 8. 熄灯错峰：常规店打烊后 0~0.5 小时内陆续关灯（24:00 打烊 → 24:00~24:30 之间各自熄灭）
+	var off_shop: Building = null
+	for b in world.buildings:
+		if b.night_light != null and b.close_hour() >= 12.0 and b.close_hour() > b.open_hour():
+			off_shop = b
+			break
+	if off_shop:
+		var spread: float = off_shop.light_off_hour - off_shop.close_hour()
+		off_shop.update_lights(23.9)
+		var lit_before: float = off_shop.night_light.energy
+		off_shop.update_lights(off_shop.light_off_hour + 0.2)
+		var dark_after: float = off_shop.night_light.energy
+		checks.append("熄灯错峰：%s 打烊 %d:00 ｜ 熄灯时刻 %.2f（比打烊晚 %.2f 小时 ∈[0,0.5] = %s）｜ 打烊前亮 %.2f → 熄灯后 %.2f（应为 0）" % [
+			off_shop.display_name(), int(off_shop.close_hour()), off_shop.light_off_hour, spread,
+			str(spread >= 0.0 and spread <= Building.LIGHT_OFF_SPREAD_HOURS + 0.001), lit_before, dark_after])
+	else:
+		checks.append("熄灯错峰：没找到常规店铺，跳过")
 	GameClock.start_new_day()
 
 
@@ -459,7 +622,7 @@ func _run_ground_checks() -> void:
 	_run_astar_sync_check()
 
 	# 3. 新建建筑不再自动铺路：先断开，再手动铺路接通
-	var shop: Building = world.place_building("shop_general", Vector2i(50, 24))
+	var shop: Building = world.place_building("shop_small", Vector2i(50, 24))
 	if shop:
 		var door: Vector2i = shop.door_cell()
 		checks.append("新建店铺（未铺路）：门口 %s ｜ 地面 %s ｜ 客人能到 %s" % [
@@ -844,13 +1007,29 @@ func _run_guest_checks() -> void:
 		guest.state, guest.purpose, str(guest.lodge != null), guard, str(not guest.illness.is_empty())])
 
 	# 客人任何时刻都不该站在不可通行的格子上（除了在自己房间里休息）
+	# 夜间休息：午夜后回房睡觉，应该在房里一觉到天亮，而不是在门口反复进出。
+	# （旧 bug：跨过 24 点时已经定好醒来时间，进房时计时器没被重置成「睡到天亮」，
+	#   于是进房即结束、再进再结束，看起来就是住客在度假屋里乱闪。）
 	var off_path := 0
+	var night_type: Dictionary = {}
+	for t in DataRegistry.customer_types:
+		if int(t.get("max_nights", 0)) > 0:
+			night_type = t
+			break
 	var night_probe := Customer.new()
 	world.customers_root.add_child(night_probe)
-	night_probe.setup(DataRegistry.customer_types[1], world, world.random_entrance())
-	GameClock.progress = 0.85      # 夜里，看会不会整晚在度假屋门口横跳
+	night_probe.setup(night_type, world, world.random_entrance())
+	var probe_room: Building = world.lodge_with_free_room()
+	if probe_room:
+		night_probe.lodge = probe_room
+		probe_room.add_guest(night_probe)
 	GameClock.paused = false
 	GameClock.phase = GameClock.Phase.RUNNING
+	GameClock.progress = 0.7       # 先停在夜里之前
+	night_probe._process(0.2)
+	GameClock.progress = 0.85      # 跨过 24 点：系统给今晚定下醒来时间
+	night_probe._process(0.2)
+	night_probe.action_left = 0.0  # 模拟「午夜后又逛了一处、计时器已经用完」再回房
 	var night_entries := 0
 	var was_resting := false
 	for _i in range(4000):
@@ -862,11 +1041,8 @@ func _run_guest_checks() -> void:
 		var cell: Vector2i = world.world_to_cell(night_probe.global_position)
 		if night_probe.state == Customer.State.TO_TARGET and not world.is_walkable(cell):
 			off_path += 1
-		if GameClock.current_hour() >= 24.0:
-			pass
-		else:
-			break
-	checks.append("夜间休息：一晚进房 %d 次（应为 1 次左右）｜ 走路时站在不可通行格 %d 次" % [night_entries, off_path])
+	checks.append("夜间休息：房位 %s ｜ 一晚进房 %d 次（应为 1 次左右）｜ 走路时站在不可通行格 %d 次" % [
+		str(probe_room != null), night_entries, off_path])
 	if is_instance_valid(night_probe):
 		night_probe.queue_free()
 	if lodge:
@@ -878,7 +1054,7 @@ func _run_guest_checks() -> void:
 
 func _run_demolish_checks() -> void:
 	var before_count: int = world.buildings.size()
-	var shop: Building = _place_building_near("shop_general", Vector2i(46, 20))
+	var shop: Building = _place_building_near("shop_small", Vector2i(46, 20))
 	if shop == null:
 		checks.append("拆除：建造测试店铺失败")
 		return
@@ -911,7 +1087,7 @@ func _run_demolish_checks() -> void:
 	guest.setup(DataRegistry.customer_types[0], world, world.random_entrance())
 	lodge.add_visitor(guest)
 	var ok := true
-	var probe: Building = _place_building_near("shop_general", Vector2i(46, 24))
+	var probe: Building = _place_building_near("shop_small", Vector2i(46, 24))
 	if probe:
 		var inside := Customer.new()
 		world.customers_root.add_child(inside)

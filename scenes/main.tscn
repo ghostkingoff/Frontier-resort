@@ -11,6 +11,8 @@
 [ext_resource type="Script" uid="uid://bouml6rpjij1a" path="res://scripts/ui/exploration_panel.gd" id="9_expanel"]
 [ext_resource type="Script" uid="uid://btwl1qsdkmyjo" path="res://scripts/ui/stats_panel.gd" id="10_spanel"]
 [ext_resource type="Script" uid="uid://cemhup0qby64e" path="res://scripts/world/daylight.gd" id="11_daylight"]
+[ext_resource type="Script" uid="uid://5xqa2c18741j" path="res://scripts/ui/visitor_panel.gd" id="12_vpanel"]
+[ext_resource type="Script" uid="uid://b57biycweditu" path="res://scripts/ui/console_panel.gd" id="13_console"]
 
 [node name="Main" type="Node2D" unique_id=1523221713]
 script = ExtResource("1_main")
@@ -44,3 +46,9 @@ script = ExtResource("9_expanel")
 
 [node name="StatsPanel" type="CanvasLayer" parent="." unique_id=127989295]
 script = ExtResource("10_spanel")
+
+[node name="VisitorPanel" type="CanvasLayer" parent="." unique_id=1194275863]
+script = ExtResource("12_vpanel")
+
+[node name="ConsolePanel" type="CanvasLayer" parent="." unique_id=1738490526]
+script = ExtResource("13_console")

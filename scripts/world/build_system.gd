@@ -151,7 +151,7 @@ func _process(_delta: float) -> void:
 		if valid and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 			_paint_cell(_cell)
 		return
-	_cell = hover - Vector2i(_footprint.x / 2, _footprint.y / 2)
+	_cell = hover - _footprint / 2
 	_ghost.position = world.cell_to_world(_cell)
 	valid = world.can_place(_cell, _footprint) and GameState.can_afford(_cost())
 	_ghost.modulate = Color(0.55, 1.0, 0.55, 0.7) if valid else Color(1.0, 0.45, 0.45, 0.7)
@@ -210,7 +210,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		# 触摸时以触摸点为准
 		var canvas := get_viewport().get_canvas_transform()
 		var world_pos: Vector2 = canvas.affine_inverse() * event.position
-		_cell = world.world_to_cell(world_pos) - Vector2i(_footprint.x / 2, _footprint.y / 2)
+		_cell = world.world_to_cell(world_pos) - _footprint / 2
 		valid = world.can_place(_cell, _footprint) and GameState.can_afford(_cost())
 		pressed = true
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:

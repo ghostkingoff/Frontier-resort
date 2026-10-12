@@ -26,8 +26,10 @@ func _ready() -> void:
 	await get_tree().process_frame
 	var camera: Camera2D = main.get_node("Camera")
 	if view_mode == "shelves":
-		camera.zoom = Vector2(0.75, 0.75)
-		camera.position = main.get_node("World").cell_center(Vector2i(52, 54))
+		# 俯瞰完全测试模式的三条横街（相机别再自己把缩放插值回去）
+		camera.set_process(false)
+		camera.zoom = Vector2(0.55, 0.55)
+		camera.position = main.get_node("World").cell_center(Vector2i(64, 26))
 	else:
 		camera.zoom = Vector2(1.3, 1.3)
 		camera.position = main.get_node("World").cell_center(Vector2i(58, 39))
@@ -73,7 +75,7 @@ func _setup_janitor_scene() -> void:
 			world.demolish(b)
 	if cleaner == null:
 		return
-	cleaner.hire_staff()
+	cleaner.fill_staff()          # 白班/夜班各 1 位：不论拍摄时几点，场上都有一位在岗
 	# 工人出现后再在附近地砖上撒垃圾
 	await get_tree().process_frame
 	var janitor: Node2D = null
@@ -272,7 +274,74 @@ func _process(_delta: float) -> void:
 		cam3.position = w3.cell_center(Vector2i(58, 39))
 	if frames == 1230:
 		_capture("shot_20_night_interior.png")
+	if frames == 1255:
+		# 临时加一位明星、一位富商，让游客面板的「明星 / 富商」栏有内容可拍
+		var w5: Node2D = main.get_node("World")
+		var star_entry := {}
+		var tycoon_entry := {}
+		for t in DataRegistry.customer_types:
+			var ids_t: Array = t.get("identities", [])
+			if ids_t.has("star") and not ids_t.has("tycoon") and star_entry.is_empty():
+				star_entry = t
+			if ids_t.has("tycoon") and not ids_t.has("star") and tycoon_entry.is_empty():
+				tycoon_entry = t
+		for entry in [star_entry, tycoon_entry]:
+			if entry.is_empty():
+				continue
+			var guest := Customer.new()
+			w5.customers_root.add_child(guest)
+			guest.setup(entry, w5, w5.random_entrance(), str(entry["names"][0]))
 	if frames == 1280:
+		# 游客状态面板：点名字 → 相机对焦 + 橙色中括号高亮
+		var vpanel := main.get_node_or_null("VisitorPanel")
+		if vpanel:
+			vpanel.set_tab(0)
+			vpanel.toggle()
+			var w4: Node2D = main.get_node("World")
+			var picked_customer: Customer = null
+			for c in w4.customers_root.get_children():
+				if c is Customer:
+					picked_customer = c
+					break
+			if picked_customer:
+				vpanel.focus_customer(picked_customer)
+	if frames == 1330:
+		_capture("shot_21_visitor_panel.png")
+	if frames == 1350:
+		var vpanel2 := main.get_node_or_null("VisitorPanel")
+		if vpanel2:
+			vpanel2.set_tab(1)
+	if frames == 1390:
+		_capture("shot_22_visitor_panel_special.png")
+	if frames == 1400:
+		# 明星 / 富商到来提示（金色、3 秒）的样子
+		GameState.celebrity_notice.emit("明星 Sora 来到了度假村！")
+	if frames == 1440:
+		_capture("shot_23_celebrity_notice.png")
+	if frames == 1470:
+		# 指令台：/who <名字> 打一份游客完整快照
+		var cp := main.get_node_or_null("ConsolePanel")
+		if cp:
+			cp.open_console()
+			var w6: Node2D = main.get_node("World")
+			var first_name := ""
+			for c in w6.customers_root.get_children():
+				if c is Customer:
+					first_name = str(c.customer_name)
+					break
+			if first_name != "":
+				cp.run_command("/who %s" % first_name)
+			else:
+				cp.run_command("/list")
+	if frames == 1510:
+		_capture("shot_24_console.png")
+	if frames == 1520:
+		var cp2 := main.get_node_or_null("ConsolePanel")
+		if cp2:
+			cp2.run_command("/stuck")
+	if frames == 1560:
+		_capture("shot_25_console_stuck.png")
+	if frames == 1590:
 		get_tree().quit()
 
 func _force_transition() -> void:

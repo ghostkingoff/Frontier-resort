@@ -6,6 +6,7 @@ extends Node
 
 const SAVE_DIR := "user://saves"
 const TEST_SAVE_DIR := "user://saves_test"   # 自动化测试专用，绝不动玩家存档
+const FALLBACK_TEST_SAVE_DIR := "res://.tmp/saves_test"  # user:// 不可写时（例如 Codex 沙箱）测试存档的落点，同样与玩家存档隔离
 const SLOT_COUNT := 3
 const EXPLORE_OFFSET := 100     # 槽位 + 100 = 该槽的探索前存档
 
@@ -22,17 +23,40 @@ var read_only := false          # 截图等开发工具用：只读，绝不写�
 
 
 func _ready() -> void:
-	# 开发工具一律与玩家存档隔离：测试写独立目录，截图工具只读不写
+	# 开发工具一律与玩家存档隔离：测试/体检写独立目录，截图工具只读不写
 	var args := OS.get_cmdline_user_args()
-	if args.has("--smoke"):
-		save_dir = TEST_SAVE_DIR
+	if args.has("--smoke") or args.has("--wake"):
+		save_dir = _best_test_dir()
 		wipe_test_saves()      # 每次测试都从全新存档开始
 	elif args.has("--screenshot"):
-		save_dir = TEST_SAVE_DIR
+		save_dir = _best_test_dir()
 		read_only = true
 	var err := DirAccess.make_dir_recursive_absolute(save_dir)
 	if err != OK and err != ERR_ALREADY_EXISTS:
 		push_warning("[SaveManager] 存档目录暂不可用（%s）：%s" % [error_string(err), save_dir])
+
+
+func _best_test_dir() -> String:
+	# 正常情况下用 user://saves_test；但 Codex 沙箱等环境完全禁止写 user://，
+	# 这时自动回落到工程内的 .tmp/saves_test，测试的存档检查才不会假失败。
+	if _test_dir_usable(TEST_SAVE_DIR):
+		return TEST_SAVE_DIR
+	print("[SaveManager] user:// 不可写（沙箱/权限限制）→ 测试存档改用 %s" % FALLBACK_TEST_SAVE_DIR)
+	return FALLBACK_TEST_SAVE_DIR
+
+
+func _test_dir_usable(dir: String) -> bool:
+	var err := DirAccess.make_dir_recursive_absolute(dir)
+	if err != OK and err != ERR_ALREADY_EXISTS:
+		return false
+	var probe := "%s/_io_probe.tmp" % dir
+	var f := FileAccess.open(probe, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string("ok")
+	f.close()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe))
+	return true
 
 
 func path_for(slot: int) -> String:
@@ -162,7 +186,7 @@ func delete_save(slot: int) -> void:
 
 func wipe_test_saves() -> void:
 	# 只允许清空测试目录，永远不会碰玩家的存档
-	if save_dir != TEST_SAVE_DIR or not save_dir.contains("saves_test"):
+	if save_dir != TEST_SAVE_DIR and save_dir != FALLBACK_TEST_SAVE_DIR:
 		push_warning("[SaveManager] 拒绝清空非测试目录：%s" % save_dir)
 		return
 	var dir := DirAccess.open(save_dir)

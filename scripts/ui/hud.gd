@@ -7,6 +7,8 @@ var building_panel: CanvasLayer
 var inventory_panel: CanvasLayer
 var exploration_panel: CanvasLayer
 var stats_panel: CanvasLayer
+var visitor_panel: CanvasLayer
+var console_panel: CanvasLayer
 
 var money_label: Label
 var day_label: Label
@@ -34,6 +36,13 @@ var _settlement_can_choose := true     # 当天还没做过选择时才显示「
 var ui_root: Control
 var hide_button: Button
 var ui_hidden := false
+var player_button: Button
+var player_hint: Label
+var player_confirm: PanelContainer
+var player_control := false               # 是否处于「自我操纵模式」
+
+var celebrity_notice_seconds := 3.0       # 明星 / 富商到来提示的显示时长（秒）
+var _notice_tween: Tween                  # 当前提示的淡出动画（新提示会顶掉旧的）
 
 
 func _ready() -> void:
@@ -43,6 +52,8 @@ func _ready() -> void:
 	inventory_panel = get_node_or_null("../InventoryPanel")
 	exploration_panel = get_node_or_null("../ExplorationPanel")
 	stats_panel = get_node_or_null("../StatsPanel")
+	visitor_panel = get_node_or_null("../VisitorPanel")
+	console_panel = get_node_or_null("../ConsolePanel")
 	var root := UIKit.root_control()
 	root.name = "UIRoot"
 	add_child(root)
@@ -57,6 +68,8 @@ func _ready() -> void:
 	_build_top_bar(ui_root)
 	_build_menu(ui_root)
 	_build_hint(ui_root)
+	_build_player_hint(ui_root)
+	_build_player_confirm(ui_root)
 	_build_notice(ui_root)
 	_build_settlement(ui_root)
 	_build_pause_menu(ui_root)
@@ -67,6 +80,7 @@ func _ready() -> void:
 	GameState.reputation_changed.connect(_on_reputation_changed)
 	GameState.fame_changed.connect(_on_fame_changed)
 	GameState.notice.connect(show_notice)
+	GameState.celebrity_notice.connect(_on_celebrity_notice)
 	GameClock.tick.connect(_on_tick)
 	GameClock.day_finished.connect(_on_day_finished)
 	GameClock.morning_started.connect(_on_morning_started)
@@ -113,6 +127,9 @@ func _process(delta: float) -> void:
 	if _guest_timer >= 1.0:
 		_guest_timer = 0.0
 		_refresh_guest_label()
+	if player_control and player_hint:
+		var avatar := _player_avatar()
+		player_hint.text = avatar.interaction_hint() if avatar != null else ""
 
 
 func _make_theme() -> Theme:
@@ -211,11 +228,21 @@ func _build_top_bar(root: Control) -> void:
 	stats_button.pressed.connect(_toggle_stats)
 	row2.add_child(stats_button)
 
+	var visitors_button := _make_button("游客状态")
+	visitors_button.tooltip_text = "查看度假村里每位游客的状态；点名字让相机跟过去并用橙色括号标记"
+	visitors_button.pressed.connect(_toggle_visitor_panel)
+	row2.add_child(visitors_button)
+
 	build_button = _make_button("建造 (B)")
 	build_button.pressed.connect(_toggle_build_panel)
 	row2.add_child(build_button)
 
 	# 移动视口模式：进入后按住左键拖动即可平移视角（触控板 / 单键鼠标也方便）
+	player_button = _make_button("自我操纵")
+	player_button.tooltip_text = "进入后可用 WASD / 方向键走动、按 F 与建筑交互；再点一次退出（角色停在原地）"
+	player_button.pressed.connect(_toggle_player_control)
+	row2.add_child(player_button)
+
 	pan_button = _make_button("移动视口")
 	pan_button.tooltip_text = "进入后按住鼠标左键拖动即可移动视角，再点一次退出。"
 	pan_button.pressed.connect(_toggle_pan_mode)
@@ -239,6 +266,130 @@ func _toggle_pan_mode() -> void:
 		show_notice("移动视口模式：按住左键拖动视角，再点一次按钮退出")
 	else:
 		show_notice("已退出移动视口模式")
+
+
+# ---------- 玩家角色（自我操纵模式） ----------
+
+func _player_avatar() -> Node2D:
+	return get_tree().get_first_node_in_group("player_avatar")
+
+
+func player_control_on() -> bool:
+	return player_control
+
+
+func _toggle_player_control() -> void:
+	set_player_control(not player_control)
+
+
+func set_player_control(on: bool) -> void:
+	var avatar := _player_avatar()
+	if avatar == null:
+		GameState.notice.emit("找不到玩家角色")
+		return
+	if on and visitor_panel:
+		visitor_panel.clear_selection(false)   # 高亮与选中让位给自我操纵模式，相机由下面接管
+	player_control = on
+	avatar.set_controlled(on)
+	if not avatar.use_reception_requested.is_connected(_on_use_reception_requested):
+		avatar.use_reception_requested.connect(_on_use_reception_requested)
+	var cam := get_node_or_null("../Camera")
+	if cam and cam.has_method("set_follow"):
+		if on:
+			cam.set_follow(avatar, 2.4)
+		else:
+			cam.clear_follow()
+	player_button.text = "退出操纵" if on else "自我操纵"
+	if player_hint:
+		player_hint.visible = on
+	if player_confirm:
+		player_confirm.visible = false
+	if on:
+		show_notice("自我操纵模式：WASD / 方向键走动，按 F 与建筑交互")
+	else:
+		show_notice("已退出自我操纵模式（角色停在原地）")
+
+
+func _player_interact() -> void:
+	var avatar := _player_avatar()
+	if avatar == null:
+		return
+	var result: String = avatar.try_interact()
+	match result:
+		"leave":
+			show_notice("已离开招待厅")
+		"use_reception":
+			pass    # 由 use_reception_requested 信号弹确认框
+		_:
+			show_notice("附近没有可以交互的东西")
+
+
+func _on_use_reception_requested() -> void:
+	if player_confirm:
+		player_confirm.visible = true
+
+
+func _on_player_confirm_yes() -> void:
+	if player_confirm:
+		player_confirm.visible = false
+	var avatar := _player_avatar()
+	if avatar:
+		avatar.enter_reception()
+	set_player_control(false)
+	show_notice("已回到招待厅，退出自我操纵模式")
+
+
+func reset_player_if_idle() -> void:
+	# 24 点结算时调用：不在操纵模式就把角色放回招待厅里
+	if player_control:
+		return
+	var avatar := _player_avatar()
+	if avatar != null:
+		avatar.reset_to_reception()
+
+
+func _build_player_hint(root: Control) -> void:
+	player_hint = _make_label("", 22, Color(0.98, 0.94, 0.72))
+	player_hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	player_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	player_hint.offset_left = -460
+	player_hint.offset_right = 460
+	player_hint.offset_top = -70
+	player_hint.offset_bottom = -28
+	player_hint.visible = false
+	root.add_child(player_hint)
+
+
+func _build_player_confirm(root: Control) -> void:
+	player_confirm = PanelContainer.new()
+	player_confirm.set_anchors_preset(Control.PRESET_CENTER)
+	player_confirm.offset_left = -320
+	player_confirm.offset_right = 320
+	player_confirm.offset_top = -110
+	player_confirm.offset_bottom = 110
+	player_confirm.add_theme_stylebox_override("panel",
+		_panel_style(Color(0.10, 0.09, 0.13, 0.97), Color(0.75, 0.62, 0.35)))
+	player_confirm.visible = false
+	root.add_child(player_confirm)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 16)
+	player_confirm.add_child(box)
+	var text := _make_label("确认回到招待厅并退出自我操纵模式？", 24, Color(0.98, 0.92, 0.75))
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(text)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var yes := _make_button("是")
+	yes.custom_minimum_size = Vector2(140, 56)
+	yes.pressed.connect(_on_player_confirm_yes)
+	row.add_child(yes)
+	var no := _make_button("否")
+	no.custom_minimum_size = Vector2(140, 56)
+	no.pressed.connect(func() -> void:
+		player_confirm.visible = false)
+	row.add_child(no)
+	box.add_child(row)
 
 
 func _build_menu(root: Control) -> void:
@@ -339,10 +490,10 @@ func _refresh_build_list() -> void:
 				b.disabled = true
 			else:
 				b.text = "%s   %s" % [str(data.get("name", id)), GameState.format_money(int(data.get("cost", 0)))]
-			b.tooltip_text = "%s\n造价 %s ｜ 容量 %d ｜ 平均消费 %d" % [
+			b.tooltip_text = "%s\n造价 %s ｜ 同时招待 %d 人（1 级，每升一级 +1）｜ 平均消费 %d" % [
 				str(data.get("description", "")),
 				GameState.format_money(int(data.get("cost", 0))),
-				int(data.get("capacity", 0)),
+				int(data.get("capacity_base", 3)),
 				int(data.get("spend", 0)),
 			]
 			b.pressed.connect(_on_build_selected.bind(id))
@@ -378,13 +529,11 @@ func _toggle_ui() -> void:
 	for panel in [building_panel, inventory_panel, stats_panel, exploration_panel]:
 		if panel and ui_hidden:
 			panel.visible = false
+	if ui_hidden and visitor_panel:
+		visitor_panel.close()      # 顺带解除相机跟随与高亮
 	hide_button.text = "显示界面 (H)" if ui_hidden else "隐藏界面 (H)"
 	if ui_hidden:
 		show_notice("界面已隐藏，按 H 或点右下角按钮可以恢复")
-		notice_label.modulate.a = 1.0
-		var tween := create_tween()
-		tween.tween_interval(2.0)
-		tween.tween_property(notice_label, "modulate:a", 0.0, 0.8)
 		if pause_menu:
 			pause_menu.visible = false
 
@@ -414,6 +563,7 @@ func _build_pause_menu(root: Control) -> void:
 	box.add_child(_make_label("游戏暂停", 52, Color(0.98, 0.88, 0.55)))
 	box.add_child(_make_label("时间已经停住，慢慢安排就好。按 ESC 也可以回到游戏。", 22, Color(0.85, 0.88, 0.95)))
 	box.add_child(_make_label("提示：点建筑可以升级、雇员工；右上角「物资」「属性」是仓库与属性面板。", 20, Color(0.78, 0.80, 0.88)))
+	box.add_child(_make_label("按「/」打开指令台：查某位游客的完整状态（/who 名字）、找疑似卡住的客人（/stuck）、把问题记进日志（/mark 备注）。", 20, Color(0.78, 0.80, 0.88)))
 	box.add_child(UIKit.spacer(6))
 
 	var resume := _make_button("继续游戏")
@@ -472,6 +622,16 @@ func _toggle_stats() -> void:
 		stats_panel.toggle()
 
 
+func _toggle_visitor_panel() -> void:
+	if visitor_panel == null:
+		GameState.notice.emit("游客状态面板不可用")
+		return
+	if visitor_panel.is_focused():
+		visitor_panel.exit_focus()      # 对焦中：先退出对焦（面板保持打开，相机停在原地）
+		return
+	visitor_panel.toggle()
+
+
 func _build_notice(root: Control) -> void:
 	notice_label = _make_label("", 26, Color(1, 1, 1))
 	notice_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -528,6 +688,8 @@ func _make_button(text: String) -> Button:
 # ---------- 交互 ----------
 
 func _unhandled_input(event: InputEvent) -> void:
+	if console_panel and console_panel.is_open():
+		return      # 指令台打开时游戏快捷键全部让位（ESC 由指令台自己处理）
 	if pause_menu and pause_menu.visible:
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 			_toggle_pause_menu()
@@ -539,6 +701,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if stats_panel and stats_panel.is_open():
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 			stats_panel.close()
+		return
+	if visitor_panel and visitor_panel.is_open() \
+			and event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		if visitor_panel.is_focused():
+			visitor_panel.exit_focus()      # 第一次 ESC：退出对焦（相机停在原地）
+		else:
+			visitor_panel.close()
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		_handle_world_click(event.position)
@@ -558,6 +727,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_H:
 			_toggle_ui()
 		KEY_ESCAPE:
+			if player_confirm and player_confirm.visible:
+				player_confirm.visible = false
+				return
 			if building_panel:
 				building_panel.close()
 			if inventory_panel:
@@ -567,7 +739,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				_toggle_pause_menu()
 		KEY_F:
-			GameClock.skip_to_end_of_day()
+			if player_control:
+				_player_interact()
+			else:
+				GameClock.skip_to_end_of_day()
 		KEY_1:
 			_set_speed(GameClock.Speed.X1)
 		KEY_2:
@@ -628,12 +803,12 @@ func _on_build_selected(id: String) -> void:
 func _on_ground_selected(kind: String) -> void:
 	if build_system:
 		build_system.select_ground(kind)
-	var name := "地砖"
+	var ground_name := "地砖"
 	if kind == World.GROUND_LAWN:
-		name = "可行走草坪"
+		ground_name = "可行走草坪"
 	elif kind == World.GROUND_WILD:
-		name = "普通草坪"
-	show_notice("铺设%s：点击或按住左键刷，右键 / ESC 取消" % name)
+		ground_name = "普通草坪"
+	show_notice("铺设%s：点击或按住左键刷，右键 / ESC 取消" % ground_name)
 
 
 func _on_demolish_selected() -> void:
@@ -691,7 +866,17 @@ func _refresh_facility_label() -> void:
 func _refresh_guest_label() -> void:
 	if world == null:
 		return
-	guest_label.text = "游客 %d 人" % world.customers_root.get_child_count()
+	# 按「customers」组统计：进店消费 / 回房休息的顾客会被换到建筑内部节点下，
+	# 只数 customers_root 的子节点会漏掉一大截（和游客状态面板的数对不上）
+	var n := 0
+	for node in get_tree().get_nodes_in_group("customers"):
+		if not (node is Customer):
+			continue
+		var c: Customer = node
+		if c.is_queued_for_deletion() or c.state == Customer.State.DONE:
+			continue
+		n += 1
+	guest_label.text = "游客 %d 人" % n
 
 
 func _refresh_reputation() -> void:
@@ -703,15 +888,31 @@ func _refresh_fame() -> void:
 
 
 func show_notice(text: String) -> void:
+	show_notice_for(text, 2.2, Color(1, 1, 1))
+
+
+func _on_celebrity_notice(text: String) -> void:
+	# 明星 / 富商到来：金色、3 秒
+	show_notice_for(text, celebrity_notice_seconds, Color(0.98, 0.80, 0.38))
+
+
+func show_notice_for(text: String, seconds: float, color: Color) -> void:
 	notice_label.text = text
+	notice_label.add_theme_color_override("font_color", color)
 	notice_label.modulate.a = 1.0
-	var tween := create_tween()
-	tween.tween_interval(2.2)
-	tween.tween_property(notice_label, "modulate:a", 0.0, 0.8)
+	# 顶掉上一条提示的淡出动画：否则旧动画会继续把 alpha 拉低，
+	# 新提示（尤其是 3 秒的贵客提示）会半透明地「灰」在那里
+	if _notice_tween != null and _notice_tween.is_valid():
+		_notice_tween.kill()
+	_notice_tween = create_tween()
+	_notice_tween.tween_interval(seconds)
+	_notice_tween.tween_property(notice_label, "modulate:a", 0.0, 0.8)
 
 
 func _on_day_finished() -> void:
 	# 每日结算顺序：展厅成交 → 发工资 → 夜间带回物资 → 生成结算报告 → 自动存档
+	# 玩家角色：不在自我操纵模式就放回招待厅（不会让他停在野外过夜的位置）
+	reset_player_if_idle()
 	if world and not _cycle_settled:
 		_cycle_settled = true
 		world.settle_showroom_sales()
@@ -794,6 +995,8 @@ func _open_exploration() -> void:
 	if exploration_panel == null:
 		GameState.notice.emit("探索界面不可用")
 		return
+	if visitor_panel and visitor_panel.is_open():
+		visitor_panel.close()      # 探索界面是全屏的，先收起游客面板
 	_apply_auto_night_income()
 	settlement.visible = false
 	exploration_panel.open()

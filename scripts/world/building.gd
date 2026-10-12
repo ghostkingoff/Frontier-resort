@@ -7,8 +7,9 @@ const LIGHT_ON_LATEST := 20.75     # 20:45 全部亮起
 const LIGHT_FADE_HOURS := 0.12     # 每栋楼自己的渐变时长（约 7 分钟游戏时间）
 const LIGHT_SPREAD_CELLS := 1.0    # 光往建筑外扩几格（这一圈就是渐变带）
 const LIGHT_ENERGY := 0.72         # 灯光强度。用加法混合，太高会让外圈过曝成「黄框」
-# 熄灯时间不再写死：直接用各栋自己的 close_hour()（见 update_lights）
-## 单栋建筑：外观、屋顶开关、容量、员工、升级、展厅展示位、诊所治疗。
+const LIGHT_OFF_SPREAD_HOURS := 0.5   # 打烊后「陆续关灯」的错峰窗口：常规店 24:00 打烊 → 24:00~24:30 之间各自熄灭
+# 熄灯时间不再写死：常规店在打烊后 0~0.5 小时里陆续关，跨夜店跟自己的打烊时间（见 update_lights）
+## 单栋建筑：外观、屋顶开关、同时招待人数、员工、升级、展厅展示位、诊所治疗。
 
 
 const CELL := 32
@@ -42,6 +43,9 @@ var staff: Array = []          # [{ energy: float, quality: int }]
 var displayed: Array = []      # [{ item_id: String, count: int }]
 var patients: Array = []       # 候诊顾客（医院）
 var treating: Array = []       # 正在治疗的顾客（医院）
+var reserved := 0              # 已被「正在走过来的客人」预定走的使用位（进店时转成 visitors）
+var queued: Array = []         # 站在门口预定位上排队的客人
+var queue_reserved := 0        # 已被「正在走过来排队的客人」占住的预定位
 var guests: Array = []         # 已入住的客人（度假屋）
 var check_ins: int = 0         # 办过多少次入住（招待厅）
 var cleaned_total: int = 0     # 保洁间累计清理的垃圾数（汇总自保洁工人）
@@ -49,8 +53,11 @@ var janitors: Array = []       # 保洁间雇的工人（在外面走动扫地�
 var cured_count: int = 0
 var failed_count: int = 0
 var understaffed_notice := false
-var night_light: PointLight2D          # 建筑灯光（矩形：内部均匀 + 外圈渐变）
+var night_light: PointLight2D          # 建筑灯光（矩形＝内部均匀，圆形＝中心衰减，见 _build_lights）
 var light_on_hour := LIGHT_ON_LATEST   # 这栋楼今晚几点开灯（20:00~20:45 之间各自随机）
+var light_off_hour := 0.0              # 这栋楼今晚几点熄灯（打烊后 0~0.5 小时之间各自随机；跨夜店不拖）
+var rot_step := 0                      # 可旋转建筑的朝向：0=下、1=左、2=上、3=右（顺时针一档 90°）
+var _light_base_pos := Vector2.ZERO    # 灯光基准位置（建筑中心），朝向偏移从这里算
 
 
 func setup(building_data: Dictionary, at_cell: Vector2i, world_ref: Node2D) -> void:
@@ -71,14 +78,20 @@ func setup(building_data: Dictionary, at_cell: Vector2i, world_ref: Node2D) -> v
 
 
 func _build_lights() -> void:
-	# 用 World 的通用矩形光源工厂：平顶区对到建筑占地（内部均匀），
-	# 渐变带对到外扩的那 1 格（只有周围一圈有渐变）。
+	# 用 World 的光源工厂：
+	#   默认（矩形）= 平顶区对到建筑占地（内部均匀）+ 外圈一圈渐变带；
+	#   数据里写 light_shape=circle 的（路灯）改用圆形衰减光。
 	if world == null or not world.has_method("make_rect_light"):
 		return
-	night_light = world.make_rect_light(
-		Vector2(footprint.x, footprint.y) * CELL,
-		LIGHT_SPREAD_CELLS * float(CELL),
-		Color(1.0, 0.86, 0.62))
+	var color := Color(1.0, 0.86, 0.62)
+	if str(data.get("light_shape", "rect")) == "circle" and world.has_method("make_circle_light"):
+		night_light = world.make_circle_light(
+			float(data.get("light_radius_cells", 2.0)) * float(CELL), color)
+	else:
+		night_light = world.make_rect_light(
+			Vector2(footprint.x, footprint.y) * CELL,
+			LIGHT_SPREAD_CELLS * float(CELL),
+			color)
 	if night_light == null:
 		return
 	night_light.name = "NightLight"
@@ -88,18 +101,114 @@ func _build_lights() -> void:
 	# 位置 = 建筑中心：cell_center(cell) 已经是建筑左上格的**中心**，
 	# 所以只需再偏移「半个占地」（之前多加了半个占地，导致光偏向右下）。
 	night_light.top_level = true
-	var c: Vector2 = world.cell_center(cell) \
+	# 基准位置 = 建筑中心：cell_center(cell) 已经是建筑左上格的**中心**，
+	# 所以只需再偏移「半个占地」。可旋转建筑（路灯）的灯光会从这里再偏出去一格。
+	_light_base_pos = world.cell_center(cell) \
 		+ Vector2(float(footprint.x - 1), float(footprint.y - 1)) * CELL * 0.5
 	world.add_child(night_light)
-	night_light.global_position = c
+	_refresh_light_position()
 	# 层次：地板 → 灯光 → 屋顶/外墙。
 	# 灯光必须夹在中间：开着屋顶时屋顶把灯光和地板一起盖住；
 	# 关了屋顶（透视）时就只剩地板 + 灯光，室内才亮得起来。
 	# 原来的添加顺序是「外墙 → 地板 → 灯」，地板反而盖在灯上面，光进不去。
 	_relayer()
 
-	# 每栋楼一个自己的开灯时间，形成「陆续开灯」的错落感
-	light_on_hour = randf_range(LIGHT_ON_EARLIEST, LIGHT_ON_LATEST)
+	# 开灯时间：默认在 20:00~20:45 之间随机，形成「陆续开灯」的错落感；
+	# 数据里写了 light_on_hour 就固定用它（路灯这类小物件要准点点亮）。
+	if data.has("light_on_hour"):
+		light_on_hour = float(data.get("light_on_hour"))
+	else:
+		light_on_hour = randf_range(LIGHT_ON_EARLIEST, LIGHT_ON_LATEST)
+	# 熄灯时间：常规店打烊后在 0~0.5 小时里陆续熄灭（24:00 打烊 → 24:00~24:30）；
+	# 跨夜店（如酒吧 22→4）关门时已经很晚，直接按打烊时间熄，不再往后拖。
+	var close_h := close_hour()
+	light_off_hour = close_h if close_h < open_hour() else close_h + randf_range(0.0, LIGHT_OFF_SPREAD_HOURS)
+	# 光晕大小默认按占地自动算（见 World.make_rect_light）；
+	# 小建筑可以用 light_glow_scale 把光晕整体放大（路灯 1×1 的光晕靠它照到周围）。
+	var glow := float(data.get("light_glow_scale", 1.0))
+	if glow != 1.0:
+		night_light.texture_scale *= glow
+
+
+# ---------- 朝向（可旋转建筑：路灯） ----------
+
+func is_rotatable() -> bool:
+	return bool(data.get("rotatable", false))
+
+
+func rotation_dir() -> Vector2i:
+	# 0=下、1=左、2=上、3=右：顺时针每转一档 90°，灯光就偏到对应的那一格。
+	match rot_step:
+		1: return Vector2i(-1, 0)
+		2: return Vector2i(0, -1)
+		3: return Vector2i(1, 0)
+		_: return Vector2i(0, 1)
+
+
+func rotation_text() -> String:
+	match rot_step:
+		1: return "左"
+		2: return "上"
+		3: return "右"
+		_: return "下"
+
+
+func rotate_clockwise() -> void:
+	if not is_rotatable():
+		return
+	rot_step = (rot_step + 1) % 4
+	_apply_rotation()
+	_refresh_light_position()
+
+
+func dir_rects() -> Array:
+	# 四方向素材：sprite.dir_rects 按朝向 0~3（下/左/上/右）给出四帧的裁剪区
+	var cfg: Dictionary = data.get("sprite", {})
+	return cfg.get("dir_rects", [])
+
+
+func _apply_rotation() -> void:
+	# 旋转只作用在「正面贴图」这一层：优先用四方向素材换帧（dir_rects），
+	# 没有分方向素材时才退回「把贴图旋转 90° 的整数倍」。
+	# （兜底路径注意：精灵原点在左上角，要先让绘制区以原点居中、节点放到建筑中心，
+	#   旋转才是绕建筑中心转，否则会绕角转飞。）
+	if not is_rotatable():
+		return
+	var vis: Sprite2D = exterior
+	if vis == null:
+		return   # 备用 3/4 视角没有这条路径，需要时再补
+	var frames := dir_rects()
+	if not frames.is_empty():
+		# 有四个方向的素材：直接换帧（灯头朝向由画的那一帧决定，不做节点旋转）
+		var r: Array = frames[mini(rot_step, frames.size() - 1)]
+		vis.region_rect = Rect2(float(r[0]), float(r[1]), float(r[2]), float(r[3]))
+		vis.position = Vector2.ZERO
+		vis.offset = Vector2.ZERO
+		vis.rotation = 0.0
+		return
+	# 没有分方向素材时的兜底：只画「朝下」一版，游戏里把贴图转 90° 的整数倍
+	vis.position = Vector2(footprint.x, footprint.y) * CELL * 0.5
+	vis.offset = -vis.region_rect.size * 0.5
+	vis.rotation = float(rot_step) * PI / 2.0
+
+
+func light_offset_cells() -> Vector2i:
+	# 灯光相对建筑中心的偏移（格）。不可旋转的建筑恒为 0。
+	return rotation_dir() if is_rotatable() else Vector2i.ZERO
+
+
+func _refresh_light_position() -> void:
+	if night_light == null:
+		return
+	night_light.global_position = _light_base_pos + Vector2(light_offset_cells()) * float(CELL)
+
+
+func _exit_tree() -> void:
+	# 灯挂在 World 根下（不在建筑子节点里），建筑被拆 / 清场时要顺手回收，
+	# 否则会留下一盏孤儿灯继续亮在原地。
+	if night_light != null and is_instance_valid(night_light):
+		night_light.queue_free()
+	night_light = null
 
 
 func _relayer() -> void:
@@ -119,19 +228,19 @@ func update_lights(hour: float) -> void:
 	#
 	# 关键：一律换算成「连续小时」再比较。
 	#   凌晨（hour < 12）当作「前一天 24 点之后」→ hour += 24
-	#   跨夜打烊（close < open）→ close += 24
+	#   跨夜打烊（close < open）→ 熄灯时间 += 24
 	# 这样无论普通店还是跨夜店，都变成简单的区间判断，不需要特判。
 	if night_light == null:
 		return
 	var h := hour
 	if h < 12.0:
 		h += 24.0                      # 凌晨 → 算作次日的 24~36 点
-	var c := close_hour()
-	if c < open_hour():
-		c += 24.0                      # 跨夜店：打烊时间算到次日
+	var off := light_off_hour
+	if off < open_hour():
+		off += 24.0                    # 跨夜店：熄灯时间算到次日
 	var k := clampf((h - light_on_hour) / LIGHT_FADE_HOURS, 0.0, 1.0)
-	if h >= c:
-		k = clampf(1.0 - (h - c) / LIGHT_FADE_HOURS, 0.0, 1.0)   # 到打烊时间渐渐熄灯
+	if h >= off:
+		k = clampf(1.0 - (h - off) / LIGHT_FADE_HOURS, 0.0, 1.0)   # 到熄灯时间渐渐熄灯
 	if h < light_on_hour:
 		k = 0.0                        # 傍晚之前不点灯
 	var e := k * k * (3.0 - 2.0 * k)   # 平滑渐变（smoothstep）
@@ -148,6 +257,9 @@ func _process(delta: float) -> void:
 		return
 	var scaled := delta * GameClock.time_scale()
 	for patient in treating.duplicate():
+		if patient == null or not is_instance_valid(patient):
+			treating.erase(patient)      # 病人已被释放/离场：清掉引用，别访问到旧对象
+			continue
 		patient.treatment_left -= scaled
 		if patient.treatment_left <= 0.0:
 			treating.erase(patient)
@@ -168,19 +280,47 @@ func _sync_janitors() -> void:
 		if j != null and is_instance_valid(j):
 			alive.append(j)
 	janitors = alive
-	# 员工数变化时补齐 / 减少工人
-	while janitors.size() < staff.size():
-		if world == null or world.staff_root == null:
-			return
-		var j: Node2D = JANITOR.new()
-		j.name = "Janitor_%s_%d" % [id, janitors.size()]
-		world.staff_root.add_child(j)
-		j.setup(self, world)
-		janitors.append(j)
-	while janitors.size() > staff.size():
-		var extra: Node = janitors.pop_back()
-		if extra != null and is_instance_valid(extra):
-			extra.queue_free()
+	# 只保留「当前在班」的工人（白班 08:00-20:00、夜班 20:00-08:00）。
+	# 交班 / 人数变化时整队重建——工人数量少，代价可以忽略，
+	# 而且下班的工人会立即从地图上消失，不会留在场上。
+	var counts := shift_counts()
+	var want_day: int = int(counts.get("day", 0)) if shift_on_duty("day") else 0
+	var want_night: int = int(counts.get("night", 0)) if shift_on_duty("night") else 0
+	var have_day := 0
+	var have_night := 0
+	var intact := janitors.size() == want_day + want_night
+	if intact:
+		for j in janitors:
+			if j == null or not is_instance_valid(j):
+				intact = false
+				break
+			if str(j.shift) == "night":
+				have_night += 1
+			else:
+				have_day += 1
+		intact = intact and have_day == want_day and have_night == want_night
+	if intact:
+		return
+	for j in janitors:
+		if j != null and is_instance_valid(j):
+			j.home = null          # 断开引用，工人下一帧会自己清理掉
+			j.queue_free()
+	janitors.clear()
+	if world == null or world.staff_root == null:
+		return
+	for i in range(want_day):
+		_spawn_janitor("day", i)
+	for i in range(want_night):
+		_spawn_janitor("night", i)
+
+
+func _spawn_janitor(shift_name: String, index: int) -> void:
+	var j: Node2D = JANITOR.new()
+	j.name = "Janitor_%s_%s_%d" % [id, shift_name, index]
+	world.staff_root.add_child(j)
+	j.setup(self, world)
+	j.shift = shift_name
+	janitors.append(j)
 
 
 func janitor_total_cleaned() -> int:
@@ -414,7 +554,7 @@ func remove_guest(customer: Node2D) -> void:
 	guests.erase(customer)
 
 
-func charge_stay(customer: Node2D, nights: int) -> int:
+func charge_stay(_customer: Node2D, nights: int) -> int:
 	# 住宿费在结账时才产生
 	if not is_lodging() or nights <= 0:
 		return 0
@@ -461,8 +601,13 @@ func night_income_estimate() -> int:
 
 
 func capacity() -> int:
-	var base := int(data.get("capacity", 4))
-	return int(round(base * (1.0 + 0.5 * float(level - 1))))
+	# 最大同时招待人数：默认 1 级 3 人、每升一级 +1
+	# （数据里可用 capacity_base / capacity_per_level 覆盖；不接客的设施如路灯写 capacity_base: 0，
+	#  这样它永远不会被客人选中，也不会被算进「开门店铺」）
+	var base := int(data.get("capacity_base", 3))
+	if base <= 0:
+		return 0
+	return base + (level - 1) * int(data.get("capacity_per_level", 1))
 
 
 func spend_value() -> int:
@@ -489,8 +634,105 @@ func staff_mood_bonus() -> float:
 	return -12.0        # 全员状态很低
 
 
-func has_room() -> bool:
-	return visitors.size() < capacity()
+# ---------- 使用位 / 预定位（排队）----------
+# 每个「使用位」配一个「预定位」：使用位是客人真正在店里消费的位子；
+# 预定位是门口那一列排队位。客人拿到使用位（哪怕还在路上）就算占用；
+# 使用位满了之后，别的客人会来占预定位、走到门口排着，等使用位空出来再顶上去。
+
+func queue_slots() -> int:
+	return capacity()
+
+
+func _prune_slots() -> void:
+	# 兜底：清掉已释放的客人引用。正常情况客人销毁时会自己还位子（customer 的 PREDELETE），
+	# 这里只是保险，避免个别漏网路径让店铺的名单里留下「僵尸占位」。
+	if not visitors.is_empty():
+		for i in range(visitors.size() - 1, -1, -1):
+			if not is_instance_valid(visitors[i]):
+				visitors.remove_at(i)
+	if not queued.is_empty():
+		for i in range(queued.size() - 1, -1, -1):
+			if not is_instance_valid(queued[i]):
+				queued.remove_at(i)
+
+
+func has_use_slot() -> bool:
+	_prune_slots()
+	return visitors.size() + reserved < capacity()
+
+
+func has_queue_slot() -> bool:
+	_prune_slots()
+	return capacity() > 0 and queued.size() + queue_reserved < queue_slots()
+
+
+func reserve_use_slot() -> bool:
+	# 客人定下这家店时占住使用位：别的客人不会再选这家，直到他消费完（或改道 / 离场）
+	if not has_use_slot():
+		return false
+	reserved += 1
+	return true
+
+
+func release_use_slot() -> void:
+	# 使用位释放：客人改道 / 离场 / 进店（预定转正式占位）时都会走这里；
+	# 空出来的位子立刻让排队的第一位顶上去
+	reserved = maxi(0, reserved - 1)
+	promote_queue()
+
+
+func reserve_queue_slot() -> bool:
+	# 占一个预定位（客人正在走过来排队的路上）
+	if not has_queue_slot():
+		return false
+	queue_reserved += 1
+	return true
+
+
+func join_queue(customer: Node2D) -> void:
+	# 走到门口：把「在途预定位」转成「站在队里」
+	queue_reserved = maxi(0, queue_reserved - 1)
+	if not queued.has(customer):
+		queued.append(customer)
+
+
+func leave_queue(customer: Node2D) -> void:
+	# 客人不等了 / 离场：在队里就摘掉，还在半路就把在途预定位还回来
+	if queued.has(customer):
+		queued.erase(customer)
+	else:
+		queue_reserved = maxi(0, queue_reserved - 1)
+
+
+func promote_queue() -> void:
+	# 使用位空出来：让排队最前面的客人顶上（他会直接进店）
+	_prune_slots()
+	while visitors.size() + reserved < capacity() and not queued.is_empty():
+		var next: Node2D = queued.pop_front()
+		if next == null or not is_instance_valid(next):
+			continue
+		if next.has_method("promote_from_queue"):
+			next.promote_from_queue(self)
+
+
+func queue_cell(index: int) -> Vector2i:
+	# 预定位：门口那一列往街上一格格排开（走不通就停在最后一格，客人会叠在一起）
+	var door := door_cell()
+	if index <= 0 or world == null:
+		return door
+	var last := door
+	for i in range(1, index + 1):
+		var candidate := door + Vector2i(0, i)
+		if not world.is_walkable(candidate):
+			break
+		last = candidate
+	return last
+
+
+func queue_point(customer: Node2D) -> Vector2:
+	_prune_slots()
+	var idx: int = maxi(queued.find(customer), 0)
+	return world.cell_center(queue_cell(idx))
 
 
 func add_visitor(customer: Node2D) -> void:
@@ -499,6 +741,7 @@ func add_visitor(customer: Node2D) -> void:
 
 func remove_visitor(customer: Node2D) -> void:
 	visitors.erase(customer)
+	promote_queue()      # 有人消费完出来了：排队的第一位顶上
 
 
 func on_guest_served() -> void:
@@ -519,7 +762,10 @@ func on_guest_served() -> void:
 func hire_staff(quality: int = 1) -> bool:
 	if staff.size() >= staff_slots():
 		return false
-	staff.append({"energy": 85.0, "quality": quality})
+	var member := {"energy": 85.0, "quality": quality}
+	if service() == "cleaning":
+		member["shift"] = next_shift()      # 保洁分白班/夜班，往人少的那班补
+	staff.append(member)
 	understaffed_notice = false
 	_refresh_label()
 	return true
@@ -539,6 +785,32 @@ func fire_staff() -> bool:
 	staff.pop_back()
 	_refresh_label()
 	return true
+
+
+# ---------- 班次（保洁间：白班 08:00-20:00，夜班 20:00-08:00；其它建筑不排班） ----------
+
+func shift_counts() -> Dictionary:
+	var day := 0
+	var night := 0
+	for m in staff:
+		if str(m.get("shift", "day")) == "night":
+			night += 1
+		else:
+			day += 1
+	return {"day": day, "night": night}
+
+
+func next_shift() -> String:
+	# 下一名员工编入哪一班：哪班人少去哪个（一样多时先补白班）
+	var counts := shift_counts()
+	return "day" if int(counts.get("day", 0)) <= int(counts.get("night", 0)) else "night"
+
+
+func shift_on_duty(shift_name: String, hour: float = -1.0) -> bool:
+	# 白班 08:00-20:00，夜班 20:00-08:00；hour 省略时取当前游戏时间
+	var h := hour if hour >= 0.0 else GameClock.hour_of_day()
+	var is_day := h >= 8.0 and h < 20.0
+	return is_day if shift_name != "night" else not is_day
 
 
 func staff_energy() -> float:
@@ -661,6 +933,9 @@ func evacuate() -> void:
 		if is_instance_valid(patient):
 			patient.force_leave(self)
 	patients.clear()
+	for patient in treating.duplicate():
+		if is_instance_valid(patient):
+			patient.force_leave(self)    # 正在治疗的也要通知，否则他们会永远停在「治疗中」
 	treating.clear()
 	for guest in guests.duplicate():
 		if is_instance_valid(guest):
@@ -778,6 +1053,8 @@ func release_patient(customer: Node2D) -> void:
 func _promote_patient() -> void:
 	while treating.size() < treat_capacity() and not patients.is_empty():
 		var next: Node2D = patients.pop_front()
+		if next == null or not is_instance_valid(next):
+			continue                     # 已经离场的病人：跳过，别塞进治疗列表
 		treating.append(next)
 		next.begin_treatment(self)
 
@@ -789,6 +1066,7 @@ func door_point() -> Vector2:
 func door_cell() -> Vector2i:
 	# 门口：建筑正下方那一格。它是「首选」出入口（贴图上的门在这边），
 	# 但不再是唯一出入口 —— 见 perimeter_cells()。
+	@warning_ignore("integer_division")
 	return cell + Vector2i(int(footprint.x / 2), footprint.y)
 
 
@@ -843,11 +1121,16 @@ func _apply_roof(show_roof: bool) -> void:
 func save_data() -> Dictionary:
 	var staff_save: Array = []
 	for member in staff:
-		staff_save.append({"energy": float(member.get("energy", 100.0)), "quality": int(member.get("quality", 1))})
+		staff_save.append({
+			"energy": float(member.get("energy", 100.0)),
+			"quality": int(member.get("quality", 1)),
+			"shift": str(member.get("shift", "day")),
+		})
 	return {
 		"id": id,
 		"cell": [cell.x, cell.y],
 		"level": level,
+		"rot": rot_step,
 		"staff": staff_save,
 		"displayed": displayed.duplicate(true),
 	}
@@ -857,8 +1140,34 @@ func apply_save(d: Dictionary) -> void:
 	set_level(int(d.get("level", 1)))
 	staff.clear()
 	for member in d.get("staff", []):
-		staff.append({"energy": float(member.get("energy", 100.0)), "quality": int(member.get("quality", 1))})
+		var staff_entry := {
+			"energy": float(member.get("energy", 100.0)),
+			"quality": int(member.get("quality", 1)),
+		}
+		if member.has("shift"):
+			staff_entry["shift"] = str(member["shift"])
+		staff.append(staff_entry)
+	_ensure_staff_shifts()
 	displayed.clear()
 	for entry in d.get("displayed", []):
 		displayed.append({"item_id": str(entry.get("item_id", "")), "count": int(entry.get("count", 1))})
+	rot_step = int(d.get("rot", 0)) % 4
+	_apply_rotation()
+	_refresh_light_position()
 	_refresh_label()
+
+
+func _ensure_staff_shifts() -> void:
+	# 旧存档的保洁员工没有班次字段：按「往人少的一班补」的规则补上，保证白夜两班均衡
+	if service() != "cleaning":
+		return
+	var missing := false
+	for m in staff:
+		if not m.has("shift"):
+			missing = true
+			break
+	if not missing:
+		return
+	for m in staff:
+		if not m.has("shift"):
+			m["shift"] = next_shift()

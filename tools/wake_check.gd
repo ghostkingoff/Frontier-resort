@@ -97,6 +97,15 @@ func _count_in_room(list: Array) -> int:
 	return n
 
 
+func _count_sleeping(list: Array) -> int:
+	# 「还在睡昨晚这一觉」的住客数；白天回房打盹不算（那本来就会在屋里待一会儿）
+	var n := 0
+	for c in list:
+		if is_instance_valid(c) and c.is_sleeping_for_night():
+			n += 1
+	return n
+
+
 func _run_checks() -> void:
 	# ---------- 0. 先让住客走到招待厅办入住、拿到房间 ----------
 	# （入住是在「走到招待厅」那一刻发生的，所以这里要放足够多帧让他们走完）
@@ -174,8 +183,9 @@ func _run_checks() -> void:
 
 	GameClock.progress = (Customer.WAKE_LATEST - GameClock.DAY_START_HOUR) / 24.0 + 0.01
 	_advance(400)
-	var still_late := _count_in_room(guests)
-	_check("过了最晚醒来时间都出门了", still_late == 0, "07:30 之后仍在房间 %d 位" % still_late)
+	var still_late := _count_sleeping(guests)
+	_check("过了最晚醒来时间都出门了", still_late == 0,
+		"07:30 之后仍在过夜睡眠 %d 位（屋里合计 %d 位）" % [still_late, _count_in_room(guests)])
 
 	# ---------- 4.「休息一晚」：位置重置 ----------
 	GameClock.start_new_day()
@@ -229,8 +239,8 @@ func _run_checks() -> void:
 
 	GameClock.progress = (Customer.WAKE_LATEST - GameClock.DAY_START_HOUR) / 24.0 + 0.01
 	_advance(400)
-	_check("重置后过了最晚醒来时间也都出门了", _count_in_room(guests) == 0,
-		"07:30 之后仍在房间 %d 位" % _count_in_room(guests))
+	_check("重置后过了最晚醒来时间也都出门了", _count_sleeping(guests) == 0,
+		"07:30 之后仍在过夜睡眠 %d 位（屋里合计 %d 位）" % [_count_sleeping(guests), _count_in_room(guests)])
 
 	print("[wake] 结果：%s" % ("通过" if passed else "未通过"))
 

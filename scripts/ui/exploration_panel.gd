@@ -357,10 +357,10 @@ func _build_exit_buttons() -> void:
 	for info in exits:
 		var dir: Vector2i = info["dir"]
 		var terrain := str(info["terrain"])
-		var ready := bool(info.get("ready", false))
-		var text := "%s %s%s" % [_dir_arrow(dir), DataRegistry.terrain_name(terrain), "（可以出图）" if ready else "（需走到边缘）"]
+		var exit_ready := bool(info.get("ready", false))
+		var text := "%s %s%s" % [_dir_arrow(dir), DataRegistry.terrain_name(terrain), "（可以出图）" if exit_ready else "（需走到边缘）"]
 		var button := UIKit.button(text, Vector2(340, 52))
-		button.disabled = not ready
+		button.disabled = not exit_ready
 		button.pressed.connect(func(): Exploration.exit_to(dir))
 		side.add_child(button)
 
