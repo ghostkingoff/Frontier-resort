@@ -16,6 +16,8 @@ const INSIDE_TIMEOUT := 25.0    # 在建筑里待超过这么久就被强行请�
 const QUEUE_GIVE_UP_SECONDS := 20.0  # 在门口排队最多等这么久（scaled 秒），等不到就换一家
 const NEAR_CLAIM_TILES := 5          # 走到店铺几格以内才真正占位（使用位 / 预定位）
 const NEAR_CLAIM_PX := NEAR_CLAIM_TILES * 32.0
+const BIKE_HOURS := 2.0              # 共享单车加速持续几游戏小时
+const BIKE_SPEED_MULT := 2.2
 # 住客早上陆续醒来：不早于最早时间，且在 [最早, 最晚) 内随机
 const WAKE_EARLIEST := 6.5      # 06:30
 const WAKE_LATEST := 7.5        # 07:30
@@ -34,6 +36,8 @@ var spend_frequency := 0.6              # 越高越勤于消费，越低越常�
 var is_star := false
 var is_tycoon := false
 var has_bike := false
+var _bike_left := 0.0                # 单车加速剩余时间（scaled 秒）
+var _speed_before_bike := 0.0
 var _litter_accum := 0.0
 var _litter_interval := 0.0
 
@@ -153,6 +157,12 @@ func _process(delta: float) -> void:
 	_check_stuck(delta)
 	_tick_litter(scaled)
 	_recover_if_no_path(delta)
+	if has_bike:
+		_bike_left -= scaled
+		if _bike_left <= 0.0:
+			has_bike = false
+			speed = _speed_before_bike if _speed_before_bike > 0.0 else speed
+			_speed_before_bike = 0.0
 	# 生病计时：deadline_hours（默认 6 游戏小时）内没得到治疗就带病离开。
 	# 走路 / 消费 / 排队都照常倒计时，只有「正在治疗」不算。
 	if not illness.is_empty() and state != State.TREATMENT \
@@ -554,7 +564,15 @@ func _do_check_in() -> void:
 	var room: Building = null
 	if wants_lodging:
 		var party_size: int = party.members.size() if party != null else 1
-		room = world.lodge_with_free_room(party_size)
+		# 一屋只住一户：同一户的人住同一间，第一户办入住时就把整户名额占好
+		if party != null and party.lodge != null and is_instance_valid(party.lodge):
+			room = party.lodge
+		if room == null:
+			room = world.lodge_with_free_room(party_size, party)
+		if room != null and party != null:
+			if party.lodge == null:
+				room.reserve_room_for_party(party, party_size)
+			party.lodge = room
 	if room == null:
 		if wants_lodging:
 			GameState.notice.emit("度假屋没有空房，%s 只能当天往返" % customer_name)
@@ -715,10 +733,19 @@ func _finish_consume() -> void:
 		_choose_activity()
 		return
 	if b.service() == "bike":
-		if not has_bike:
-			has_bike = true
-			speed *= 2.2
-			_popup("租了共享单车", Color(0.7, 0.9, 1.0))
+		if not has_bike and party != null and party.budget_left > 0:
+			# 租一次收费（来自建筑数据的 spend），加速持续 2 游戏小时
+			var paid := party.spend(b.spend_value())
+			if paid > 0:
+				budget_left = party.budget_left
+				b.total_earned += paid
+				GameState.earn(paid, "共享单车")
+				has_bike = true
+				_speed_before_bike = speed
+				speed *= BIKE_SPEED_MULT
+				_bike_left = BIKE_HOURS * (GameClock.cycle_length_seconds / 24.0)
+				_popup("租了共享单车 -%s" % GameState.format_money(paid), Color(0.7, 0.9, 1.0))
+		b.on_guest_served()
 		_choose_activity()
 		return
 	_pay_facility(b)
@@ -762,6 +789,8 @@ func _finish_checkout() -> void:
 			GameState.earn(fee, "住宿结算")
 			_popup("住宿 %d 晚 +%s" % [n, GameState.format_money(fee)], Color(0.98, 0.85, 0.35))
 		lodge.remove_guest(self)
+		if party != null and lodge.guests.is_empty():
+			party.lodge = null      # 这一户退房了：整间房重新空出来
 		lodge = null
 	_leave_world()
 
@@ -915,6 +944,8 @@ func _leave_world() -> void:
 	_release_reservation()
 	if lodge != null and is_instance_valid(lodge):
 		lodge.remove_guest(self)
+		if party != null and lodge.guests.is_empty():
+			party.lodge = null
 		lodge = null
 	if target != null and is_instance_valid(target) and target.visitors.has(self):
 		target.remove_visitor(self)

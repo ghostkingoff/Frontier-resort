@@ -501,14 +501,31 @@ func _spawn_starter_buildings() -> void:
 		place_building("reception", Vector2i(64, 62))
 		return
 	place_building("reception", Vector2i(64, 62))
-	place_building("lodge_ordinary", Vector2i(18, 34))
-	place_building("lodge_nature", Vector2i(30, 34))
-	place_building("lodge_modern", Vector2i(6, 34))
-	place_building("food_diner", Vector2i(43, 34))
-	place_building("shop_small", Vector2i(55, 34))
-	place_building("food_bar", Vector2i(70, 34))
-	place_building("clinic_small", Vector2i(82, 34))
-	place_building("showroom", Vector2i(94, 30))
+	# 每一栋都按「实际门口那一格」重新铺一条小路接到主街：
+	# 之前 _init_ground_types() 里写死的 door_x 是按老布局算的，宽度一变就会错位一格
+	# （实测「现代风度假屋」的门被压在建筑底下 → 整栋楼永远走不到，客人也住不进去）
+	_place_starter("lodge_ordinary", Vector2i(18, 34))
+	_place_starter("lodge_nature", Vector2i(30, 34))
+	_place_starter("lodge_modern", Vector2i(6, 34))
+	_place_starter("food_diner", Vector2i(43, 34))
+	_place_starter("shop_small", Vector2i(55, 34))
+	_place_starter("food_bar", Vector2i(70, 34))
+	_place_starter("clinic_small", Vector2i(82, 34))
+	_place_starter("showroom", Vector2i(94, 30))
+
+
+func _place_starter(id: String, cell: Vector2i) -> Building:
+	var b: Building = place_building(id, cell)
+	if b != null:
+		var door := b.door_cell()
+		_pave_column(door, STREET_ROW + 1)               # 门口那一列铺到主街高度
+		# 主街本身只从 STREET_X0 铺到 STREET_X1：靠边的建筑（如最左边的现代风度假屋）
+		# 光铺竖列接不上主街，还要补一条横路把它连过去，否则整栋楼走不到
+		if door.x < STREET_X0:
+			_pave_row(STREET_ROW + 1, door.x, STREET_X0)
+		elif door.x > STREET_X1:
+			_pave_row(STREET_ROW + 1, STREET_X1, door.x)
+	return b
 
 
 func _spawn_all_buildings() -> void:
@@ -808,11 +825,6 @@ func apply_night_income() -> int:
 	return total
 
 
-func rest_all_staff() -> void:
-	for b in buildings:
-		b.rest_staff()
-
-
 func rest_night() -> Dictionary:
 	# 「休息一晚」跳过夜晚时调用：把场地上的顾客位置统一重置一遍。
 	# 有房间的住客直接安置进房间睡觉（醒来时间已在 06:30~07:30 之间随机定好），
@@ -1007,10 +1019,10 @@ func reception() -> Building:
 	return null
 
 
-func lodge_with_free_room(party_size: int = 1) -> Building:
+func lodge_with_free_room(party_size: int = 1, party_ref: Party = null) -> Building:
 	var best: Building = null
 	for b in buildings:
-		if not b.has_free_room(party_size):
+		if not b.has_free_room(party_size, party_ref):
 			continue
 		if not building_reachable(b):
 			continue

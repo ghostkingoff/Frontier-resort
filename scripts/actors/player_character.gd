@@ -6,6 +6,8 @@ extends Node2D
 signal use_reception_requested     # 在厅外按 F：请求「回到招待厅并退出自我操纵模式」（由 HUD 弹确认框）
 
 const SPEED := 96.0                # 走动速度（像素/游戏秒，比顾客稍快一点）
+const BIKE_HOURS := 2.0            # 共享单车加速持续几游戏小时（玩家免费骑）
+const BIKE_SPEED_MULT := 2.2
 const LABEL_TEXT := "玩家"
 const INTERACT_RANGE := 96.0       # 在厅外离门口多近才能按 F（像素）
 const CONTROLLED_Z := 3900         # 操纵模式下的层级：盖过屋顶，保证角色始终可见
@@ -19,6 +21,8 @@ var world: Node2D = null
 var sprite: Sprite2D
 var label: Label
 var controlled := false            # 是否处于自我操纵模式
+var speed_multiplier := 1.0        # 共享单车等加成（玩家租单车免费）
+var _bike_left := 0.0              # 单车加速剩余时间（scaled 秒）
 var inside_reception := false      # 当前是否在招待厅里
 var _inside_rect := Rect2()        # 在厅内时的活动范围（全局坐标）
 var _walk_clock := 0.0
@@ -70,6 +74,11 @@ func _process(delta: float) -> void:
 	if world == null:
 		return
 	_apply_z()
+	if _bike_left > 0.0 and not (GameClock.paused or GameClock.phase == GameClock.Phase.SETTLEMENT):
+		_bike_left -= delta * GameClock.time_scale()
+		if _bike_left <= 0.0:
+			_bike_left = 0.0
+			speed_multiplier = 1.0      # 单车加速到期
 	if not controlled:
 		return
 	if GameClock.paused or GameClock.phase == GameClock.Phase.SETTLEMENT:
@@ -95,7 +104,7 @@ func move_step(dir: Vector2, delta: float) -> void:
 	# 走不通的轴不动（可以沿墙滑）；每一步最多 8 像素，避免高倍速下一帧跨格。
 	if dir == Vector2.ZERO:
 		return
-	var remaining := SPEED * delta * GameClock.time_scale()
+	var remaining := SPEED * speed_multiplier * delta * GameClock.time_scale()
 	if inside_reception:
 		var target := global_position + dir * remaining
 		target = Vector2(
@@ -166,10 +175,15 @@ func _apply_z() -> void:
 # ---------- 与招待厅交互 ----------
 
 func try_interact() -> String:
-	# 返回 "leave"（从厅里出来）/ "use_reception"（在门口请求回厅并退模式）/ ""（附近没有可交互的东西）
+	# 返回 "leave"（从厅里出来）/ "use_reception"（在门口请求回厅并退模式）
+	#      / "rent_bike"（租共享单车，玩家免费）/ ""（附近没有可交互的东西）
 	if inside_reception:
 		leave_reception()
 		return "leave"
+	var bike := _near_bike()
+	if bike != null:
+		rent_bike(bike)
+		return "rent_bike"
 	if _near_reception():
 		use_reception_requested.emit()
 		return "use_reception"
@@ -181,9 +195,40 @@ func interaction_hint() -> String:
 		return ""
 	if inside_reception:
 		return "按 F 离开招待厅"
+	var bike := _near_bike()
+	if bike != null:
+		if _bike_left > 0.0:
+			return "共享单车加速中（剩余 %.1f 游戏小时）" % (_bike_left / _hour_seconds())
+		return "按 F 租用共享单车（免费，加速 %.0f 游戏小时）" % BIKE_HOURS
 	if _near_reception():
 		return "按 F 使用招待厅（回厅内并退出自我操纵模式）"
 	return "WASD / 方向键 移动 ｜ 走到招待厅门口按 F 可回去"
+
+
+func _hour_seconds() -> float:
+	return maxf(1.0, GameClock.cycle_length_seconds / 24.0)
+
+
+func _near_bike() -> Building:
+	# 附近有没有共享单车租借所（门口 96 像素内）
+	if world == null:
+		return null
+	var best: Building = null
+	var best_d := INTERACT_RANGE
+	for b in world.buildings:
+		if b.service() != "bike":
+			continue
+		var d: float = global_position.distance_to(world.cell_center(b.door_cell()))
+		if d <= best_d:
+			best_d = d
+			best = b
+	return best
+
+
+func rent_bike(_building: Building) -> void:
+	# 玩家租共享单车免费：加速 2 游戏小时
+	_bike_left = BIKE_HOURS * _hour_seconds()
+	speed_multiplier = BIKE_SPEED_MULT
 
 
 func _near_reception() -> bool:

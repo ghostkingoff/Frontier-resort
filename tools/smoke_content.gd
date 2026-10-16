@@ -160,14 +160,28 @@ func run() -> void:
 			mood_0, guest.mood, guest.mood - mood_0, budget_0, guest.budget_left,
 			GameState.money - money_0])
 
-		# 共享单车：租一次，速度翻倍
+		# 共享单车：租一次 50g、加速 2 游戏小时，到点自动恢复
 		var speed_0: float = guest.speed
+		var bike_money_0 := GameState.money
+		var bike_earned_0: int = bike.total_earned
 		guest.target = bike
 		guest.purpose = Customer.Purpose.CONSUME
 		guest._enter_facility()
 		guest._finish_consume()
-		checks.append("共享单车：速度 %.0f → %.0f（×%.1f）｜ 已租 %s" % [
-			speed_0, guest.speed, guest.speed / maxf(speed_0, 1.0), str(guest.has_bike)])
+		var bike_fee: int = bike.total_earned - bike_earned_0
+		var bike_income: int = GameState.money - bike_money_0
+		var bike_boosted: bool = guest.has_bike and guest.speed > speed_0
+		var bike_speed_boosted: float = guest.speed
+		# 推进 2.2 游戏小时（64 倍速下 delta = 游戏小时 / 64）
+		var bike_hour_seconds: float = maxf(1.0, GameClock.cycle_length_seconds / 24.0)
+		var bike_speed_backup: int = GameClock.speed
+		GameClock.set_speed(GameClock.Speed.X64)
+		guest._process(bike_hour_seconds * 2.2 / 64.0)
+		GameClock.set_speed(bike_speed_backup)
+		var bike_expired: bool = not guest.has_bike and is_equal_approx(guest.speed, speed_0)
+		checks.append("共享单车：速度 %.0f → %.0f（×%.1f）｜ 租金 %d（应 50）｜ 收入 %d ｜ 2 小时后恢复 %s" % [
+			speed_0, bike_speed_boosted, bike_speed_boosted / maxf(speed_0, 1.0), bike_fee, bike_income,
+			str(bike_boosted and bike_expired)])
 		guest.queue_free()
 	else:
 		checks.append("服务设施：建造或接路失败，跳过机制检查")
@@ -383,6 +397,120 @@ func run() -> void:
 		checks.append("住宿优先：最大空房位 %d（空房总位数 %d，都会算进补人目标）｜ 120 次抽样里住宿客 %d / %d（%.0f%%，应 ≥65%%）｜ 住不下的 %d（%.0f%%，应 ≤20%%，只来自普通池）｜ %s" % [
 			free_slots, lodge_spawner.free_room_people(), multi_hits, picked, share,
 			oversize, oversize_ppk, str(priority_ok)])
+
+	# 9d. 本轮调整：员工（上限 4 / 自己回体力）｜ 玩家免费骑单车 ｜ 明星富商上限 ｜ 一户一住 ｜ 网吧 24 小时
+	var staff_shop: Building = runner._find_building("food_buffet")
+	if staff_shop == null:
+		for b in world.buildings:
+			if b.staff_slots() >= 1:
+				staff_shop = b
+				break
+	var staff_note := "没有需要员工的设施，跳过"
+	if staff_shop != null:
+		var hire_target: int = mini(3, staff_shop.staff_slots())
+		while staff_shop.staff.size() < hire_target:
+			staff_shop.hire_staff()
+		for m in staff_shop.staff:
+			m["energy"] = 30.0
+		var clock_progress_b := GameClock.progress
+		var clock_phase_b := GameClock.phase
+		var clock_paused_b := GameClock.paused
+		GameClock.paused = false
+		GameClock.phase = GameClock.Phase.RUNNING
+		GameClock.progress = 20.0 / 24.0       # 凌晨 2 点：常规店都打烊了
+		var energy_before: float = staff_shop.staff_energy()
+		var one_hour := GameClock.cycle_length_seconds / 24.0 / GameClock.time_scale()
+		staff_shop._tick_staff(one_hour)
+		var energy_after: float = staff_shop.staff_energy()
+		GameClock.progress = clock_progress_b
+		GameClock.phase = clock_phase_b
+		GameClock.paused = clock_paused_b
+		# 3 名员工时每天能稳接多少客人：打烊 6 小时 + 营业 18 小时
+		var sustain := (6.0 * Building.ENERGY_RECOVER_CLOSED + 18.0 * Building.ENERGY_RECOVER_OPEN) \
+			* 3.0 / Building.ENERGY_PER_GUEST
+		staff_note = "%s %d 人：打烊 1 游戏小时体力 %.0f → %.0f（应回血）｜ 编制 %d（上限 4）｜ 3 人每天稳接约 %.0f 位客人" % [
+			str(staff_shop.id), hire_target, energy_before, energy_after, staff_shop.staff_slots(), sustain]
+	# 玩家骑共享单车：免费
+	var avatar_b: Node2D = get_tree().get_first_node_in_group("player_avatar")
+	var bike_free_note := "没有玩家角色或共享单车，跳过"
+	if avatar_b != null and bike != null:
+		avatar_b.detach_to(world.cell_center(bike.door_cell()))
+		var money_before_bike := GameState.money
+		var bike_result := str(avatar_b.try_interact())
+		bike_free_note = "玩家按 F：%s ｜ 免费 %s ｜ 加速 ×%.1f" % [
+			bike_result, str(GameState.money == money_before_bike), avatar_b.speed_multiplier]
+		avatar_b.speed_multiplier = 1.0
+		avatar_b._bike_left = 0.0
+		avatar_b.reset_to_reception()
+	# 明星 / 富商：每天最多 3 位、同时最多 5 位
+	var special_note := "找不到 CustomerSpawner，跳过"
+	if lodge_spawner != null:
+		var fame_backup_b: float = GameState.fame
+		GameState.fame = 1000.0                # 保证概率 > 0，测的是上限而非概率
+		lodge_spawner._specials_today = 3
+		var daily_blocked: bool = lodge_spawner._pick_special().is_empty()
+		lodge_spawner._specials_today = 0
+		var special_type: Dictionary = {}
+		for t in DataRegistry.customer_types:
+			var ids2: Array = t.get("identities", [])
+			if ids2.has("star") or ids2.has("tycoon"):
+				special_type = t
+				break
+		var special_probes: Array = []
+		for i in range(5):
+			var sp := Customer.new()
+			world.customers_root.add_child(sp)
+			sp.setup(special_type, world, world.random_entrance(), "贵客%d" % i)
+			special_probes.append(sp)
+		var on_map_count: int = lodge_spawner.specials_on_map()
+		var map_blocked: bool = lodge_spawner._pick_special().is_empty()
+		for sp in special_probes:
+			sp.queue_free()
+		GameState.fame = fame_backup_b
+		special_note = "今天已来 3 位时拦下 %s ｜ 场上 %d 位时拦下 %s ｜ 概率打 %.0f%%" % [
+			str(daily_blocked), on_map_count, str(map_blocked), 100.0 * 0.5]
+	# 度假屋：一间只住一户
+	var big_lodge: Building = runner._find_building("lodge_nature")
+	if big_lodge == null:
+		big_lodge = runner._find_building("lodge_modern")
+	var lodge_note := "没有 2 人以上的度假屋，跳过"
+	if big_lodge != null:
+		# 前面几项检查可能已经往这间房塞了住客：先腾空，测完再还原
+		var saved_guests: Array = big_lodge.guests.duplicate()
+		var saved_party: Party = big_lodge.reserved_party
+		big_lodge.guests.clear()
+		big_lodge.reserved_party = null
+		var party_a := Party.new()
+		party_a.setup(9000)
+		var party_b := Party.new()
+		party_b.setup(9000)
+		var lodge_free_a: bool = big_lodge.has_free_room(2, party_a)
+		big_lodge.reserve_room_for_party(party_a, 2)
+		var same_party_ok: bool = big_lodge.has_free_room(2, party_a)
+		var other_party_blocked: bool = not big_lodge.has_free_room(1, party_b)
+		var picked_other: Building = world.lodge_with_free_room(1, party_b)
+		var not_reassigned: bool = picked_other != big_lodge
+		big_lodge.reserved_party = null
+		big_lodge.reserved_room_size = 0
+		big_lodge.guests = saved_guests
+		big_lodge.reserved_party = saved_party
+		lodge_note = "%s：空房可订 %s ｜ 同户成员可进 %s ｜ 别户被挡 %s ｜ 不会分给别户 %s" % [
+			str(big_lodge.id), str(lodge_free_a), str(same_party_ok),
+			str(other_party_blocked), str(not_reassigned)]
+	# 网吧：24 小时营业，开灯跟其他店一致，早上 6 点关灯
+	var net: Building = runner._find_building("fun_internet")
+	var net_note := "本模式没建网吧"
+	if net != null:
+		var net_open_ok := true
+		for h in [0.0, 3.0, 8.0, 15.0, 23.5]:
+			net_open_ok = net_open_ok and net.is_open_at(h)
+		var net_light_ok: bool = is_equal_approx(net.light_off_hour, 6.0) \
+			and net.light_on_hour >= 20.0 and net.light_on_hour <= 20.75
+		net_note = "网吧：全天营业 %s ｜ 关灯 %.1f 点 ｜ 开灯 %.2f 点（同其他店错峰）%s" % [
+			str(net_open_ok), net.light_off_hour, net.light_on_hour, str(net_light_ok)]
+	checks.append("本轮调整：%s" % staff_note)
+	checks.append("本轮调整：%s ｜ %s" % [bike_free_note, special_note])
+	checks.append("本轮调整：%s ｜ %s" % [lodge_note, net_note])
 
 	# 10. 游客状态面板：分栏 / 头像 / 点名字对焦 + 橙色高亮 / 详情 / 三种退出对焦方式
 	var vpanel: Node = world.get_parent().get_node_or_null("VisitorPanel")

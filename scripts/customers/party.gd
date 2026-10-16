@@ -6,6 +6,7 @@ var budget_total := 0
 var budget_left := 0
 var members: Array = []
 var leaving := false
+var lodge: Building = null    # 这一户订下的度假屋（一屋只住一户，同户其他人也跟着住这间）
 var waitress_paid := 0        # 这组客人带来的总消费（统计用）
 var split_chance := 0.2       # 小概率分头行动，其余时间同进同出
 

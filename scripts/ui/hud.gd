@@ -318,6 +318,8 @@ func _player_interact() -> void:
 	match result:
 		"leave":
 			show_notice("已离开招待厅")
+		"rent_bike":
+			show_notice("租了共享单车（免费）：移动加速 2 游戏小时")
 		"use_reception":
 			pass    # 由 use_reception_requested 信号弹确认框
 		_:
@@ -1039,8 +1041,6 @@ func _manage_night() -> void:
 
 func _on_morning_started() -> void:
 	# 夜里走到早上 6 点：不再弹结算，直接开始新一天的营业
-	if world:
-		world.rest_all_staff()
 	PlayerStats.daily_restore()
 	show_notice("早上 6 点，度假村开门营业")
 
@@ -1059,8 +1059,6 @@ func begin_next_day() -> void:
 
 func _start_next_day() -> void:
 	settlement.visible = false
-	if world:
-		world.rest_all_staff()
 	PlayerStats.daily_restore()
 	GameState.finish_day()
 	_cycle_settled = false

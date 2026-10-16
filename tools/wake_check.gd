@@ -32,7 +32,7 @@ func _check(label: String, ok: bool, detail: String) -> void:
 
 func _spawn_fixtures() -> void:
 	# 手动放一批住客：多日的会去住度假屋，单日的当天往返。
-	# 度假屋房位是 1 + 2 + 3 = 6，所以多日客人不超过 6 位。
+	# 一间度假屋只住一户：1 人 / 2 人 / 3 人各一间，所以最多 3 户多日客人。
 	var multi: Array = []
 	var single: Array = []
 	for t in DataRegistry.customer_types:
@@ -41,14 +41,22 @@ func _spawn_fixtures() -> void:
 		else:
 			single.append(t)
 	var room_capacity := 0
+	var lodge_caps: Array = []      # 每间度假屋能住几人（1 / 2 / 3）
 	for b in world.buildings:
 		if b.is_lodging():
 			room_capacity += b.room_capacity()
+			lodge_caps.append(b.room_capacity())
 	var used := 0
 	for t in multi:
 		var names: Array = t.get("names", [])
-		if used + names.size() > room_capacity:
+		var slot := -1
+		for i in range(lodge_caps.size()):
+			if int(lodge_caps[i]) >= names.size():
+				slot = i
+				break
+		if slot < 0:
 			continue
+		lodge_caps[slot] = 0        # 这间房被这一户订下了（一屋只住一户）
 		var party := Party.new()
 		party.setup(int(t.get("budget", 2000)))
 		for i in range(names.size()):
@@ -169,14 +177,16 @@ func _run_checks() -> void:
 		# 只推进到这位独苗醒来之后一点点（不能推太多，否则会越过别人的醒来时间）
 		GameClock.progress = (lonely_wake - GameClock.DAY_START_HOUR) / 24.0 + 0.0005
 		_advance(6, 0.05)
-		var still_in := _count_in_room(guests)
+		# 判据看「还在睡昨晚这一觉」的人数：起床后可能要穿过房间、甚至白天回房打个盹，
+		# 用「房间里的人数」会被这两种正常行为误判（这一项以前是靠随机数刚好过）
+		var still_asleep := _count_sleeping(guests)
 		var rows: Array = []
 		for c in guests:
 			if is_instance_valid(c):
 				rows.append("%.2f:%s" % [c.wake_hour(), "房内" if c.is_resting_in_room() else "已在外面"])
-		_check("到最早那位的时间点时，只有他起床", still_in == guests.size() - 1,
-			"%.2f 时房里还剩 %d / %d 位 ｜ %s" % [
-				lonely_wake, still_in, guests.size(), "  ".join(rows)])
+		_check("到最早那位的时间点时，只有他起床", still_asleep == guests.size() - 1,
+			"%.2f 时还在睡昨晚这一觉的 %d / %d 位 ｜ %s" % [
+				lonely_wake, still_asleep, guests.size(), "  ".join(rows)])
 	else:
 		_check("到最早那位的时间点时，只有他起床", false,
 			"六位住客的醒来时间都有重复，挑不出单个时间点（%s）" % str(by_hour))

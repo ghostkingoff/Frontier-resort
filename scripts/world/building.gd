@@ -14,7 +14,8 @@ const LIGHT_OFF_SPREAD_HOURS := 0.5   # 打烊后「陆续关灯」的错峰窗�
 
 const CELL := 32
 const ENERGY_PER_GUEST := 10.0     # 每接待一位客人，全员合计消耗的体力
-const ENERGY_REST := 55.0          # 每天休息恢复
+const ENERGY_RECOVER_CLOSED := 15.0  # 打烊 / 下班时每游戏小时恢复的体力（夜里一觉基本回满）
+const ENERGY_RECOVER_OPEN := 2.5     # 营业中也慢慢回体力（有 3 名员工就扛得住高峰）
 
 var id: String = ""
 var data: Dictionary = {}
@@ -47,6 +48,8 @@ var reserved := 0              # 已被「正在走过来的客人」预定走�
 var queued: Array = []         # 站在门口预定位上排队的客人
 var queue_reserved := 0        # 已被「正在走过来排队的客人」占住的预定位
 var guests: Array = []         # 已入住的客人（度假屋）
+var reserved_party: Party = null   # 这间度假屋被哪一户订下了（一屋只住一户）
+var reserved_room_size := 0        # 订下的名额（整户人数，办入住时就占好）
 var check_ins: int = 0         # 办过多少次入住（招待厅）
 var cleaned_total: int = 0     # 保洁间累计清理的垃圾数（汇总自保洁工人）
 var janitors: Array = []       # 保洁间雇的工人（在外面走动扫地）
@@ -122,7 +125,10 @@ func _build_lights() -> void:
 	# 熄灯时间：常规店打烊后在 0~0.5 小时里陆续熄灭（24:00 打烊 → 24:00~24:30）；
 	# 跨夜店（如酒吧 22→4）关门时已经很晚，直接按打烊时间熄，不再往后拖。
 	var close_h := close_hour()
-	light_off_hour = close_h if close_h < open_hour() else close_h + randf_range(0.0, LIGHT_OFF_SPREAD_HOURS)
+	if data.has("light_off_hour"):
+		light_off_hour = float(data.get("light_off_hour"))   # 数据里写死（网吧这类 24 小时店：早上 6 点关灯）
+	else:
+		light_off_hour = close_h if close_h < open_hour() else close_h + randf_range(0.0, LIGHT_OFF_SPREAD_HOURS)
 	# 光晕大小默认按占地自动算（见 World.make_rect_light）；
 	# 小建筑可以用 light_glow_scale 把光晕整体放大（路灯 1×1 的光晕靠它照到周围）。
 	var glow := float(data.get("light_glow_scale", 1.0))
@@ -236,8 +242,8 @@ func update_lights(hour: float) -> void:
 	if h < 12.0:
 		h += 24.0                      # 凌晨 → 算作次日的 24~36 点
 	var off := light_off_hour
-	if off < open_hour():
-		off += 24.0                    # 跨夜店：熄灯时间算到次日
+	if off < light_on_hour:
+		off += 24.0                    # 熄灯在开灯之前（当晚开、次日早关）→ 算到次日
 	var k := clampf((h - light_on_hour) / LIGHT_FADE_HOURS, 0.0, 1.0)
 	if h >= off:
 		k = clampf(1.0 - (h - off) / LIGHT_FADE_HOURS, 0.0, 1.0)   # 到熄灯时间渐渐熄灯
@@ -248,6 +254,7 @@ func update_lights(hour: float) -> void:
 
 
 func _process(delta: float) -> void:
+	_tick_staff(delta)
 	if service() == "cleaning":
 		_process_cleaning(delta)
 		return
@@ -265,6 +272,25 @@ func _process(delta: float) -> void:
 			treating.erase(patient)
 			patient.finish_treatment(self)
 	_promote_patient()
+
+
+func _tick_staff(delta: float) -> void:
+	# 员工体力恢复：打烊 / 下班时恢复快，营业中也慢慢回一点。
+	# 这样 3 名员工就能撑住一家高峰店铺，不再像以前那样一天下来全部见底。
+	if staff.is_empty():
+		return
+	if GameClock.phase == GameClock.Phase.SETTLEMENT or GameClock.paused:
+		return
+	var hour_seconds := maxf(1.0, GameClock.cycle_length_seconds / 24.0)
+	var scaled := delta * GameClock.time_scale()
+	for member in staff:
+		var rate := ENERGY_RECOVER_OPEN
+		if not is_open_at(GameClock.hour_of_day()):
+			rate = ENERGY_RECOVER_CLOSED
+		elif service() == "cleaning" and not shift_on_duty(str(member.get("shift", "day"))):
+			rate = ENERGY_RECOVER_CLOSED      # 保洁：下班的那一班回得快
+		member["energy"] = clampf(float(member.get("energy", 100.0)) + rate * scaled / hour_seconds,
+			0.0, 100.0)
 
 
 func _process_cleaning(_delta: float) -> void:
@@ -527,8 +553,28 @@ func room_capacity() -> int:
 	return maxi(1, int(data.get("room_slots", 1)))
 
 
-func has_free_room(party_size: int = 1) -> bool:
-	return is_lodging() and guests.size() + party_size <= room_capacity()
+func has_free_room(party_size: int = 1, party_ref: Party = null) -> bool:
+	# 一屋只住一户：空房时按「整户人数」占名额（双人组要 2 人间、三人组要 3 人间）；
+	# 已经有住客时，只放同一户的其他人进来，别的户一律看不到空位
+	if not is_lodging():
+		return false
+	if guests.is_empty() and reserved_party == null:
+		return party_size <= room_capacity()
+	return party_ref != null and party_ref == reserved_party
+
+
+func reserve_room_for_party(party_ref: Party, party_size: int) -> void:
+	# 办入住时把整户的名额一次占好：同一户其他人随后到也不用再抢位子
+	if party_ref == null:
+		return
+	reserved_party = party_ref
+	reserved_room_size = maxi(party_size, 1)
+
+
+func clear_room_reservation_if_empty() -> void:
+	if guests.is_empty():
+		reserved_party = null
+		reserved_room_size = 0
 
 
 func needs_staff() -> bool:
@@ -537,7 +583,7 @@ func needs_staff() -> bool:
 
 
 func staff_slots() -> int:
-	return int(data.get("staff_slots", 1))
+	return mini(4, int(data.get("staff_slots", 1)))      # 一栋楼最多雇 4 名员工
 
 
 func is_self_service() -> bool:
@@ -552,6 +598,7 @@ func add_guest(customer: Node2D) -> void:
 
 func remove_guest(customer: Node2D) -> void:
 	guests.erase(customer)
+	clear_room_reservation_if_empty()      # 一户走光了：这间房才算重新空出来
 
 
 func charge_stay(_customer: Node2D, nights: int) -> int:
@@ -824,11 +871,6 @@ func staff_energy() -> float:
 
 func daily_wage() -> int:
 	return int(data.get("staff_wage", 0)) * staff.size()
-
-
-func rest_staff() -> void:
-	for member in staff:
-		member["energy"] = clampf(float(member.get("energy", 0.0)) + ENERGY_REST, 0.0, 100.0)
 
 
 func doctor_quality() -> int:

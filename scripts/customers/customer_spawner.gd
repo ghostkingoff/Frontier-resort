@@ -12,15 +12,24 @@ extends Node
 const ARRIVAL_MIN_GAP := 8.0        # 补人间隔下限（scaled 秒；缺口大时最快这个节奏）
 const ARRIVAL_MAX_GAP := 60.0       # 补人间隔上限（缺口只有 1 人时约 1 游戏小时来一组）
 const LODGE_PRIORITY_CHANCE := 0.85  # 有空房时，优先放「会住宿的客人」的概率（前期靠他们撑人气）
+const SPECIAL_DAILY_CAP := 3         # 明星 / 富商：每天最多来 3 位（按人头）
+const SPECIAL_ON_MAP_CAP := 5        # 明星 / 富商：同时在场最多 5 位（按人头）
+const SPECIAL_CHANCE_SCALE := 0.5    # 明星 / 富商出现概率整体打对折（再叠加上面两个上限）
 
 var world: Node2D
 var _last_hour := -1
 var _quota := 0                     # 这一小时还差多少「人」（不足补充用）
 var _arrival_timer := 0.0
+var _specials_today := 0             # 今天已经来了几位明星 / 富商
 
 
 func _ready() -> void:
 	world = get_tree().get_first_node_in_group("world")
+	GameClock.day_finished.connect(_on_day_finished)
+
+
+func _on_day_finished() -> void:
+	_specials_today = 0              # 新的一天：明星 / 富商名额重置
 
 
 func _process(delta: float) -> void:
@@ -189,6 +198,7 @@ func _try_spawn() -> int:
 		world.customers_root.add_child(customer)
 		customer.setup(entry, world, world.random_entrance(), str(names[i]), party)
 	if _is_special(entry):
+		_specials_today += names.size()      # 记进今天的名额（按人头）
 		GameState.celebrity_notice.emit(special_notice_text(entry, names))   # 明星 / 富商到来：弹 3 秒提示
 	return names.size()
 
@@ -303,7 +313,9 @@ func _is_special(entry: Dictionary) -> bool:
 
 
 func _pick_special() -> Dictionary:
-	var chance := GameState.star_arrival_chance()
+	# 明星 / 富商：频率打对折，而且每天最多 3 位、同时在场最多 5 位
+	var on_map := specials_on_map()
+	var chance := GameState.star_arrival_chance() * SPECIAL_CHANCE_SCALE
 	if chance <= 0.0:
 		return {}
 	if randf() > chance:
@@ -315,6 +327,11 @@ func _pick_special() -> Dictionary:
 	for t in DataRegistry.customer_types:
 		if not _is_special(t):
 			continue
+		var size: int = _party_size(t)
+		if _specials_today + size > SPECIAL_DAILY_CAP:
+			continue          # 今天的名额满了
+		if on_map + size > SPECIAL_ON_MAP_CAP:
+			continue          # 场上已经够多了（等他们走了再来）
 		if present.has(str(t.get("id", ""))):
 			continue          # 明星 / 富商同样不重复出现
 		if GameState.reputation < float(t.get("reputation_required", 0)):
@@ -333,3 +350,17 @@ func _pick_special() -> Dictionary:
 	if pool.is_empty():
 		return {}
 	return pool[randi() % pool.size()]
+
+
+func specials_on_map() -> int:
+	# 场上（未离场）的明星 / 富商人数：按人头算
+	var n := 0
+	for node in get_tree().get_nodes_in_group("customers"):
+		if not (node is Customer):
+			continue
+		var c: Customer = node
+		if not is_instance_valid(c) or c.is_queued_for_deletion() or c.state == Customer.State.DONE:
+			continue
+		if c.is_star or c.is_tycoon:
+			n += 1
+	return n
