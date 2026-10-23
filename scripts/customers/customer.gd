@@ -49,6 +49,9 @@ var nights := 0
 var exit_point := Vector2.ZERO
 
 var action_left := 0.0
+var _interior_roam_pause := 0.0
+var _interior_roam_path: Array[Vector2] = []
+var _interior_roam_path_index := 0
 var _entrance_cell := Vector2i.ZERO
 var _entry_cell := Vector2i.ZERO          # 这次要去的是哪个出入口（门口优先，否则外圈最近一格）
 var _no_path_time := 0.0                  # 「该走路却没路径」持续了多久，用于重新决策
@@ -105,7 +108,7 @@ func setup(customer_type: Dictionary, world_ref: Node2D, spawn_pos: Vector2,
 
 func _build_sprite() -> void:
 	var base := str(type_data.get("sprite", "res://art/placeholder/characters/Boy"))
-	_build_sprite_base(base + "/walk.png")
+	_build_sprite_base(base + "/walk.png", base + "/idle.png")
 
 
 func _start_cell_candidates(from_cell: Vector2i) -> Array:
@@ -149,6 +152,14 @@ func _notification(what: int) -> void:
 # ---------- 主循环 ----------
 
 func _process(delta: float) -> void:
+	_process_behavior(delta)
+	var idle_delta := 0.0
+	if not GameClock.paused and GameClock.phase != GameClock.Phase.SETTLEMENT:
+		idle_delta = delta * GameClock.time_scale()
+	_tick_idle_animation(idle_delta)
+
+
+func _process_behavior(delta: float) -> void:
 	if GameClock.paused or GameClock.phase == GameClock.Phase.SETTLEMENT:
 		return
 	var scaled := delta * GameClock.time_scale()
@@ -200,6 +211,9 @@ func _process(delta: float) -> void:
 			if purpose == Purpose.REST and _sleeping_night and not GameClock.is_night() and _sleep_done():
 				_finish_action()      # 天亮了、也到点了，才出房间
 				return
+			if purpose == Purpose.CONSUME and _inside_building != null \
+					and is_instance_valid(_inside_building) and _inside_building.can_roam_interior():
+				_tick_interior_roam(scaled)
 			action_left -= scaled
 			if action_left <= 0.0:
 				_finish_action()
@@ -638,12 +652,66 @@ func _enter_facility() -> void:
 func _enter_shop_now(b: Building) -> void:
 	# 真正进店消费（预定位顶上来时也走这里）
 	b.add_visitor(self)
+	var entry_world := global_position
 	reparent(b.interior, true)
-	global_position = b.interior_point()
 	_inside_building = b
-	action_left = randf_range(3.0, 7.0)
+	if b.can_roam_interior():
+		global_position = b.interior_entry_point(entry_world)
+		_interior_roam_path.clear()
+		_interior_roam_path_index = 0
+		_interior_roam_pause = randf_range(0.4, 1.0)
+		action_left = randf_range(9.0, 15.0)
+	else:
+		global_position = b.interior_point()
+		action_left = randf_range(3.0, 7.0)
 	purpose = Purpose.CONSUME
 	state = State.INSIDE
+
+
+func _tick_interior_roam(scaled: float) -> void:
+	var b := _inside_building
+	if b == null or not is_instance_valid(b) or not b.can_roam_interior():
+		return
+	if _interior_roam_pause > 0.0:
+		_interior_roam_pause -= scaled
+		return
+	if _interior_roam_path.is_empty() or _interior_roam_path_index >= _interior_roam_path.size():
+		_interior_roam_path = b.interior_roam_route(global_position)
+		_interior_roam_path_index = 0
+		if _interior_roam_path.size() <= 1:
+			_interior_roam_path.clear()
+			_interior_roam_pause = randf_range(0.8, 1.6)
+			return
+	if global_position.distance_to(_interior_roam_path[_interior_roam_path_index]) < 0.8:
+		_interior_roam_path_index += 1
+	var remaining := _walk_speed() * scaled
+	var last_dir := Vector2.ZERO
+	var guard := 0
+	while remaining > 0.001 and _interior_roam_path_index < _interior_roam_path.size() \
+			and guard < 128:
+		guard += 1
+		var waypoint: Vector2 = _interior_roam_path[_interior_roam_path_index]
+		var dist := global_position.distance_to(waypoint)
+		if dist < 0.8:
+			_interior_roam_path_index += 1
+			continue
+		var dir := (waypoint - global_position) / dist
+		var step := minf(minf(remaining, 4.0), dist)
+		var candidate := global_position + dir * step
+		if not b.interior_roam_can_stand(candidate):
+			_interior_roam_path.clear()
+			_interior_roam_path_index = 0
+			_interior_roam_pause = randf_range(0.15, 0.35)
+			break
+		global_position = candidate
+		remaining -= step
+		last_dir = dir
+	if last_dir != Vector2.ZERO:
+		_update_animation(last_dir, scaled)
+	if _interior_roam_path_index >= _interior_roam_path.size():
+		_interior_roam_path.clear()
+		_interior_roam_path_index = 0
+		_interior_roam_pause = randf_range(0.8, 2.2)
 
 
 func promote_from_queue(b: Building) -> void:

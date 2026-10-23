@@ -227,6 +227,11 @@ func ground_config() -> Dictionary:
 	return sprites.get("ground", {})
 
 
+func ground_tile_config(kind: String) -> Dictionary:
+	var tiles: Dictionary = ground_config().get("tiles", {})
+	return tiles.get(kind, tiles.get("grass", {}))
+
+
 func item_name(id: String) -> String:
 	return str(items.get(id, {}).get("name", id))
 

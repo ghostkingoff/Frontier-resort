@@ -6,27 +6,38 @@ extends SceneTree
 
 const ATLAS := "res://art/placeholder/tiles/field.png"
 const ATLAS_2X := "res://art/generated/field_2x.png"
+const DENSE_GRASS_2X := "res://art/placeholders/tiles/ninja_dense_grass_2x.png"
+const STONE_TILE_2X := "res://art/placeholders/tiles/ninja_stone_tile_2x.png"
+const WASTELAND_2X := "res://art/placeholders/tiles/ninja_wasteland_2x.png"
 const OUT := "res://art/generated/ground_tileset.tres"
 const TILE_SIZE := Vector2i(32, 32)
-const TILES := [Vector2i(3, 0), Vector2i(3, 3), Vector2i(3, 6)]
+const SOURCE_TILES := [
+	[ATLAS_2X, [Vector2i(3, 0), Vector2i(3, 3), Vector2i(3, 6)]],
+	[DENSE_GRASS_2X, [Vector2i.ZERO]],
+	[STONE_TILE_2X, [Vector2i.ZERO]],
+	[WASTELAND_2X, [Vector2i.ZERO]],
+]
 
 
 func _initialize() -> void:
 	_ensure_upscaled()
-	var tex: Texture2D = load(ATLAS_2X)
-	if tex == null:
-		push_warning("贴图 %s 尚未导入，请先运行：godot --headless --path . --import，再重新运行本工具。" % ATLAS_2X)
-		quit(0)
-		return
 	var tileset := TileSet.new()
 	tileset.tile_size = TILE_SIZE
-	var source := TileSetAtlasSource.new()
-	source.texture = tex
-	source.texture_region_size = TILE_SIZE
-	for coords in TILES:
-		if not source.has_tile(coords):
-			source.create_tile(coords)
-	tileset.add_source(source, 0)
+	for source_id in range(SOURCE_TILES.size()):
+		var source_spec: Array = SOURCE_TILES[source_id]
+		var texture_path := str(source_spec[0])
+		var tex: Texture2D = load(texture_path)
+		if tex == null:
+			push_warning("贴图 %s 尚未导入，请先运行：godot --headless --path . --import，再重新运行本工具。" % texture_path)
+			quit(0)
+			return
+		var source := TileSetAtlasSource.new()
+		source.texture = tex
+		source.texture_region_size = TILE_SIZE
+		for coords in source_spec[1]:
+			if not source.has_tile(coords):
+				source.create_tile(coords)
+		tileset.add_source(source, source_id)
 	DirAccess.make_dir_recursive_absolute("res://art/generated")
 	var err := ResourceSaver.save(tileset, OUT)
 	print("[build_tileset] 保存 %s -> %s" % [OUT, error_string(err)])

@@ -5,7 +5,7 @@ const JANITOR := preload("res://scripts/customers/janitor.gd")
 
 var world: Node2D
 var building: Building = null
-var confirm_demolish := false
+var demolition_prompt := false
 
 var panel: PanelContainer
 var content: VBoxContainer
@@ -41,13 +41,21 @@ func _ready() -> void:
 
 func open(target: Building) -> void:
 	building = target
-	confirm_demolish = false
+	demolition_prompt = false
+	panel.visible = true
+	_refresh()
+
+
+func open_for_demolition(target: Building) -> void:
+	building = target
+	demolition_prompt = true
 	panel.visible = true
 	_refresh()
 
 
 func close() -> void:
 	building = null
+	demolition_prompt = false
 	panel.visible = false
 
 
@@ -69,6 +77,26 @@ func _refresh() -> void:
 
 	var b := building
 	content.add_child(UIKit.label(b.display_name(), 32, Color(0.98, 0.88, 0.55)))
+	if demolition_prompt:
+		content.add_child(UIKit.label("是否拆除该建筑？", 26, Color(1.0, 0.72, 0.55)))
+		content.add_child(UIKit.label("确认后返还 %s，占地会恢复为原本地面。" % GameState.format_money(b.refund_value()),
+			21, Color(0.95, 0.82, 0.62)))
+		var prompt_actions := HBoxContainer.new()
+		prompt_actions.add_theme_constant_override("separation", 12)
+		var cancel_demolish := UIKit.button("否，保留建筑", Vector2(210, 52))
+		cancel_demolish.pressed.connect(func() -> void:
+			demolition_prompt = false
+			_refresh())
+		prompt_actions.add_child(cancel_demolish)
+		var confirm := UIKit.button("是，拆除建筑", Vector2(210, 52))
+		confirm.pressed.connect(func() -> void:
+			var result: Dictionary = world.demolish(b)
+			GameState.notice.emit("已拆除 %s，返还 %s" % [
+				str(result.get("name", "")), GameState.format_money(int(result.get("refund", 0)))])
+			close())
+		prompt_actions.add_child(confirm)
+		content.add_child(prompt_actions)
+		content.add_child(UIKit.spacer(6))
 	var desc := str(b.data.get("description", ""))
 	if desc != "":
 		content.add_child(UIKit.label(desc, 20, Color(0.80, 0.82, 0.88)))
@@ -155,18 +183,13 @@ func _add_cleaning_section(b: Building) -> void:
 
 
 func _make_demolish_button(b: Building) -> Button:
-	var demolish := UIKit.button("拆除建筑（返还 %s）" % GameState.format_money(b.refund_value()), Vector2(320, 52))
-	if confirm_demolish:
-		demolish.text = "确认拆除？"
+	var demolish := UIKit.button("拆除建筑：进入拆除模式（返还 %s）" % GameState.format_money(b.refund_value()), Vector2(360, 52))
 	demolish.pressed.connect(func():
-		if not confirm_demolish:
-			confirm_demolish = true
-			_refresh()
-			return
-		var result: Dictionary = world.demolish(b)
-		GameState.notice.emit("已拆除 %s，返还 %s" % [
-			str(result.get("name", "")), GameState.format_money(int(result.get("refund", 0)))])
-		close())
+		var hud := get_parent().get_node_or_null("HUD")
+		if hud and hud.has_method("enter_demolish_mode"):
+			hud.enter_demolish_mode()
+		else:
+			close())
 	return demolish
 
 

@@ -25,25 +25,38 @@ const STUCK_SECONDS := 5.0        # 位置多久没变算卡住
 
 var world: Node2D = null
 var sprite: Sprite2D
+var walk_texture: Texture2D
+var idle_texture: Texture2D
 var speed := DEFAULT_SPEED
 
 var _path: Array = []
 var _path_index := 0
 var _walk_clock := 0.0
+var _idle_blink_clock := 0.0
+var _idle_blink_left := 0.0
+var _idle_vframes := 1
+var _moving_this_frame := false
+var _facing_column := DIR_DOWN
 var _stuck_time := 0.0
 var _last_pos := Vector2.ZERO
 
 
-func _build_sprite_base(atlas: String) -> void:
+func _build_sprite_base(atlas: String, idle_atlas: String = "") -> void:
 	sprite = Sprite2D.new()
 	sprite.name = "Sprite"
-	sprite.texture = load(atlas)
+	walk_texture = load(atlas)
+	sprite.texture = walk_texture
 	sprite.hframes = 4
 	sprite.vframes = 4
 	sprite.frame = DIR_DOWN
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.scale = Vector2(DataRegistry.SPRITE_SCALE, DataRegistry.SPRITE_SCALE)
 	add_child(sprite)
+	if idle_atlas != "" and ResourceLoader.exists(idle_atlas):
+		idle_texture = load(idle_atlas)
+		if idle_texture != null:
+			var idle_frame_width := maxf(idle_texture.get_width() / 4.0, 1.0)
+			_idle_vframes = maxi(1, roundi(idle_texture.get_height() / idle_frame_width))
 
 
 # ---------- 可覆盖的钩子 ----------
@@ -153,6 +166,11 @@ func _step_towards(point: Vector2, delta: float) -> void:
 func _update_animation(dir: Vector2, delta: float) -> void:
 	if sprite == null:
 		return
+	_moving_this_frame = true
+	if walk_texture != null and sprite.texture != walk_texture:
+		sprite.texture = walk_texture
+		sprite.hframes = 4
+		sprite.vframes = 4
 	_walk_clock += delta
 	var column := DIR_DOWN
 	if not FRONT_FACING_ONLY:
@@ -160,10 +178,35 @@ func _update_animation(dir: Vector2, delta: float) -> void:
 			column = DIR_LEFT if dir.x < 0.0 else DIR_RIGHT
 		else:
 			column = DIR_DOWN if dir.y > 0.0 else DIR_UP
+	_facing_column = column
 	var step := int(_walk_clock * _anim_fps()) % 4
 	sprite.frame = step * sprite.hframes + column
 	# 正面视角下用小跳步表现走动，避免看起来像在滑行
 	sprite.position.y = -2.0 if (FRONT_FACING_ONLY and step % 2 == 0) else 0.0
+
+
+func _tick_idle_animation(scaled_delta: float) -> void:
+	if sprite == null or idle_texture == null:
+		return
+	if _moving_this_frame:
+		_moving_this_frame = false
+		_idle_blink_clock = 0.0
+		_idle_blink_left = 0.0
+		return
+	if sprite.texture != idle_texture:
+		sprite.texture = idle_texture
+		sprite.hframes = 4
+		sprite.vframes = _idle_vframes
+		sprite.position.y = 0.0
+	_idle_blink_clock += scaled_delta
+	if _idle_blink_left <= 0.0 and _idle_blink_clock >= 8.0:
+		_idle_blink_clock = 0.0
+		_idle_blink_left = 0.5
+	var row := 0
+	if _idle_vframes > 1 and _idle_blink_left > 0.0:
+		row = 1
+		_idle_blink_left = maxf(0.0, _idle_blink_left - scaled_delta)
+	sprite.frame = row * sprite.hframes + _facing_column
 
 
 # ---------- 卡住检测 ----------

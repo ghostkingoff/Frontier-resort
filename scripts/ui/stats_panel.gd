@@ -13,8 +13,8 @@ func _ready() -> void:
 	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	panel.offset_left = 240
 	panel.offset_right = -240
-	panel.offset_top = 100
-	panel.offset_bottom = -70
+	panel.offset_top = 148
+	panel.offset_bottom = -84
 	panel.add_theme_stylebox_override("panel", UIKit.panel_style())
 	panel.visible = false
 	root.add_child(panel)

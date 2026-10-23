@@ -1,17 +1,35 @@
-[gd_resource type="TileSet" format=3 uid="uid://w15mkn3inmye"]
+[gd_resource type="TileSet" format=3]
 
-[ext_resource type="Texture2D" uid="uid://i00dbh0qcmi0" path="res://art/generated/field_2x.png" id="1_ecp0i"]
+[ext_resource type="Texture2D" path="res://art/generated/field_2x.png" id="1_xv3a6"]
+[ext_resource type="Texture2D" path="res://art/placeholders/tiles/ninja_dense_grass_2x.png" id="2_nipnw"]
+[ext_resource type="Texture2D" path="res://art/placeholders/tiles/ninja_stone_tile_2x.png" id="3_8c06o"]
+[ext_resource type="Texture2D" path="res://art/placeholders/tiles/ninja_wasteland_2x.png" id="4_ukavp"]
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_fgb6f"]
-texture = ExtResource("1_ecp0i")
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ql5fl"]
+texture = ExtResource("1_xv3a6")
 texture_region_size = Vector2i(32, 32)
-1:4/0 = 0
-1:7/0 = 0
-1:1/0 = 0
-3:6/0 = 0
-3:3/0 = 0
 3:0/0 = 0
+3:3/0 = 0
+3:6/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_32sf5"]
+texture = ExtResource("2_nipnw")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_pe858"]
+texture = ExtResource("3_8c06o")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_mg3je"]
+texture = ExtResource("4_ukavp")
+texture_region_size = Vector2i(32, 32)
+0:0/0 = 0
 
 [resource]
 tile_size = Vector2i(32, 32)
-sources/0 = SubResource("TileSetAtlasSource_fgb6f")
+sources/0 = SubResource("TileSetAtlasSource_ql5fl")
+sources/1 = SubResource("TileSetAtlasSource_32sf5")
+sources/2 = SubResource("TileSetAtlasSource_pe858")
+sources/3 = SubResource("TileSetAtlasSource_mg3je")

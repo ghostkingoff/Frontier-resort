@@ -1,6 +1,6 @@
 extends Node
 ## 标题界面截图工具：开场动画 / 主菜单 / 存档 / 设置。
-## 运行：godot --path . res://tools/title_shot.tscn -- --screenshot
+## 运行：godot --path . res://tools/title_shot.tscn -- --screenshot --title-shot
 
 var title: Node
 var elapsed := 0.0

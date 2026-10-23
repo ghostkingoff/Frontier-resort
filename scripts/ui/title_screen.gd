@@ -141,6 +141,7 @@ func _build_ui() -> void:
 		load_button.tooltip_text = "还没有任何存档"
 	menu_box.add_child(load_button)
 	_add_menu_button("设置", func(): _open_settings())
+	_add_menu_button("退出游戏", func(): get_tree().quit())
 
 	var hint := UIKit.label("点击任意位置可以跳过开场动画 ｜ 每天 24 点结算时自动保存", 20, Color(0.8, 0.83, 0.9, 0.85))
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -370,6 +371,8 @@ func _mode_from_args() -> String:
 func _is_dev_tool() -> bool:
 	# 开发工具都不走标题界面：冒烟测试 / 截图 / 住客作息专项体检
 	var args := OS.get_cmdline_user_args()
+	if args.has("--title-shot"):
+		return false      # 标题截图工具例外：就要停在标题界面
 	return args.has("--smoke") or args.has("--screenshot") or args.has("--wake")
 
 

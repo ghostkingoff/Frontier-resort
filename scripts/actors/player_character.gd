@@ -10,7 +10,6 @@ const BIKE_HOURS := 2.0            # 共享单车加速持续几游戏小时（�
 const BIKE_SPEED_MULT := 2.2
 const LABEL_TEXT := "玩家"
 const INTERACT_RANGE := 96.0       # 在厅外离门口多近才能按 F（像素）
-const CONTROLLED_Z := 3900         # 操纵模式下的层级：盖过屋顶，保证角色始终可见
 # 碰撞框：只盖下半身（脚部）。俯视角下往上走时上半身允许越出格子；
 # 往下走时脚不会伸进不可行走的地砖——框的下边界贴到交界线就停。
 # （四边各内缩 0.5 像素：避免站在「边界线正上方」时被浮点误差判成下一格）
@@ -19,6 +18,8 @@ const MAX_STEP := 8.0              # 单次推进的像素上限（高倍速下�
 
 var world: Node2D = null
 var sprite: Sprite2D
+var walk_texture: Texture2D
+var idle_texture: Texture2D
 var label: Label
 var controlled := false            # 是否处于自我操纵模式
 var speed_multiplier := 1.0        # 共享单车等加成（玩家租单车免费）
@@ -26,6 +27,9 @@ var _bike_left := 0.0              # 单车加速剩余时间（scaled 秒）
 var inside_reception := false      # 当前是否在招待厅里
 var _inside_rect := Rect2()        # 在厅内时的活动范围（全局坐标）
 var _walk_clock := 0.0
+var _idle_blink_clock := 0.0
+var _idle_blink_left := 0.0
+var _moving_this_frame := false
 var _facing := 0                   # 朝向：0 下 1 上 2 左 3 右（和走路图的列一致）
 
 
@@ -40,13 +44,16 @@ func setup(world_ref: Node2D) -> void:
 func _build_sprite() -> void:
 	sprite = Sprite2D.new()
 	sprite.name = "Sprite"
-	sprite.texture = load("res://art/placeholder/characters/Boy/walk.png")
+	# 玩家专用素材（成年人体型，48×48 帧）：4 列 = 下/上/左/右，4 行 = 走路帧
+	walk_texture = load("res://art/characters/player/star2a/walk.png")
+	idle_texture = load("res://art/characters/player/star2a/idle.png")
+	sprite.texture = walk_texture
 	sprite.hframes = 4
 	sprite.vframes = 4
 	sprite.frame = 0
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	sprite.scale = Vector2(DataRegistry.SPRITE_SCALE, DataRegistry.SPRITE_SCALE)
-	sprite.modulate = Color(1.0, 0.93, 0.68)     # 暖色一点，和普通游客区分
+	sprite.scale = Vector2.ONE                    # 素材本身就是成年人体型，按 1 倍显示
+	sprite.offset = Vector2(0, -6)                # 脚底对齐到碰撞框底边（俯视角站地上）
 	add_child(sprite)
 
 
@@ -58,7 +65,7 @@ func _build_label() -> void:
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	label.add_theme_constant_override("outline_size", 4)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.position = Vector2(-36, -54)
+	label.position = Vector2(-36, -64)      # 新角色更高，标签抬高一点，别压到头发
 	label.size = Vector2(72, 22)
 	add_child(label)
 
@@ -66,7 +73,10 @@ func _build_label() -> void:
 func set_controlled(on: bool) -> void:
 	controlled = on
 	_walk_clock = 0.0
-	_set_frame(0, _facing)
+	_moving_this_frame = false
+	_idle_blink_clock = 0.0
+	_idle_blink_left = 0.0
+	_show_idle_frame(false)
 	_apply_z()
 
 
@@ -74,16 +84,22 @@ func _process(delta: float) -> void:
 	if world == null:
 		return
 	_apply_z()
+	var idle_delta := 0.0
+	if not (GameClock.paused or GameClock.phase == GameClock.Phase.SETTLEMENT):
+		idle_delta = delta * GameClock.time_scale()
 	if _bike_left > 0.0 and not (GameClock.paused or GameClock.phase == GameClock.Phase.SETTLEMENT):
 		_bike_left -= delta * GameClock.time_scale()
 		if _bike_left <= 0.0:
 			_bike_left = 0.0
 			speed_multiplier = 1.0      # 单车加速到期
 	if not controlled:
+		_tick_idle_animation(idle_delta)
 		return
 	if GameClock.paused or GameClock.phase == GameClock.Phase.SETTLEMENT:
+		_tick_idle_animation(0.0)
 		return
 	if GameState.text_input_active:
+		_tick_idle_animation(0.0)
 		return      # 指令台打字中：WASD 是输入文字，不是走路
 	var dir := Vector2.ZERO
 	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
@@ -95,8 +111,10 @@ func _process(delta: float) -> void:
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
 		dir.y += 1.0
 	if dir == Vector2.ZERO:
+		_tick_idle_animation(idle_delta)
 		return
 	move_step(dir.normalized(), delta)
+	_tick_idle_animation(idle_delta)
 
 
 func move_step(dir: Vector2, delta: float) -> void:
@@ -155,6 +173,11 @@ func _animate(dir: Vector2, delta: float) -> void:
 		_facing = 2 if dir.x < 0.0 else 3
 	else:
 		_facing = 0 if dir.y > 0.0 else 1
+	_moving_this_frame = true
+	if walk_texture != null and sprite.texture != walk_texture:
+		sprite.texture = walk_texture
+		sprite.hframes = 4
+		sprite.vframes = 4
 	_set_frame(int(_walk_clock * 8.0) % 4, _facing)
 
 
@@ -163,10 +186,36 @@ func _set_frame(step: int, column: int) -> void:
 		sprite.frame = step * sprite.hframes + column
 
 
+func _tick_idle_animation(scaled_delta: float) -> void:
+	if sprite == null or idle_texture == null:
+		return
+	if _moving_this_frame:
+		_moving_this_frame = false
+		_idle_blink_clock = 0.0
+		_idle_blink_left = 0.0
+		return
+	_idle_blink_clock += scaled_delta
+	if _idle_blink_left <= 0.0 and _idle_blink_clock >= 8.0:
+		_idle_blink_clock = 0.0
+		_idle_blink_left = 0.5
+	var blink := _idle_blink_left > 0.0
+	if blink:
+		_idle_blink_left = maxf(0.0, _idle_blink_left - scaled_delta)
+	_show_idle_frame(blink)
+
+
+func _show_idle_frame(blink: bool) -> void:
+	if sprite == null or idle_texture == null:
+		return
+	sprite.texture = idle_texture
+	sprite.hframes = 4
+	sprite.vframes = 2
+	sprite.frame = (1 if blink else 0) * sprite.hframes + _facing
+	sprite.position.y = 0.0
+
+
 func _apply_z() -> void:
-	if controlled:
-		z_index = CONTROLLED_Z
-	elif inside_reception:
+	if inside_reception:
 		z_index = 0                      # 跟着室内层排：开屋顶时会被屋顶盖住
 	else:
 		z_index = int(global_position.y)

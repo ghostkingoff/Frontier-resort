@@ -30,6 +30,8 @@ func _ready() -> void:
 	# 测试资金：直接加钱，不计入当日营业额
 	GameState.money += 120000
 	GameState.money_changed.emit(GameState.money)
+	_run_ui_exclusivity_checks()
+	_run_idle_animation_checks()
 	_run_build_checks()
 
 
@@ -62,6 +64,133 @@ func _audit_full_test_layout() -> void:
 		"" if on_road.is_empty() else "（%s）" % ", ".join(on_road),
 		unreachable.size(),
 		"" if unreachable.is_empty() else "（%s）" % ", ".join(unreachable)])
+
+
+func _run_idle_animation_checks() -> void:
+	var probe := Customer.new()
+	world.customers_root.add_child(probe)
+	probe.setup(DataRegistry.customer_types[0], world, world.random_entrance())
+	probe._update_animation(Vector2.LEFT, 0.1)
+	probe._tick_idle_animation(0.0)
+	probe._tick_idle_animation(0.0)
+	var customer_idle_ok: bool = probe.idle_texture != null \
+		and probe.sprite.texture == probe.idle_texture \
+		and probe.sprite.frame == 2 \
+		and probe.sprite.vframes == 1
+	probe.queue_free()
+
+	var avatar: Node2D = get_tree().get_first_node_in_group("player_avatar")
+	var player_idle_ok := false
+	var player_blink_ok := false
+	var player_down_frames_ok := false
+	if avatar:
+		var walk_image: Image = avatar.walk_texture.get_image()
+		var frame_w := int(walk_image.get_width() / 4)
+		var frame_h := int(walk_image.get_height() / 4)
+		player_down_frames_ok = true
+		for step in range(4):
+			var down_frame := walk_image.get_region(
+				Rect2i(0, step * frame_h, frame_w, frame_h))
+			if down_frame.get_used_rect().size.x <= 0:
+				player_down_frames_ok = false
+				break
+		avatar._facing = 3
+		avatar._moving_this_frame = false
+		avatar._idle_blink_clock = 0.0
+		avatar._idle_blink_left = 0.0
+		avatar._tick_idle_animation(7.9)
+		player_idle_ok = avatar.sprite.texture == avatar.idle_texture \
+			and avatar.sprite.frame == 3
+		avatar._tick_idle_animation(0.1)
+		player_blink_ok = avatar.sprite.frame == avatar.sprite.hframes * 1 + 3
+		avatar._tick_idle_animation(0.5)
+		avatar._tick_idle_animation(0.0)
+		player_blink_ok = player_blink_ok and avatar.sprite.frame == 3
+		avatar._show_idle_frame(false)
+	checks.append("静止帧：顾客按朝向取 idle %s ｜玩家下行 4 帧完整 %s ｜8 秒眨眼一次并持续 0.5 秒 %s / %s" % [
+		str(customer_idle_ok), str(player_down_frames_ok), str(player_idle_ok), str(player_blink_ok)])
+
+
+func _run_ui_exclusivity_checks() -> void:
+	var hud = get_node_or_null("../HUD")
+	var bs = get_node_or_null("../BuildSystem")
+	var console = get_node_or_null("../ConsolePanel")
+	if hud == null or bs == null:
+		checks.append("UI 互斥：找不到 HUD / BuildSystem，跳过")
+		return
+	hud._prepare_exclusive_ui("", true)
+
+	hud._toggle_build_panel()
+	bs.select("food_diner")
+	var build_started: bool = hud.build_panel.visible and str(bs.selected_id) == "food_diner"
+	hud._toggle_visitor_panel()
+	var visitor_switch_ok: bool = hud.visitor_panel.is_open() and not hud.build_panel.visible \
+		and str(bs.selected_id) == "" and not bs.is_painting() and not bs.is_demolishing()
+	var visitor_highlight_ok: bool = hud.visitors_button.button_pressed \
+		and not hud.build_button.button_pressed
+
+	hud._toggle_inventory()
+	var inventory_ok: bool = hud.inventory_panel.is_open() and not hud.visitor_panel.is_open() \
+		and not hud.stats_panel.is_open()
+	var inventory_highlight_ok: bool = hud.inventory_button.button_pressed \
+		and not hud.visitors_button.button_pressed
+	hud._toggle_stats()
+	var stats_ok: bool = hud.stats_panel.is_open() and not hud.inventory_panel.is_open()
+	var stats_highlight_ok: bool = hud.stats_button.button_pressed \
+		and not hud.inventory_button.button_pressed and hud.stats_panel.panel.offset_top >= 140.0
+	hud._toggle_build_panel()
+	var build_ok: bool = hud.build_panel.visible and not hud.stats_panel.is_open()
+	var build_highlight_ok: bool = hud.build_button.button_pressed \
+		and not hud.stats_button.button_pressed
+	hud._toggle_build_panel()
+	var build_close_ok: bool = not hud.build_panel.visible and str(bs.selected_id) == ""
+
+	var build_target: Building = world.buildings[0]
+	hud._toggle_build_panel()
+	bs.select("food_diner")
+	hud._on_build_mode_building_clicked(build_target)
+	var placement_panel_ok: bool = hud.building_panel.is_open() and hud.build_panel.visible \
+		and str(bs.selected_id) == "food_diner"
+	hud.building_panel.close()
+	bs.select_ground(World.GROUND_PATH)
+	hud._on_build_mode_building_clicked(build_target)
+	var painting_isolated_ok: bool = not hud.building_panel.is_open() \
+		and bs.is_painting() and hud.build_panel.visible
+	bs.cancel()
+	hud._toggle_build_panel()
+
+	hud.enter_demolish_mode()
+	hud._on_demolish_prompt_requested(build_target)
+	var demolish_prompt_ok: bool = hud.building_panel.is_open() \
+		and hud.building_panel.demolition_prompt and not bs.is_demolishing() and not hud.build_panel.visible
+	hud.building_panel.close()
+
+	hud._toggle_inventory()
+	hud._prepare_exclusive_ui("building", true)
+	hud.building_panel.open(world.buildings[0])
+	var building_ok: bool = hud.building_panel.is_open() and not hud.inventory_panel.is_open()
+	hud.building_panel.close()
+
+	hud._toggle_visitor_panel()
+	hud._toggle_pause_menu()
+	var pause_ok: bool = hud.pause_menu.visible and not hud.visitor_panel.is_open()
+	var pause_highlight_ok: bool = hud.pause_menu_button.button_pressed \
+		and not hud.visitors_button.button_pressed
+	hud._toggle_pause_menu()
+
+	var console_ok := true
+	if console:
+		hud._toggle_inventory()
+		console.open_console()
+		console_ok = console.is_open() and not hud.inventory_panel.is_open() and not hud.pause_menu.visible
+		console.close_console()
+	hud._prepare_exclusive_ui("", true)
+	checks.append("UI 互斥：建造 %s → 游客 %s／高亮 %s ｜游客→仓库 %s／高亮 %s ｜仓库→属性 %s／高亮与下移 %s ｜属性→建造 %s／高亮 %s ｜建造关闭 %s ｜放置时建筑面板保留建造 %s ｜铺地不弹建筑面板 %s ｜拆除提示 %s ｜建筑详情 %s ｜暂停 %s／高亮 %s ｜指令台 %s" % [
+		str(build_started), str(visitor_switch_ok), str(visitor_highlight_ok),
+		str(inventory_ok), str(inventory_highlight_ok), str(stats_ok), str(stats_highlight_ok),
+		str(build_ok), str(build_highlight_ok), str(build_close_ok), str(placement_panel_ok),
+		str(painting_isolated_ok), str(demolish_prompt_ok), str(building_ok),
+		str(pause_ok), str(pause_highlight_ok), str(console_ok)])
 
 
 func _run_build_mode_checks() -> void:
@@ -207,10 +336,76 @@ func _run_build_checks() -> void:
 	else:
 		checks.append("建造：失败")
 
-	# 2. 屋顶切换
-	world.set_roof_mode(false)
-	checks.append("屋顶：关闭后 exterior=%s interior=%s" % [str(shop.exterior.visible), str(shop.interior.visible)])
-	world.set_roof_mode(true)
+	# 2. 三层显示循环：屋顶 → 屋内 → 地面
+	world.set_view_mode(World.ViewMode.INTERIOR)
+	var interior_ok: bool = (not shop.roof_visible()) and shop.interior_visible()
+	var interior_ground_hidden: bool = shop.ground_face != null and not shop.ground_face.visible
+	world.set_view_mode(World.ViewMode.GROUND)
+	var ground_ok: bool = (not shop.roof_visible()) and (not shop.interior_visible()) \
+		and shop.ground_face != null and shop.ground_face.visible
+	world.set_view_mode(World.ViewMode.ROOF)
+	var roof_ok: bool = shop.roof_visible() and (not shop.interior_visible())
+	var roof_ground_hidden: bool = shop.ground_face != null and not shop.ground_face.visible
+	checks.append("三层显示：屋顶 %s（占地层隐藏 %s）｜屋内 %s（占地层隐藏 %s）｜地面透视 %s（占地层显示）" % [
+		str(roof_ok), str(roof_ground_hidden), str(interior_ok),
+		str(interior_ground_hidden), str(ground_ok)])
+	var layered_ok: bool = shop.ground_face != null and shop.ground_face.texture != null \
+		and shop.interior_texture != null and shop.interior_texture.texture != null \
+		and shop.exterior != null and shop.exterior.texture != null \
+		and shop.layer_origin == Vector2i(0, 107)
+	var walk_mask_ok: bool = shop.interior_walk_cells.size() == 12 \
+		and shop.interior_roam_grid_cells.size() > 0 and shop.can_roam_interior()
+	var walk_entry: Vector2 = shop.interior_entry_point(world.cell_center(shop.door_cell()))
+	var roam_route: Array[Vector2] = shop.interior_roam_route(walk_entry)
+	var route_clear := roam_route.size() > 1
+	for point in roam_route:
+		if not shop.interior_roam_can_stand(point):
+			route_clear = false
+			break
+	var left_top := Vector2i(-9999, -9999)
+	var right_top := Vector2i(-9999, -9999)
+	for grid_cell in shop.interior_roam_grid_cells:
+		var local_point: Vector2 = shop.interior_roam_grid_point(grid_cell) - shop.global_position
+		if local_point.y >= 88.0:
+			continue
+		if local_point.x < 80.0:
+			left_top = grid_cell
+		elif local_point.x > 104.0:
+			right_top = grid_cell
+	var u_path_ok := false
+	if left_top.x >= 0 and right_top.x >= 0:
+		var u_path: Array[Vector2i] = shop._interior_roam_grid_path(left_top, right_top)
+		var reaches_bridge := false
+		u_path_ok = u_path.size() > 2
+		for grid_cell in u_path:
+			var point: Vector2 = shop.interior_roam_grid_point(grid_cell)
+			if not shop.interior_roam_can_stand(point):
+				u_path_ok = false
+				break
+			if point.y - shop.global_position.y >= 88.0:
+				reaches_bridge = true
+		u_path_ok = u_path_ok and reaches_bridge
+	checks.append("小超市店内导航：粗格 %d（%s）｜细网格 %d 点 ｜漫游路线 %d 点且全在遮罩内 %s ｜绕开中间货架缺口 %s" % [
+		shop.interior_walk_cells.size(), str(walk_mask_ok), shop.interior_roam_grid_cells.size(),
+		roam_route.size(), str(route_clear), str(u_path_ok)])
+	var roam_probe := Customer.new()
+	world.customers_root.add_child(roam_probe)
+	roam_probe.setup(DataRegistry.customer_types[0], world, world.random_entrance())
+	roam_probe.target = shop
+	roam_probe.purpose = Customer.Purpose.CONSUME
+	roam_probe._enter_shop_now(shop)
+	roam_probe._interior_roam_pause = 0.0
+	var roam_start: Vector2 = roam_probe.global_position
+	var strict_roam_ok := true
+	for _i in range(160):
+		roam_probe._tick_interior_roam(0.05)
+		if not shop.interior_roam_can_stand(roam_probe.global_position):
+			strict_roam_ok = false
+			break
+	var roam_moved: bool = roam_probe.global_position.distance_to(roam_start) > 1.0
+	roam_probe.leave_now()
+	checks.append("小超市游客实测：160 次细步移动全在遮罩内 %s ｜确实发生移动 %s" % [
+		str(strict_roam_ok), str(roam_moved)])
 
 	# 3. 员工：挑一栋有员工编制的建筑招人（度假屋/招待厅本来就不雇人）
 	var staffed: Building = null
@@ -595,6 +790,92 @@ func _run_ground_checks() -> void:
 	checks.append("通行判定：普通草坪 %s ｜ 主路 %s ｜ 地面类型 %s / %s" % [
 		str(world.is_walkable(wild)), str(world.is_walkable(road)),
 		world.ground_kind_name(wild), world.ground_kind_name(road)])
+	var dense_grass := Vector2i(5, 20)
+	var stone_tile := Vector2i(6, 20)
+	world.set_ground(dense_grass, World.GROUND_DENSE_GRASS)
+	world.set_ground(stone_tile, World.GROUND_STONE_TILE)
+	var dense_source: int = world.ground.get_cell_source_id(dense_grass)
+	var stone_source: int = world.ground.get_cell_source_id(stone_tile)
+	checks.append("新增地面：茂密草地（可行走 %s｜源 %d）｜石砖地（可行走 %s｜源 %d）" % [
+		str(world.is_walkable(dense_grass)), dense_source,
+		str(world.is_walkable(stone_tile)), stone_source])
+	var lamp_probe: Building = _place_building_near("street_lamp", Vector2i(8, 20))
+	if lamp_probe:
+		var lamp_cell: Vector2i = lamp_probe.cell
+		var lamp_ground: String = world.ground_type(lamp_cell)
+		var lamp_build = get_node_or_null("../BuildSystem")
+		if lamp_build:
+			lamp_build.select_demolish()
+			lamp_build._handle_demolish_click(lamp_cell)
+			lamp_build.cancel()
+		var lamp_ok: bool = world.building_at(lamp_cell) == null \
+			and world.ground_type(lamp_cell) == lamp_ground
+		checks.append("拆除模式：路灯直接拆除并恢复原地砖 %s" % str(lamp_ok))
+	var wasteland_cell: Vector2i = world.random_walkable_cell()
+	if wasteland_cell.x >= 0:
+		var original_kind: String = world.ground_type(wasteland_cell)
+		world.set_ground(wasteland_cell, World.GROUND_PATH)
+		var build_probe = get_node_or_null("../BuildSystem")
+		if build_probe:
+			build_probe.select_demolish()
+			build_probe._handle_demolish_click(wasteland_cell)
+			build_probe.cancel()
+		var wasteland_ok: bool = world.ground_type(wasteland_cell) == World.GROUND_WASTELAND \
+			and not world.is_walkable(wasteland_cell) \
+			and not world.can_place(wasteland_cell, Vector2i(1, 1)) \
+			and world.ground.get_cell_source_id(wasteland_cell) == 3
+		checks.append("荒地：拆除地砖自动生成 %s（源 %d）" % [
+			str(wasteland_ok), world.ground.get_cell_source_id(wasteland_cell)])
+		world.set_ground(wasteland_cell, original_kind)
+	var grass_cell := Vector2i(-1, -1)
+	for y in range(world.build_area.position.y, world.build_area.end.y):
+		for x in range(world.build_area.position.x, world.build_area.end.x):
+			var c := Vector2i(x, y)
+			if not world.occupancy.has(c) and not world.is_wall(c) \
+					and world.ground_type(c) == World.GROUND_WILD:
+				grass_cell = c
+				break
+		if grass_cell.x >= 0:
+			break
+	if grass_cell.x >= 0:
+		var grass_build = get_node_or_null("../BuildSystem")
+		if grass_build:
+			grass_build.select_demolish()
+			grass_build._handle_demolish_click(grass_cell)
+			grass_build.cancel()
+		checks.append("草地可拆除并变为荒地 %s" % str(
+			world.ground_type(grass_cell) == World.GROUND_WASTELAND))
+		world.set_ground(grass_cell, World.GROUND_WILD)
+	var drag_cells: Array[Vector2i] = []
+	for y in range(world.build_area.position.y, world.build_area.end.y):
+		for x in range(world.build_area.position.x, world.build_area.end.x - 1):
+			var c := Vector2i(x, y)
+			var neighbor := c + Vector2i.RIGHT
+			if not world.occupancy.has(c) and not world.occupancy.has(neighbor) \
+					and not world.is_wall(c) and not world.is_wall(neighbor):
+				drag_cells = [c, neighbor]
+				break
+		if not drag_cells.is_empty():
+			break
+	if drag_cells.size() == 2:
+		var drag_backup: Array[String] = []
+		var drag_build = get_node_or_null("../BuildSystem")
+		for c in drag_cells:
+			drag_backup.append(world.ground_type(c))
+			world.set_ground(c, World.GROUND_PATH)
+		if drag_build:
+			drag_build.select_demolish()
+			for c in drag_cells:
+				drag_build._demolish_drag_at(c)
+			drag_build.cancel()
+		var drag_ok := true
+		for c in drag_cells:
+			if world.ground_type(c) != World.GROUND_WASTELAND:
+				drag_ok = false
+				break
+		checks.append("拆除地砖拖拽连续生效 %s" % str(drag_ok))
+		for i in range(drag_cells.size()):
+			world.set_ground(drag_cells[i], drag_backup[i])
 
 	# 1.5 围墙：四周有墙、底边留出入口、入口通向主路
 	var wall_count: int = world.wall_cells.size()
@@ -624,6 +905,16 @@ func _run_ground_checks() -> void:
 	# 3. 新建建筑不再自动铺路：先断开，再手动铺路接通
 	var shop: Building = world.place_building("shop_small", Vector2i(50, 24))
 	if shop:
+		var under_building: Vector2i = shop.cell
+		var nonwalk_under_ok: bool = world.can_paint_ground(
+			under_building, World.GROUND_DENSE_GRASS)
+		var walk_under_blocked: bool = not world.can_paint_ground(
+			under_building, World.GROUND_STONE_TILE)
+		world.set_ground(under_building, World.GROUND_DENSE_GRASS)
+		var painted_under: bool = world.ground_type(under_building) == World.GROUND_DENSE_GRASS
+		world.set_ground(under_building, World.GROUND_WILD)
+		checks.append("建筑下地面：不可行走块可替换 %s（实际写入 %s）｜可行走块被阻止 %s" % [
+			str(nonwalk_under_ok), str(painted_under), str(walk_under_blocked)])
 		var door: Vector2i = shop.door_cell()
 		checks.append("新建店铺（未铺路）：门口 %s ｜ 地面 %s ｜ 客人能到 %s" % [
 			str(door), world.ground_kind_name(door), str(world.building_reachable(shop))])
@@ -1070,10 +1361,23 @@ func _run_demolish_checks() -> void:
 		display_items = showroom.display_used()
 	var money_before := GameState.money
 	var refund_expect := shop.refund_value()
+	var shop_cells: Array[Vector2i] = []
+	var ground_under_shop: Array[String] = []
+	for y in range(shop.cell.y, shop.cell.y + shop.footprint.y):
+		for x in range(shop.cell.x, shop.cell.x + shop.footprint.x):
+			var c := Vector2i(x, y)
+			shop_cells.append(c)
+			ground_under_shop.append(world.ground_type(c))
 	var result: Dictionary = world.demolish(shop)
+	var ground_restore_ok := true
+	for i in range(shop_cells.size()):
+		if world.ground_type(shop_cells[i]) != ground_under_shop[i]:
+			ground_restore_ok = false
+			break
 	checks.append("拆除店铺：%s ｜ 预期返还 %d ｜ 实际 +%d ｜ 建筑 %d → %d" % [
 		str(result.get("name", "")), refund_expect, GameState.money - money_before,
 		before_count + 1, world.buildings.size()])
+	checks.append("建筑拆除后恢复原本地面 %s" % str(ground_restore_ok))
 	# 拆除展厅（带着展品）
 	if showroom and is_instance_valid(showroom):
 		var had := GameState.item_count("gem_purple")

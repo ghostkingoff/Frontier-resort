@@ -21,6 +21,9 @@ var _guest_timer := 0.0
 var pause_button: Button
 var roof_button: Button
 var build_button: Button
+var inventory_button: Button
+var stats_button: Button
+var visitors_button: Button
 var build_panel: PanelContainer
 var build_list: VBoxContainer
 var notice_label: Label
@@ -43,6 +46,7 @@ var player_control := false               # 是否处于「自我操纵模式」
 
 var celebrity_notice_seconds := 3.0       # 明星 / 富商到来提示的显示时长（秒）
 var _notice_tween: Tween                  # 当前提示的淡出动画（新提示会顶掉旧的）
+var _panel_button_signature := ""
 
 
 func _ready() -> void:
@@ -84,16 +88,35 @@ func _ready() -> void:
 	GameClock.tick.connect(_on_tick)
 	GameClock.day_finished.connect(_on_day_finished)
 	GameClock.morning_started.connect(_on_morning_started)
+	if console_panel and console_panel.has_signal("opened"):
+		console_panel.opened.connect(_on_console_opened)
 	if world:
 		world.building_placed.connect(func(_b): _refresh_facility_label())
 	if build_system and build_system.has_signal("selection_changed"):
 		build_system.selection_changed.connect(_on_build_selection_changed)
+	if build_system and build_system.has_signal("building_clicked"):
+		build_system.building_clicked.connect(_on_build_mode_building_clicked)
+	if build_system and build_system.has_signal("demolish_prompt_requested"):
+		build_system.demolish_prompt_requested.connect(_on_demolish_prompt_requested)
 	_refresh_all()
 	_hide_pause_menu()
+	_refresh_panel_button_highlights()
 
 
 func _on_build_selection_changed(_what: String) -> void:
 	_refresh_build_status()
+
+
+func _on_build_mode_building_clicked(building: Building) -> void:
+	if build_system == null or build_system.is_painting() or build_system.is_demolishing():
+		return
+	if building_panel and _prepare_exclusive_ui("building", false, true):
+		building_panel.open(building)
+
+
+func _on_demolish_prompt_requested(building: Building) -> void:
+	if building_panel and _prepare_exclusive_ui("building", true):
+		building_panel.open_for_demolition(building)
 
 
 func _refresh_build_status() -> void:
@@ -102,7 +125,7 @@ func _refresh_build_status() -> void:
 		return
 	var what := ""
 	if build_system.is_demolishing():
-		what = "拆除建筑：先点建筑选中，再点一次确认"
+		what = "拆除模式：地砖与无交互设施直接拆除；商店等打开面板确认"
 	elif build_system.is_painting():
 		what = "铺地面：点或按住拖动地面生效"
 	elif str(build_system.selected_id) != "":
@@ -130,6 +153,35 @@ func _process(delta: float) -> void:
 	if player_control and player_hint:
 		var avatar := _player_avatar()
 		player_hint.text = avatar.interaction_hint() if avatar != null else ""
+	_refresh_panel_button_highlights()
+
+
+func _refresh_panel_button_highlights() -> void:
+	var active := ""
+	if pause_menu and pause_menu.visible:
+		active = "pause"
+	elif build_panel and build_panel.visible:
+		active = "build"
+	elif visitor_panel and visitor_panel.is_open():
+		active = "visitor"
+	elif inventory_panel and inventory_panel.is_open():
+		active = "inventory"
+	elif stats_panel and stats_panel.is_open():
+		active = "stats"
+	if active == _panel_button_signature:
+		return
+	_panel_button_signature = active
+	var pairs: Array = [
+		[build_button, "build"],
+		[visitors_button, "visitor"],
+		[inventory_button, "inventory"],
+		[stats_button, "stats"],
+		[pause_menu_button, "pause"],
+	]
+	for pair in pairs:
+		var button: Button = pair[0]
+		if button:
+			button.set_pressed_no_signal(active == str(pair[1]))
 
 
 func _make_theme() -> Theme:
@@ -216,24 +268,29 @@ func _build_top_bar(root: Control) -> void:
 	spacer2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row2.add_child(spacer2)
 
-	roof_button = _make_button("屋顶：开")
+	roof_button = _make_button("当前显示：屋顶")
+	roof_button.tooltip_text = "点击切换显示层：屋顶（看外观）→ 屋内（看店内顾客）→ 地面（只看地砖和路面）"
 	roof_button.pressed.connect(_toggle_roof)
 	row2.add_child(roof_button)
 
-	var inventory_button := _make_button("物资")
+	inventory_button = _make_button("物资")
+	inventory_button.toggle_mode = true
 	inventory_button.pressed.connect(_toggle_inventory)
 	row2.add_child(inventory_button)
 
-	var stats_button := _make_button("属性")
+	stats_button = _make_button("属性")
+	stats_button.toggle_mode = true
 	stats_button.pressed.connect(_toggle_stats)
 	row2.add_child(stats_button)
 
-	var visitors_button := _make_button("游客状态")
+	visitors_button = _make_button("游客状态")
+	visitors_button.toggle_mode = true
 	visitors_button.tooltip_text = "查看度假村里每位游客的状态；点名字让相机跟过去并用橙色括号标记"
 	visitors_button.pressed.connect(_toggle_visitor_panel)
 	row2.add_child(visitors_button)
 
 	build_button = _make_button("建造 (B)")
+	build_button.toggle_mode = true
 	build_button.pressed.connect(_toggle_build_panel)
 	row2.add_child(build_button)
 
@@ -250,6 +307,7 @@ func _build_top_bar(root: Control) -> void:
 
 	# 暂停菜单的鼠标入口（原本只能按 ESC 打开，纯鼠标玩家无法存盘 / 回主菜单）
 	pause_menu_button = _make_button("菜单")
+	pause_menu_button.toggle_mode = true
 	pause_menu_button.tooltip_text = "继续游戏 / 保存进度 / 回到主菜单（等同 ESC）"
 	pause_menu_button.pressed.connect(_toggle_pause_menu)
 	row2.add_child(pause_menu_button)
@@ -446,19 +504,31 @@ func _build_menu(root: Control) -> void:
 	path_button.tooltip_text = "客人可以在上面行走。按住左键可以连着铺。"
 	path_button.pressed.connect(_on_ground_selected.bind(World.GROUND_PATH))
 	list.add_child(path_button)
+	var stone_button := _make_button("")
+	stone_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	stone_button.text = "铺设石砖地   %s/格" % GameState.format_money(30)
+	stone_button.tooltip_text = "Ninja Adventure 石砖占位素材。客人可以在上面行走。"
+	stone_button.pressed.connect(_on_ground_selected.bind(World.GROUND_STONE_TILE))
+	list.add_child(stone_button)
 	var lawn_button := _make_button("")
 	lawn_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	lawn_button.text = "铺可行走草坪   %s/格" % GameState.format_money(1)
 	lawn_button.tooltip_text = "整理过的草坪，客人可以行走。"
 	lawn_button.pressed.connect(_on_ground_selected.bind(World.GROUND_LAWN))
 	list.add_child(lawn_button)
+	var dense_grass_button := _make_button("")
+	dense_grass_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	dense_grass_button.text = "铺设茂密草地   %s/格" % GameState.format_money(10)
+	dense_grass_button.tooltip_text = "Ninja Adventure 草地占位素材。视觉上更茂密，客人不会走上去。"
+	dense_grass_button.pressed.connect(_on_ground_selected.bind(World.GROUND_DENSE_GRASS))
+	list.add_child(dense_grass_button)
 	var grass_button := _make_button("")
 	grass_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	grass_button.text = "恢复普通草坪   %s/格" % GameState.format_money(1)
 	grass_button.tooltip_text = "地图默认的草坪，客人不会走上去。可以用来撤掉铺错的地面。"
 	grass_button.pressed.connect(_on_ground_selected.bind(World.GROUND_WILD))
 	list.add_child(grass_button)
-	var walk_hint := _make_label("客人只走地砖和可行走草坪，记得把店门口连到主路。", 19, Color(0.85, 0.85, 0.9))
+	var walk_hint := _make_label("客人只走地砖、石砖地和可行走草坪，记得把店门口连到主路。不可行走材料可以铺在建筑占地下面。", 19, Color(0.85, 0.85, 0.9))
 	walk_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	list.add_child(walk_hint)
 
@@ -504,7 +574,7 @@ func _refresh_build_list() -> void:
 
 func _build_hint(root: Control) -> void:
 	# 提示条：键盘都是快捷方式，鼠标都能做（右键退出建造、顶栏「菜单」存盘）
-	var hint := _make_label("点建筑查看详情 ｜ 建造：顶栏「建造」→ 点地面，右键退出 ｜ 视角：中键拖 / 「移动视口」后左键拖 / 滚轮缩放 ｜ 顶栏：物资 属性 屋顶 倍速 菜单 ｜ 快捷键 B V R H 空格 1/2/3/4 ESC", 20, Color(0.85, 0.85, 0.92, 0.85))
+	var hint := _make_label("点建筑查看详情 ｜ 建造：顶栏「建造」→ 点地面，右键退出 ｜ 视角：中键拖 / 「移动视口」后左键拖 / 滚轮缩放 ｜ 顶栏：物资 属性 显示层 倍速 菜单 ｜ 快捷键 B V R H 空格 1/2/3/4 ESC", 20, Color(0.85, 0.85, 0.92, 0.85))
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	hint.offset_top = -46
 	hint.offset_bottom = -12
@@ -528,16 +598,11 @@ func _build_hide_button(root: Control) -> void:
 func _toggle_ui() -> void:
 	ui_hidden = not ui_hidden
 	ui_root.visible = not ui_hidden
-	for panel in [building_panel, inventory_panel, stats_panel, exploration_panel]:
-		if panel and ui_hidden:
-			panel.visible = false
-	if ui_hidden and visitor_panel:
-		visitor_panel.close()      # 顺带解除相机跟随与高亮
+	if ui_hidden:
+		_prepare_exclusive_ui("", true)
 	hide_button.text = "显示界面 (H)" if ui_hidden else "隐藏界面 (H)"
 	if ui_hidden:
 		show_notice("界面已隐藏，按 H 或点右下角按钮可以恢复")
-		if pause_menu:
-			pause_menu.visible = false
 
 
 func _build_pause_menu(root: Control) -> void:
@@ -588,15 +653,57 @@ func _build_pause_menu(root: Control) -> void:
 
 func _hide_pause_menu() -> void:
 	# 主菜单已经在标题界面处理，这里不再弹开始菜单
-	pause_menu.visible = false
-	GameClock.paused = false
-	pause_button.text = "暂停时间"
+	_set_pause_menu_visible(false)
 
 
 func _toggle_pause_menu() -> void:
-	pause_menu.visible = not pause_menu.visible
-	GameClock.paused = pause_menu.visible
-	pause_button.text = "继续时间" if pause_menu.visible else "暂停时间"
+	if pause_menu.visible:
+		_set_pause_menu_visible(false)
+		return
+	if not _prepare_exclusive_ui("pause", true):
+		return
+	_set_pause_menu_visible(true)
+
+
+func _set_pause_menu_visible(on: bool) -> void:
+	if pause_menu:
+		pause_menu.visible = on
+	GameClock.paused = on
+	if pause_button:
+		pause_button.text = "继续时间" if on else "暂停时间"
+	_refresh_panel_button_highlights()
+
+
+func _on_console_opened() -> void:
+	if not _prepare_exclusive_ui("console", true) and console_panel:
+		console_panel.close_console()
+
+
+func _prepare_exclusive_ui(except_name: String, cancel_build: bool = true,
+		preserve_build_panel: bool = false) -> bool:
+	# 所有主界面弹窗走同一个互斥入口：先退出建造状态，再关闭其余面板。
+	if exploration_panel and exploration_panel.is_open() and except_name != "exploration":
+		return false
+	if cancel_build and build_system:
+		build_system.cancel()
+	if except_name != "build" and not preserve_build_panel and build_panel:
+		build_panel.visible = false
+	if except_name != "building" and building_panel and building_panel.is_open():
+		building_panel.close()
+	if except_name != "inventory" and inventory_panel and inventory_panel.is_open():
+		inventory_panel.close()
+	if except_name != "stats" and stats_panel and stats_panel.is_open():
+		stats_panel.close()
+	if except_name != "visitor" and visitor_panel and visitor_panel.is_open():
+		visitor_panel.close()
+	if except_name != "console" and console_panel and console_panel.is_open():
+		console_panel.close_console()
+	if except_name != "pause" and pause_menu and pause_menu.visible:
+		_set_pause_menu_visible(false)
+	if player_confirm:
+		player_confirm.visible = false
+	_refresh_panel_button_highlights()
+	return true
 
 
 func _manual_save() -> void:
@@ -615,13 +722,27 @@ func _back_to_title() -> void:
 
 
 func _toggle_inventory() -> void:
-	if inventory_panel:
+	if inventory_panel == null:
+		return
+	if inventory_panel.is_open():
+		inventory_panel.close()
+		_refresh_panel_button_highlights()
+		return
+	if _prepare_exclusive_ui("inventory", true):
 		inventory_panel.toggle()
+		_refresh_panel_button_highlights()
 
 
 func _toggle_stats() -> void:
-	if stats_panel:
+	if stats_panel == null:
+		return
+	if stats_panel.is_open():
+		stats_panel.close()
+		_refresh_panel_button_highlights()
+		return
+	if _prepare_exclusive_ui("stats", true):
 		stats_panel.toggle()
+		_refresh_panel_button_highlights()
 
 
 func _toggle_visitor_panel() -> void:
@@ -631,7 +752,13 @@ func _toggle_visitor_panel() -> void:
 	if visitor_panel.is_focused():
 		visitor_panel.exit_focus()      # 对焦中：先退出对焦（面板保持打开，相机停在原地）
 		return
-	visitor_panel.toggle()
+	if visitor_panel.is_open():
+		visitor_panel.close()
+		_refresh_panel_button_highlights()
+		return
+	if _prepare_exclusive_ui("visitor", true):
+		visitor_panel.toggle()
+		_refresh_panel_button_highlights()
 
 
 func _build_notice(root: Control) -> void:
@@ -732,14 +859,21 @@ func _unhandled_input(event: InputEvent) -> void:
 			if player_confirm and player_confirm.visible:
 				player_confirm.visible = false
 				return
-			if building_panel:
+			if building_panel and building_panel.is_open():
 				building_panel.close()
-			if inventory_panel:
+				return
+			if inventory_panel and inventory_panel.is_open():
 				inventory_panel.close()
+				return
+			if build_panel and build_panel.visible:
+				build_panel.visible = false
+				if build_system:
+					build_system.cancel()
+				return
 			if build_system and (build_system.selected_id != "" or build_system.is_painting() or build_system.is_demolishing()):
 				build_system.cancel()
-			else:
-				_toggle_pause_menu()
+				return
+			_toggle_pause_menu()
 		KEY_F:
 			if player_control:
 				_player_interact()
@@ -758,14 +892,15 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_world_click(screen_pos: Vector2) -> void:
 	if world == null:
 		return
-	if build_system and build_system.selected_id != "":
-		return   # 建造模式下点击由建造系统处理
+	if build_system and (build_system.selected_id != "" \
+			or build_system.is_painting() or build_system.is_demolishing()):
+		return   # 建造 / 铺地 / 拆除模式下的世界点击由建造系统处理
 	var canvas := get_viewport().get_canvas_transform()
 	var world_pos: Vector2 = canvas.affine_inverse() * screen_pos
 	var cell: Vector2i = world.world_to_cell(world_pos)
 	var picked: Building = world.building_at(cell)
 	if picked:
-		if building_panel:
+		if building_panel and _prepare_exclusive_ui("building", true):
 			building_panel.open(picked)
 	elif building_panel and building_panel.is_open():
 		building_panel.close()
@@ -786,14 +921,28 @@ func _set_speed(speed: int) -> void:
 func _toggle_roof() -> void:
 	if world == null:
 		return
-	world.toggle_roof_mode()
-	roof_button.text = "屋顶：开" if world.show_roofs else "屋顶：关"
+	world.cycle_view_mode()
+	_refresh_view_button()
+
+
+func _refresh_view_button() -> void:
+	if roof_button == null or world == null:
+		return
+	roof_button.text = "当前显示：%s" % world.view_mode_name()
 
 
 func _toggle_build_panel() -> void:
-	build_panel.visible = not build_panel.visible
 	if build_panel.visible:
-		_refresh_build_list()      # 打开时重算一次解锁状态
+		build_panel.visible = false
+		if build_system:
+			build_system.cancel()
+		_refresh_panel_button_highlights()
+		return
+	if not _prepare_exclusive_ui("build", false):
+		return
+	build_panel.visible = true
+	_refresh_build_list()      # 打开时重算一次解锁状态
+	_refresh_panel_button_highlights()
 
 
 func _on_build_selected(id: String) -> void:
@@ -810,13 +959,28 @@ func _on_ground_selected(kind: String) -> void:
 		ground_name = "可行走草坪"
 	elif kind == World.GROUND_WILD:
 		ground_name = "普通草坪"
+	elif kind == World.GROUND_DENSE_GRASS:
+		ground_name = "茂密草地"
+	elif kind == World.GROUND_STONE_TILE:
+		ground_name = "石砖地"
 	show_notice("铺设%s：点击或按住左键刷，右键 / ESC 取消" % ground_name)
 
 
 func _on_demolish_selected() -> void:
-	if build_system:
-		build_system.select_demolish()
-	show_notice("拆除模式：点建筑选中，再点一次确认；ESC 取消")
+	enter_demolish_mode()
+
+
+func enter_demolish_mode() -> void:
+	if build_system == null:
+		return
+	if not _prepare_exclusive_ui("build", true):
+		return
+	build_system.select_demolish()
+	build_panel.visible = true
+	_refresh_build_list()
+	_refresh_build_status()
+	_refresh_panel_button_highlights()
+	show_notice("拆除模式：地砖和路灯直接拆除；商店等会先打开面板确认。ESC 取消")
 
 
 func _on_money_changed(_value: int) -> void:
@@ -849,6 +1013,7 @@ func _refresh_all() -> void:
 	_refresh_guest_label()
 	_refresh_reputation()
 	_refresh_fame()
+	_refresh_view_button()
 	clock_label.text = "时间 %s" % GameClock.time_text()
 
 
@@ -997,8 +1162,8 @@ func _open_exploration() -> void:
 	if exploration_panel == null:
 		GameState.notice.emit("探索界面不可用")
 		return
-	if visitor_panel and visitor_panel.is_open():
-		visitor_panel.close()      # 探索界面是全屏的，先收起游客面板
+	if not _prepare_exclusive_ui("exploration", true):
+		return
 	_apply_auto_night_income()
 	settlement.visible = false
 	exploration_panel.open()

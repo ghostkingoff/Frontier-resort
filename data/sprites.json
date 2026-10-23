@@ -1,10 +1,14 @@
 {
   "ground": {
-	"grass": [3, 3],
-	"grass_dark": [3, 6],
-	"sand": [3, 0],
-	"atlas": "res://art/placeholder/tiles/field.png",
-	"cost": { "path": 30, "lawn": 10, "grass": 10 }
+	"tiles": {
+	  "grass": { "atlas": "res://art/generated/field_2x.png", "source": 0, "coords": [3, 3] },
+	  "lawn": { "atlas": "res://art/generated/field_2x.png", "source": 0, "coords": [3, 6] },
+	  "path": { "atlas": "res://art/generated/field_2x.png", "source": 0, "coords": [3, 0] },
+	  "dense_grass": { "atlas": "res://art/placeholders/tiles/ninja_dense_grass_2x.png", "source": 1, "coords": [0, 0] },
+	  "stone_tile": { "atlas": "res://art/placeholders/tiles/ninja_stone_tile_2x.png", "source": 2, "coords": [0, 0] },
+	  "wasteland": { "atlas": "res://art/placeholders/tiles/ninja_wasteland_2x.png", "source": 3, "coords": [0, 0] }
+	},
+	"cost": { "path": 30, "lawn": 10, "grass": 10, "dense_grass": 10, "stone_tile": 30, "wasteland": 0 }
   },
   "decorations": [
 	{ "id": "tree_small", "atlas": "res://art/placeholder/tiles/nature.png", "rect": [0, 0, 32, 48], "weight": 12 },

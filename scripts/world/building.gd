@@ -13,6 +13,8 @@ const LIGHT_OFF_SPREAD_HOURS := 0.5   # 打烊后「陆续关灯」的错峰窗�
 
 
 const CELL := 32
+const INTERIOR_NAV_STEP := 8
+const INTERIOR_BODY_RADIUS := 8.0
 const ENERGY_PER_GUEST := 10.0     # 每接待一位客人，全员合计消耗的体力
 const ENERGY_RECOVER_CLOSED := 15.0  # 打烊 / 下班时每游戏小时恢复的体力（夜里一觉基本回满）
 const ENERGY_RECOVER_OPEN := 2.5     # 营业中也慢慢回体力（有 3 名员工就扛得住高峰）
@@ -28,9 +30,17 @@ var invested: int = 0        # 建造 + 升级一共花掉的钱，拆除时按�
 var world: Node2D
 
 var exterior: Sprite2D
+var ground_face: Sprite2D           # 分层建筑素材的地面层（真实占地）
+var interior_texture: Sprite2D      # 分层建筑素材的屋内层
 var interior: Node2D
+var roof_root: Node2D            # 屋顶层：外墙 / 侧面 / 正面 / 屋顶，整体盖在屋内层上面
 var interior_floor: Sprite2D
 var label: Label
+var layer_origin := Vector2i.ZERO
+var interior_walk_cells: Array[Vector2i] = []
+var interior_roam_grid: Dictionary = {}
+var interior_roam_grid_cells: Array[Vector2i] = []
+var interior_walk_image: Image
 
 # 视角：false = 正面视角（星露谷那种，整张贴图铺满占地）；
 #       true  = 备用 3/4 俯视（正面贴图 + 梯形屋顶 + 右侧墙，用分类色占位）。
@@ -75,7 +85,7 @@ func setup(building_data: Dictionary, at_cell: Vector2i, world_ref: Node2D) -> v
 	invested = int(data.get("cost", 0))
 	_build_visuals()
 	_build_lights()
-	_apply_roof(bool(world.show_roofs))
+	apply_view_mode(int(world.view_mode))
 	_refresh_label()
 	set_process(is_clinic() or service() == "cleaning")   # 医院推进治疗，保洁间维持保洁工人
 
@@ -218,13 +228,14 @@ func _exit_tree() -> void:
 
 
 func _relayer() -> void:
-	# 把子节点重排成：interior（地板）→ 灯光 → exterior / 各个面 → 标签
-	# Godot 同 z_index 时按树顺序绘制，后添加的画在上面。
-	for n in [interior, night_light, exterior, side_face, front_face, roof_face]:
+	# 三层固定顺序：屋内层(0) → 屋顶层(1) → 标签(2)。
+	# 灯光挂在 World 下，不参与这里的分层。
+	for n in [interior, roof_root]:
 		if n != null and n.get_parent() == self:
 			move_child(n, -1)          # -1 = 移到末尾（最后绘制）
 	for n2 in get_children():
 		if n2 is Label:
+			n2.z_index = 2
 			move_child(n2, -1)         # 名字标签永远在最上面
 
 
@@ -382,46 +393,180 @@ func _build_visuals() -> void:
 	var cfg: Dictionary = data.get("sprite", {})
 	var rect_arr: Array = cfg.get("rect", [0, 0, 64, 64])
 	var rect := Rect2(rect_arr[0], rect_arr[1], rect_arr[2], rect_arr[3])
-	var tex: Texture2D = load(str(cfg.get("atlas", "")))
+	var layered_cfg: Dictionary = data.get("sprite_layers", {})
+	var uses_layers := not layered_cfg.is_empty()
+	var tex: Texture2D = null
+	if not uses_layers:
+		tex = load(str(cfg.get("atlas", "")))
 
-	if THREE_QUARTER_VIEW:
+	if uses_layers:
+		_build_layered_visuals(layered_cfg)
+	elif THREE_QUARTER_VIEW:
 		_build_three_quarter(tex, rect, footprint.x * CELL, footprint.y * CELL)
 	else:
 		_build_front_view(tex, rect)
 
+	# ---------- 三层显示 ----------
+	#   地面层：World 里的 Ground / Decor（z 很低，永远在最底下）
+	#   屋内层：interior（地板 + 墙框 + 进店的客人）——透视时可见
+	#   屋顶层：roof_root（外墙 / 侧面 / 正面 / 屋顶）——盖在屋内层上面
+	# 每栋楼内部用相对 z_index 固定层序（0 < 1 < 2），不再依赖添加顺序。
 	# 内部（关掉屋顶后可见）
 	interior = Node2D.new()
-	interior.name = "Interior"
+	interior.name = "InteriorLayer"
+	interior.z_index = 0
 	add_child(interior)
 
-	interior_floor = Sprite2D.new()
-	interior_floor.texture = load("res://art/placeholder/tiles/interior_floor.png")
-	interior_floor.region_enabled = true
-	interior_floor.region_rect = Rect2(0, 0, footprint.x * 16, footprint.y * 16)
-	interior_floor.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	interior_floor.centered = false
-	interior_floor.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	interior_floor.scale = Vector2(DataRegistry.SPRITE_SCALE, DataRegistry.SPRITE_SCALE)
-	interior.add_child(interior_floor)
+	if uses_layers:
+		interior_texture = _make_layer_sprite(
+			"InteriorTexture", str(layered_cfg.get("interior", "")))
+		interior.add_child(interior_texture)
+	else:
+		interior_floor = Sprite2D.new()
+		interior_floor.texture = load("res://art/placeholder/tiles/interior_floor.png")
+		interior_floor.region_enabled = true
+		interior_floor.region_rect = Rect2(0, 0, footprint.x * 16, footprint.y * 16)
+		interior_floor.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+		interior_floor.centered = false
+		interior_floor.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		interior_floor.scale = Vector2(DataRegistry.SPRITE_SCALE, DataRegistry.SPRITE_SCALE)
+		interior.add_child(interior_floor)
 
-	# 简易墙体边框，让“透视”状态看起来像室内
-	var border := 6.0
-	var w := footprint.x * CELL
-	var h := footprint.y * CELL
-	for spec in [
-		Rect2(0, 0, w, border),
-		Rect2(0, h - border, w, border),
-		Rect2(0, 0, border, h),
-		Rect2(w - border, 0, border, h),
-	]:
-		var cr := ColorRect.new()
-		cr.color = Color(0.16, 0.12, 0.10, 0.85)
-		cr.position = spec.position
-		cr.size = spec.size
-		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		interior.add_child(cr)
+		# 简易墙体边框，让“透视”状态看起来像室内
+		var border := 6.0
+		var w := footprint.x * CELL
+		var h := footprint.y * CELL
+		for spec in [
+			Rect2(0, 0, w, border),
+			Rect2(0, h - border, w, border),
+			Rect2(0, 0, border, h),
+			Rect2(w - border, 0, border, h),
+		]:
+			var cr := ColorRect.new()
+			cr.color = Color(0.16, 0.12, 0.10, 0.85)
+			cr.position = spec.position
+			cr.size = spec.size
+			cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			interior.add_child(cr)
 
 	_build_label()
+
+	# 把外观相关的节点收进「屋顶层」，其余逻辑（旋转、灯光、显隐）都照旧
+	roof_root = Node2D.new()
+	roof_root.name = "RoofLayer"
+	roof_root.z_index = 1
+	add_child(roof_root)
+	if uses_layers:
+		var roof_texture := _make_layer_sprite(
+			"RoofTexture", str(layered_cfg.get("roof", "")))
+		roof_root.add_child(roof_texture)
+		exterior = roof_texture
+	else:
+		for node in [exterior, side_face, front_face, roof_face]:
+			if node != null and node.get_parent() == self:
+				node.reparent(roof_root, false)
+	_relayer()
+
+
+func _build_layered_visuals(cfg: Dictionary) -> void:
+	var origin_arr: Array = cfg.get("origin", [0, 0])
+	layer_origin = Vector2i(int(origin_arr[0]), int(origin_arr[1]))
+	ground_face = _make_layer_sprite("GroundLayer", str(cfg.get("ground", "")))
+	ground_face.z_index = -1
+	add_child(ground_face)
+	_load_interior_walk_cells(cfg)
+
+
+func _make_layer_sprite(node_name: String, texture_path: String) -> Sprite2D:
+	var layer_sprite := Sprite2D.new()
+	layer_sprite.name = node_name
+	if texture_path != "" and ResourceLoader.exists(texture_path):
+		layer_sprite.texture = load(texture_path)
+	layer_sprite.centered = false
+	layer_sprite.position = -Vector2(layer_origin)
+	layer_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return layer_sprite
+
+
+func _load_interior_walk_cells(cfg: Dictionary) -> void:
+	interior_walk_cells.clear()
+	interior_roam_grid.clear()
+	interior_roam_grid_cells.clear()
+	interior_walk_image = null
+	var mask_path := str(cfg.get("walk_mask", ""))
+	if mask_path == "" or not ResourceLoader.exists(mask_path):
+		return
+	var texture: Texture2D = load(mask_path)
+	if texture == null:
+		return
+	var image: Image = texture.get_image()
+	if image == null:
+		return
+	if image.is_compressed():
+		image.decompress()
+	interior_walk_image = image
+	var sample_step := 2
+	var samples_per_side := CELL / sample_step
+	var required := int(ceil(float(samples_per_side * samples_per_side) * 0.35))
+	for cy in range(footprint.y):
+		for cx in range(footprint.x):
+			var opaque := 0
+			for sy in range(0, CELL, sample_step):
+				for sx in range(0, CELL, sample_step):
+					var px := layer_origin.x + cx * CELL + sx
+					var py := layer_origin.y + cy * CELL + sy
+					if px < 0 or py < 0 or px >= image.get_width() or py >= image.get_height():
+						continue
+					if image.get_pixel(px, py).a > 0.05:
+						opaque += 1
+			if opaque >= required:
+				interior_walk_cells.append(Vector2i(cx, cy))
+	_build_interior_roam_grid(image)
+
+
+func _build_interior_roam_grid(image: Image) -> void:
+	var footprint_px := Vector2(footprint * CELL)
+	var grid_size := Vector2i(
+		int(ceil(float(image.get_width()) / INTERIOR_NAV_STEP)),
+		int(ceil(float(image.get_height()) / INTERIOR_NAV_STEP)))
+	for gy in range(grid_size.y):
+		for gx in range(grid_size.x):
+			var image_center := Vector2(
+				gx * INTERIOR_NAV_STEP + INTERIOR_NAV_STEP * 0.5,
+				gy * INTERIOR_NAV_STEP + INTERIOR_NAV_STEP * 0.5)
+			var local_center := image_center - Vector2(layer_origin)
+			if local_center.x < INTERIOR_BODY_RADIUS or local_center.y < INTERIOR_BODY_RADIUS \
+					or local_center.x > footprint_px.x - INTERIOR_BODY_RADIUS \
+					or local_center.y > footprint_px.y - INTERIOR_BODY_RADIUS:
+				continue
+			if not _mask_clearance(image, image_center, INTERIOR_BODY_RADIUS):
+				continue
+			var grid_cell := Vector2i(gx, gy)
+			interior_roam_grid[grid_cell] = true
+			interior_roam_grid_cells.append(grid_cell)
+
+
+func _mask_clearance(image: Image, center: Vector2, radius: float) -> bool:
+	var diagonal := radius * 0.70710678
+	var samples: Array[Vector2] = [
+		Vector2.ZERO,
+		Vector2(radius, 0.0),
+		Vector2(-radius, 0.0),
+		Vector2(0.0, radius),
+		Vector2(0.0, -radius),
+		Vector2(diagonal, diagonal),
+		Vector2(-diagonal, diagonal),
+		Vector2(diagonal, -diagonal),
+		Vector2(-diagonal, -diagonal),
+	]
+	for offset in samples:
+		var sample := Vector2i(roundi(center.x + offset.x), roundi(center.y + offset.y))
+		if sample.x < 0 or sample.y < 0 \
+				or sample.x >= image.get_width() or sample.y >= image.get_height():
+			return false
+		if image.get_pixel(sample.x, sample.y).a <= 0.05:
+			return false
+	return true
 
 
 func _build_front_view(tex: Texture2D, rect: Rect2) -> void:
@@ -506,7 +651,9 @@ func _build_label() -> void:
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	label.add_theme_constant_override("outline_size", 4)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.position = Vector2(-CELL, -30)
+	var layered_cfg: Dictionary = data.get("sprite_layers", {})
+	var label_top: float = -float(layer_origin.y) - 28.0 if not layered_cfg.is_empty() else -30.0
+	label.position = Vector2(-CELL, label_top)
 	label.size = Vector2(footprint.x * CELL + CELL * 2, 28)
 	add_child(label)
 
@@ -546,6 +693,14 @@ func is_lodging() -> bool:
 
 func is_reception() -> bool:
 	return id == "reception"
+
+
+func can_demolish_directly() -> bool:
+	if bool(data.get("direct_demolish", false)):
+		return true
+	if is_reception() or is_lodging() or is_showroom() or is_clinic():
+		return false
+	return capacity() <= 0 and staff_slots() <= 0 and spend_value() <= 0
 
 
 func room_capacity() -> int:
@@ -1135,6 +1290,9 @@ func entry_point() -> Vector2:
 
 
 func interior_point() -> Vector2:
+	if not interior_walk_cells.is_empty():
+		var walk_cell: Vector2i = interior_walk_cells.pick_random()
+		return interior_cell_center(walk_cell)
 	var margin := 20.0
 	var w := footprint.x * CELL
 	var h := footprint.y * CELL
@@ -1143,21 +1301,154 @@ func interior_point() -> Vector2:
 		randf_range(margin, h - margin))
 
 
-func apply_roof_mode(show_roof: bool) -> void:
-	_apply_roof(show_roof)
+func interior_mode() -> String:
+	return str(data.get("interior_mode", "fixed"))
 
 
-func _apply_roof(show_roof: bool) -> void:
-	if exterior:
-		exterior.visible = show_roof
-	if front_face:
-		front_face.visible = show_roof
-	if side_face:
-		side_face.visible = show_roof
-	if roof_face:
-		roof_face.visible = show_roof
+func can_roam_interior() -> bool:
+	return interior_mode() == "roam" and not interior_roam_grid_cells.is_empty()
+
+
+func interior_cell_center(local_cell: Vector2i) -> Vector2:
+	return global_position + (Vector2(local_cell) + Vector2(0.5, 0.5)) * float(CELL)
+
+
+func nearest_interior_walk_cell(from_world: Vector2) -> Vector2i:
+	if interior_walk_cells.is_empty():
+		return Vector2i.ZERO
+	var best: Vector2i = interior_walk_cells[0]
+	var best_dist := INF
+	for local_cell in interior_walk_cells:
+		var dist := from_world.distance_squared_to(interior_cell_center(local_cell))
+		if dist < best_dist:
+			best_dist = dist
+			best = local_cell
+	return best
+
+
+func interior_entry_point(from_world: Vector2) -> Vector2:
+	if interior_roam_grid_cells.is_empty():
+		return interior_point()
+	var grid_cell := nearest_interior_roam_grid_cell(from_world)
+	return interior_roam_grid_point(grid_cell)
+
+
+func interior_roam_target(from_world: Vector2) -> Vector2:
+	var route := interior_roam_route(from_world)
+	if route.is_empty():
+		return interior_point()
+	return route[route.size() - 1]
+
+
+func interior_roam_grid_point(grid_cell: Vector2i) -> Vector2:
+	var image_center := (Vector2(grid_cell) + Vector2(0.5, 0.5)) * float(INTERIOR_NAV_STEP)
+	return global_position + image_center - Vector2(layer_origin)
+
+
+func interior_roam_can_stand(world_point: Vector2, radius: float = INTERIOR_BODY_RADIUS) -> bool:
+	if interior_walk_image == null:
+		return false
+	var image_center := world_point - global_position + Vector2(layer_origin)
+	var local_center := image_center - Vector2(layer_origin)
+	var footprint_px := Vector2(footprint * CELL)
+	if local_center.x < radius or local_center.y < radius \
+			or local_center.x > footprint_px.x - radius \
+			or local_center.y > footprint_px.y - radius:
+		return false
+	return _mask_clearance(interior_walk_image, image_center, radius)
+
+
+func nearest_interior_roam_grid_cell(from_world: Vector2) -> Vector2i:
+	if interior_roam_grid_cells.is_empty():
+		return Vector2i(-9999, -9999)
+	var best: Vector2i = interior_roam_grid_cells[0]
+	var best_dist := INF
+	for grid_cell in interior_roam_grid_cells:
+		var dist := from_world.distance_squared_to(interior_roam_grid_point(grid_cell))
+		if dist < best_dist:
+			best_dist = dist
+			best = grid_cell
+	return best
+
+
+func interior_roam_route(from_world: Vector2) -> Array[Vector2]:
+	var route: Array[Vector2] = []
+	if interior_roam_grid_cells.is_empty():
+		return route
+	var start := nearest_interior_roam_grid_cell(from_world)
+	for _attempt in range(16):
+		var target: Vector2i = interior_roam_grid_cells.pick_random()
+		if target == start:
+			continue
+		var cells := _interior_roam_grid_path(start, target)
+		if cells.size() <= 1:
+			continue
+		for grid_cell in cells:
+			route.append(interior_roam_grid_point(grid_cell))
+		return route
+	route.append(interior_roam_grid_point(start))
+	return route
+
+
+func _interior_roam_grid_path(from_cell: Vector2i, to_cell: Vector2i) -> Array[Vector2i]:
+	var path: Array[Vector2i] = []
+	if not interior_roam_grid.has(from_cell) or not interior_roam_grid.has(to_cell):
+		return path
+	var queue: Array[Vector2i] = [from_cell]
+	var previous: Dictionary = {}
+	previous[from_cell] = from_cell
+	var head := 0
+	var found := false
+	var offsets: Array[Vector2i] = [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
+	while head < queue.size():
+		var current: Vector2i = queue[head]
+		head += 1
+		if current == to_cell:
+			found = true
+			break
+		for offset in offsets:
+			var neighbor: Vector2i = current + offset
+			if not interior_roam_grid.has(neighbor) or previous.has(neighbor):
+				continue
+			previous[neighbor] = current
+			queue.append(neighbor)
+	if not found:
+		return path
+	var cursor: Vector2i = to_cell
+	while cursor != from_cell:
+		path.push_front(cursor)
+		var parent: Vector2i = previous[cursor]
+		cursor = parent
+	path.push_front(from_cell)
+	return path
+
+
+func apply_view_mode(mode: int) -> void:
+	# 三种显示层：屋顶 / 屋内 / 地面。
+	# 屋顶层和地面层都隐藏整组 InteriorLayer —— 里面的游客自然也不显示；
+	# 只有「屋内」模式会打开 InteriorLayer。
+	var show_roof_layer := mode == World.ViewMode.ROOF
+	var show_interior_layer := mode == World.ViewMode.INTERIOR
+	var show_ground_layer := mode == World.ViewMode.GROUND
+	if ground_face:
+		ground_face.visible = show_ground_layer
+	if roof_root:
+		roof_root.visible = show_roof_layer
 	if interior:
-		interior.visible = not show_roof
+		interior.visible = show_interior_layer
+
+
+func apply_roof_mode(show_roof: bool) -> void:
+	# 兼容旧调用：true = 屋顶，false = 屋内
+	apply_view_mode(World.ViewMode.ROOF if show_roof else World.ViewMode.INTERIOR)
+
+
+func roof_visible() -> bool:
+	return roof_root != null and roof_root.visible
+
+
+func interior_visible() -> bool:
+	return interior != null and interior.visible
 
 
 func save_data() -> Dictionary:

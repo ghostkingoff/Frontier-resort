@@ -13,16 +13,21 @@ const RECT_FLAT_RATIO := 0.667   # 矩形光纹理里「平顶区」占全宽的
 const TILESET_PATH := "res://art/generated/ground_tileset.tres"
 const PLAYER_CHARACTER := preload("res://scripts/actors/player_character.gd")
 
-# 地面类型：荒地（不可通行）、草坪（可通行）、地砖（可通行）
+# 地面类型：普通草地 / 荒地（不可通行）、草坪 / 地砖 / 石砖地（可通行）
 const GROUND_WILD := "grass"
 const GROUND_LAWN := "lawn"
 const GROUND_PATH := "path"
+const GROUND_DENSE_GRASS := "dense_grass"
+const GROUND_STONE_TILE := "stone_tile"
+const GROUND_WASTELAND := "wasteland"
 const WALL_TILE_PATH := "res://art/generated/wall_tile.png"
 const ENTRANCE_X0 := 62      # 度假村入口（底边缺口）对应的列
 const ENTRANCE_X1 := 63
 const STREET_ROW := 40       # 村里的横向主街
 const STREET_X0 := 14
 const STREET_X1 := 102
+
+enum ViewMode { ROOF, INTERIOR, GROUND }   # 当前显示层：屋顶 / 屋内 / 地面
 
 @export var grid_size := Vector2i(128, 80)          # 面积是原来的 4 倍
 @export var build_area := Rect2i(3, 3, 122, 66)     # 围墙内：x 3~124、y 3~68
@@ -36,8 +41,9 @@ var walls_root: Node2D
 
 var buildings: Array = []
 var occupancy: Dictionary = {}
-var show_roofs := true
-var ground_types: Dictionary = {}      # cell -> GROUND_LAWN / GROUND_PATH（不记录就是荒地）
+var view_mode: int = ViewMode.ROOF
+var show_roofs := true                  # 兼容旧工具：等价于 view_mode == ROOF
+var ground_types: Dictionary = {}      # cell -> 地面类型（不记录就是地图默认的普通草地）
 var wall_cells: Dictionary = {}        # 度假村围墙占的格子
 var _astar: AStarGrid2D
 var _astar_dirty := true
@@ -145,6 +151,11 @@ func make_circle_light(radius: float, color: Color) -> PointLight2D:
 
 
 func _create_layers() -> void:
+	# 三层显示：
+	#   地面层 = ground（地砖，z=-100）+ decor（装饰，z=-50），永远在最底下
+	#   屋内层 = 每栋建筑内部的 InteriorLayer（地板 + 墙框 + 进店客人）
+	#   屋顶层 = 每栋建筑内部的 RoofLayer（外墙 / 侧面 / 正面 / 屋顶，盖在屋内层上）
+	# 建筑本身仍按 y 排序（z_index = position.y），前后遮挡与人物穿插都保持正确。
 	ground = TileMapLayer.new()
 	ground.name = "Ground"
 	ground.z_index = -100
@@ -251,27 +262,24 @@ func _init_ground_types() -> void:
 func _paint_ground_tile(cell: Vector2i) -> void:
 	if ground.tile_set == null:
 		return
-	var cfg := DataRegistry.ground_config()
 	var kind := str(ground_types.get(cell, GROUND_WILD))
-	var atlas: Array
-	if kind == GROUND_PATH:
-		atlas = cfg.get("sand", [3, 0])
-	elif kind == GROUND_LAWN:
-		atlas = cfg.get("grass_dark", [3, 6])
-	else:
-		# 默认草坪：不可行走，颜色比可行走草坪浅
-		atlas = cfg.get("grass", [3, 3])
-	ground.set_cell(cell, 0, Vector2i(int(atlas[0]), int(atlas[1])))
+	var tile_cfg := DataRegistry.ground_tile_config(kind)
+	var coords: Array = tile_cfg.get("coords", [3, 3])
+	ground.set_cell(cell, int(tile_cfg.get("source", 0)),
+		Vector2i(int(coords[0]), int(coords[1])))
 
 
 func set_ground(cell: Vector2i, kind: String) -> void:
 	if cell.x < 0 or cell.y < 0 or cell.x >= grid_size.x or cell.y >= grid_size.y:
+		return
+	if occupancy.has(cell) and ground_kind_is_walkable(kind):
 		return
 	if kind == GROUND_WILD:
 		ground_types.erase(cell)
 	else:
 		ground_types[cell] = kind
 	_paint_ground_tile(cell)
+	_path_cells_cache.clear()
 	_mark_astar_cell(cell)
 
 
@@ -279,10 +287,25 @@ func ground_type(cell: Vector2i) -> String:
 	return str(ground_types.get(cell, GROUND_WILD))
 
 
+func ground_kind_is_walkable(kind: String) -> bool:
+	return kind != GROUND_WILD and kind != GROUND_DENSE_GRASS and kind != GROUND_WASTELAND
+
+
+func can_paint_ground(cell: Vector2i, kind: String) -> bool:
+	if cell.x < 0 or cell.y < 0 or cell.x >= grid_size.x or cell.y >= grid_size.y:
+		return false
+	if is_wall(cell) or ground_type(cell) == kind:
+		return false
+	if occupancy.has(cell) and ground_kind_is_walkable(kind):
+		return false
+	return true
+
+
 func is_walkable(cell: Vector2i) -> bool:
 	if cell.x < 0 or cell.y < 0 or cell.x >= grid_size.x or cell.y >= grid_size.y:
 		return false
-	if ground_type(cell) == GROUND_WILD:
+	var kind := ground_type(cell)
+	if not ground_kind_is_walkable(kind):
 		return false
 	if occupancy.has(cell):
 		return false
@@ -295,6 +318,12 @@ func ground_kind_name(cell: Vector2i) -> String:
 			return "地砖"
 		GROUND_LAWN:
 			return "可行走草坪"
+		GROUND_DENSE_GRASS:
+			return "茂密草地（不可行走）"
+		GROUND_STONE_TILE:
+			return "石砖地"
+		GROUND_WASTELAND:
+			return "荒地（不可建造 / 不可行走）"
 		_:
 			return "普通草坪（不可行走）"
 
@@ -683,6 +712,10 @@ func can_place(cell: Vector2i, footprint: Vector2i) -> bool:
 		return false
 	if cell.x + footprint.x > build_area.end.x or cell.y + footprint.y > build_area.end.y:
 		return false
+	for y in range(cell.y, cell.y + footprint.y):
+		for x in range(cell.x, cell.x + footprint.x):
+			if ground_type(Vector2i(x, y)) == GROUND_WASTELAND:
+				return false
 	return is_area_free(cell, footprint)
 
 
@@ -926,7 +959,7 @@ func walkable_path_cells() -> Array:
 	# 缓存所有可通行的地砖格，避免每次闲逛都随机试几百次
 	if _path_cells_cache.is_empty():
 		for cell in ground_types.keys():
-			if ground_types[cell] == GROUND_PATH and not occupancy.has(cell):
+			if not occupancy.has(cell) and is_walkable(cell):
 				_path_cells_cache.append(cell)
 	return _path_cells_cache
 
@@ -1041,15 +1074,39 @@ func random_entrance() -> Vector2:
 
 # ---------- 屋顶模式 ----------
 
-func set_roof_mode(show_roof: bool) -> void:
-	show_roofs = show_roof
-	roof_mode_changed.emit(show_roof)
+func set_view_mode(mode: int) -> void:
+	# 三种显示层循环：屋顶（看外观）→ 屋内（看地板 / 店内顾客）→ 地面（只看地砖和路面）
+	# 屋顶层、地面层都不显示屋内游客：只有 INTERIOR 会打开 InteriorLayer。
+	view_mode = clampi(mode, ViewMode.ROOF, ViewMode.GROUND)
+	show_roofs = view_mode == ViewMode.ROOF
+	roof_mode_changed.emit(show_roofs)          # 兼容旧信号
 	for b in buildings:
-		b.apply_roof_mode(show_roof)
+		b.apply_view_mode(view_mode)
+
+
+func cycle_view_mode() -> int:
+	set_view_mode((view_mode + 1) % 3)
+	return view_mode
+
+
+func view_mode_name() -> String:
+	match view_mode:
+		ViewMode.ROOF:
+			return "屋顶"
+		ViewMode.INTERIOR:
+			return "屋内"
+		ViewMode.GROUND:
+			return "地面"
+	return "屋顶"
+
+
+func set_roof_mode(show_roof: bool) -> void:
+	# 兼容旧调用：true = 屋顶，false = 屋内（地面是新模式，请用 set_view_mode / cycle_view_mode）
+	set_view_mode(ViewMode.ROOF if show_roof else ViewMode.INTERIOR)
 
 
 func toggle_roof_mode() -> void:
-	set_roof_mode(not show_roofs)
+	cycle_view_mode()      # 兼容旧入口（R 键 / 顶栏按钮）：现在是三态循环
 
 
 # ---------- 存档 ----------
@@ -1061,7 +1118,7 @@ func save_data() -> Dictionary:
 	var ground_save: Array = []
 	for c in ground_types.keys():
 		ground_save.append({"cell": [c.x, c.y], "kind": str(ground_types[c])})
-	return {"buildings": list, "show_roofs": show_roofs, "ground": ground_save}
+	return {"buildings": list, "view_mode": view_mode, "show_roofs": show_roofs, "ground": ground_save}
 
 
 func load_data(d: Dictionary) -> void:
@@ -1082,6 +1139,9 @@ func load_data(d: Dictionary) -> void:
 		var built := place_building(entry.get("id", ""), Vector2i(int(cell_arr[0]), int(cell_arr[1])), int(entry.get("level", 1)))
 		if built:
 			built.apply_save(entry)
-	set_roof_mode(bool(d.get("show_roofs", true)))
+	if d.has("view_mode"):
+		set_view_mode(int(d.get("view_mode", ViewMode.ROOF)))
+	else:
+		set_roof_mode(bool(d.get("show_roofs", true)))      # 旧存档兼容
 	if player_avatar != null and is_instance_valid(player_avatar):
 		player_avatar.reset_to_reception()   # 读档后角色回招待厅，新的一天从厅里开始

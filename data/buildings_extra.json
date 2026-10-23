@@ -16,7 +16,29 @@
     { "id": "food_dessert", "name": "甜点店", "category": "food", "footprint": [3, 2], "unlock_fame": 500, "cost": 20000, "open_hour": 6, "close_hour": 24, "spend": 500, "mood_bonus": 6, "staff_slots": 1, "staff_wage": 450, "sprite": { "atlas": "res://art/placeholder/tiles/house.png", "rect": [256, 0, 64, 64] }, "description": "心情加成不错的小店。" },
     { "id": "food_buffet", "name": "自助餐店", "category": "food", "footprint": [4, 3], "unlock_fame": 600, "cost": 70000, "open_hour": 6, "close_hour": 24, "spend": 900, "mood_bonus": 10, "staff_slots": 4, "staff_wage": 1350, "sprite": { "atlas": "res://art/placeholder/tiles/house.png", "rect": [192, 0, 64, 64] }, "description": "高知名度才解锁的大店。" },
 
-    { "id": "shop_small", "name": "小超市", "category": "shop", "footprint": [3, 2], "unlock_fame": 0, "cost": 20000, "open_hour": 6, "close_hour": 24, "spend": 350, "mood_bonus": 3, "staff_slots": 1, "staff_wage": 450, "sprite": { "atlas": "res://art/placeholder/tiles/house.png", "rect": [320, 0, 64, 64] }, "description": "开局就能建的小店。" },
+    {
+      "id": "shop_small",
+      "name": "小超市",
+      "category": "shop",
+      "footprint": [6, 4],
+      "unlock_fame": 0,
+      "cost": 20000,
+      "open_hour": 6,
+      "close_hour": 24,
+      "spend": 350,
+      "mood_bonus": 3,
+      "staff_slots": 1,
+      "staff_wage": 450,
+      "interior_mode": "roam",
+      "sprite_layers": {
+        "ground": "res://art/characters/buildings/shop_small/ground.png",
+        "interior": "res://art/characters/buildings/shop_small/interior.png",
+        "roof": "res://art/characters/buildings/shop_small/roof.png",
+        "walk_mask": "res://art/characters/buildings/shop_small/canwalk.png",
+        "origin": [0, 107]
+      },
+      "description": "开局就能建的小店。"
+    },
     { "id": "shop_life", "name": "生活超市", "category": "shop", "footprint": [3, 3], "unlock_fame": 200, "cost": 45000, "open_hour": 6, "close_hour": 24, "spend": 450, "mood_bonus": 4, "staff_slots": 2, "staff_wage": 900, "sprite": { "atlas": "res://art/placeholder/tiles/house.png", "rect": [64, 0, 64, 64] }, "description": "日用百货更全，客人愿意多花。" },
     { "id": "shop_mega", "name": "大型超市", "category": "shop", "footprint": [4, 4], "unlock_fame": 500, "cost": 110000, "open_hour": 6, "close_hour": 24, "spend": 550, "mood_bonus": 6, "staff_slots": 4, "staff_wage": 1350, "sprite": { "atlas": "res://art/placeholder/tiles/house.png", "rect": [128, 0, 64, 64] }, "description": "占地 9 格的商业中心。" },
 

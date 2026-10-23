@@ -5,6 +5,8 @@ extends CanvasLayer
 
 const COMMANDS := preload("res://scripts/core/console_commands.gd")
 
+signal opened
+
 const HISTORY_MAX := 40
 const OUTPUT_MAX_CHARS := 20000     # 输出区保留上限，防止长时间挂机越堆越长
 
@@ -91,6 +93,7 @@ func open_console() -> void:
 	input.text = ""
 	input.grab_focus()
 	_show(str(commands.header_text()))       # 每次打开先打一行现场抬头（第几天 / 时间 / 日志路径）
+	opened.emit()
 
 
 func close_console() -> void:

@@ -226,11 +226,19 @@ func run() -> void:
 		var pos_out: Vector2 = avatar.global_position
 		hud.set_player_control(false)
 		var kept: bool = avatar.global_position.distance_to(pos_out) < 0.5 and not avatar.inside_reception
+		hud.set_player_control(true)
+		avatar.detach_to(reception.global_position - Vector2(0, 32))
+		var behind_ok: bool = avatar.z_index < reception.z_index
+		avatar.detach_to(reception.global_position + Vector2(0, reception.footprint.y * 32 + 32))
+		var front_ok: bool = avatar.z_index > reception.z_index
+		hud.set_player_control(false)
 		hud.reset_player_if_idle()
 		var reset_ok: bool = avatar.inside_reception
 		checks.append("玩家角色：初始在厅内 %s ｜ 厅内走不出去 %s ｜ F 离厅到门口 %s ｜ 门口 F 请求回厅 %s（弹窗 %s）｜ 确认回厅并退模式 %s ｜ 相机跟随 %s ｜ 退出停原地 %s ｜ 结算归位 %s" % [
 			str(start_inside), str(stayed), str(leave_ok and near_door), str(use_ok), str(popup_ok),
 			str(home_ok), str(following), str(kept), str(reset_ok)])
+		checks.append("玩家纵深：站建筑后方会被屋顶覆盖 %s ｜站建筑前方会盖住建筑 %s" % [
+			str(behind_ok), str(front_ok)])
 		# 碰撞框：走到「可行走格子的下边界」时应停住（脚不越到不可行走的地砖上）；贴着边界也能横向走
 		var edge_cell := Vector2i(-1, -1)
 		for cell in world.walkable_path_cells():

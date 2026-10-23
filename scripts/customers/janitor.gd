@@ -27,7 +27,9 @@ func setup(building: Node2D, world_ref: Node2D) -> void:
 	home = building
 	world = world_ref
 	speed = JANITOR_SPEED
-	_build_sprite_base("res://art/placeholder/characters/OldMan/walk.png")
+	_build_sprite_base(
+		"res://art/placeholder/characters/OldMan/walk.png",
+		"res://art/placeholder/characters/OldMan/idle.png")
 	# 用一点冷色把保洁工人和游客区分开（占位素材阶段的手段）
 	sprite.modulate = Color(0.72, 0.86, 1.0)
 	global_position = world.cell_center(world.nearest_entry_cell(building, building.door_cell()))
@@ -88,6 +90,7 @@ func _process(delta: float) -> void:
 			elif _follow_path(scaled):
 				state = State.IDLE
 				_idle_left = randf_range(0.6, 2.0)
+	_tick_idle_animation(scaled)
 
 
 # ---------- 找垃圾 ----------
