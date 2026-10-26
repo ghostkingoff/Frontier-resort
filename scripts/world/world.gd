@@ -7,9 +7,6 @@ signal roof_mode_changed(show_roof: bool)
 signal building_placed(building)
 
 const CELL := 32
-const LIGHT_RECT := "res://art/generated/light_rect.png"
-const LIGHT_RADIAL := "res://art/generated/light_radial.png"   # 圆形光：中心亮、向外平方衰减（tools/build_light_texture.gd 生成）
-const RECT_FLAT_RATIO := 0.667   # 矩形光纹理里「平顶区」占全宽的比例（生成工具保证 1:0.5）
 const TILESET_PATH := "res://art/generated/ground_tileset.tres"
 const PLAYER_CHARACTER := preload("res://scripts/actors/player_character.gd")
 
@@ -86,69 +83,6 @@ func _process(_delta: float) -> void:
 	for b in buildings:
 		if b != null and is_instance_valid(b) and b.has_method("update_lights"):
 			b.update_lights(hour)
-
-
-func make_rect_light(inner_size: Vector2, _spread: float, color: Color) -> PointLight2D:
-	# 通用矩形光源工厂：后续加路灯 / 移动光源也走这里，保证形状与渐变口径一致。
-	#   inner_size = 要「均匀照亮」的中心矩形（像素），例如建筑占地
-	#   spread     = 四周渐变带的最大厚度（像素），例如 1 格 = 32
-	#
-	# 纹理关系：平顶区 : 渐变带 = 1 : 0.5，即 平顶区宽 = 纹理全宽 × (2/3)。
-	# 公式推导：设渐变带厚 band、平顶区宽 inner，则 全宽 = inner + 2*band，
-	# 且纹理里 平顶区/(平顶区+2*band) = (2/3)。
-	# 于是 全宽 = inner * 3/2 * ... 直接把「平顶区」对到 inner 即可：
-	#   全宽 = inner / (2/3) = inner * 1.5
-	# 对 4×4 建筑（inner=128）：全宽 = 192，外圈每边 = (192-128)/2 = 32 = 正好 1 格。
-	if not ResourceLoader.exists(LIGHT_RECT):
-		return null
-	var tex: Texture2D = load(LIGHT_RECT)
-	if tex == null:
-		return null
-	var light := PointLight2D.new()
-	light.texture = tex
-	light.color = color
-	light.energy = 0.0
-	light.blend_mode = Light2D.BLEND_MODE_ADD
-	# 让灯「先画」：z_index 压到接近下限，后面的地面/建筑画在它上面，
-	# 于是开屋顶时屋顶能盖住灯光（屋顶不被照亮）。
-	# 注意 Godot 的 z_index 合法范围是 [-4096, 4096]，写 -100000 会刷
-	# `Tried to set Z index to an invalid value` 错误（设值失败，顺序也不受控）。
-	light.z_index = -4000
-	# range_z 已放开，所以压低 z_index 不影响它能照到哪些对象。
-	# 关键：PointLight2D 默认的 range_z_min/range_z_max 只覆盖很小的 z 范围，
-	# 而建筑的 z_index = int(position.y)（可达 2000+），所以灯会被 z 范围过滤掉、
-	# 完全不影响任何东西（表现为「代码全对、参数也对，但渲染毫无变化」）。
-	# 这里放开到整幅画布，让灯能照到任意 z 的对象。
-	light.range_z_min = -8192
-	light.range_z_max = 8192
-	var tex_w := float(tex.get_width())
-	# 平顶区对到 inner_size ⇒ 全宽 = inner / RECT_FLAT_RATIO
-	var full := Vector2(inner_size.x / RECT_FLAT_RATIO, inner_size.y / RECT_FLAT_RATIO)
-	light.texture_scale = full.x / tex_w
-	light.scale = Vector2(1.0, full.y / full.x)
-	return light
-
-
-func make_circle_light(radius: float, color: Color) -> PointLight2D:
-	# 圆形光源：中心最亮、向外平方衰减到 0（路灯这种「一点发光」的物件用它；
-	# 矩形平顶光是给建筑内部均匀照明用的，不适合小物件）。
-	if not ResourceLoader.exists(LIGHT_RADIAL):
-		return null
-	var tex: Texture2D = load(LIGHT_RADIAL)
-	if tex == null:
-		return null
-	var light := PointLight2D.new()
-	light.texture = tex
-	light.color = color
-	light.energy = 0.0
-	light.blend_mode = Light2D.BLEND_MODE_ADD
-	light.z_index = -4000
-	light.range_z_min = -8192
-	light.range_z_max = 8192
-	# 纹理里光晕到 128px（256/2）处衰减为 0，把目标半径换算成缩放
-	light.texture_scale = radius / (float(tex.get_width()) * 0.5)
-	return light
-
 
 func _create_layers() -> void:
 	# 三层显示：
