@@ -462,13 +462,15 @@ func _run_build_checks() -> void:
 
 	var three_lights_ok: bool = shop.interior_light != null and shop.roof_light != null \
 		and shop.spill_light != null and shop.night_light == shop.spill_light \
+		and shop.lighting != null and shop.lighting.asset != null \
+		and shop.lighting.asset.roof_origin == Vector2i(32, 107) \
 		and shop.roof_light_overlay != null and shop.spill_light_overlay != null \
 		and shop.spill_light_overlays.size() == 4 \
 		and _spill_overlay_layout_ok(shop) \
 		and shop.roof_light.enabled \
 		and shop.roof_light.global_position.is_equal_approx(
-			shop.global_position + Vector2(128.0, 21.0)) \
-		and shop.roof_light_overlay.position.is_equal_approx(Vector2(0.0, -107.0)) \
+			shop.global_position + Vector2(96.0, 21.0)) \
+		and shop.roof_light_overlay.position.is_equal_approx(Vector2(-32.0, -107.0)) \
 		and shop.interior_light.range_item_cull_mask == Building.LIGHT_LAYER_INTERIOR \
 		and shop.roof_light.range_item_cull_mask == Building.LIGHT_LAYER_ROOF \
 		and shop.spill_light.range_item_cull_mask == Building.LIGHT_LAYER_SPILL \

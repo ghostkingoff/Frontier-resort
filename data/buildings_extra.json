@@ -43,7 +43,7 @@
           { "start": [160, 223], "end": [184, 223], "direction": [0, 1], "length": 48, "spread_degrees": 45 },
           { "start": [208, 177], "end": [208, 190], "direction": [1, 0], "length": 48, "spread_degrees": 45 }
         ],
-        "light_roof_origin": [0, 107],
+        "light_roof_origin": [32, 107],
         "light_spill_origin": [32, 111],
         "origin": [0, 107]
       },

@@ -17,6 +17,8 @@ const LIGHT_LAYER_SPILL := 1
 const LIGHT_LAYER_ROOF := 2
 const LIGHT_LAYER_INTERIOR := 4
 
+const BuildingLightingAssetScript := preload("res://scripts/world/lighting/building_lighting_asset.gd")
+
 const LIGHT_RECT := "res://art/generated/light_rect.png"
 const LIGHT_RADIAL := "res://art/generated/light_radial.png"
 const RECT_FLAT_RATIO := 0.667
@@ -24,6 +26,7 @@ const RECT_FLAT_RATIO := 0.667
 var host
 var world: Node2D
 var data: Dictionary = {}
+var asset: BuildingLightingAsset
 var cell := Vector2i.ZERO
 var footprint := Vector2i(4, 4)
 var roof_root: Node2D
@@ -47,12 +50,13 @@ func setup(building_host, world_ref: Node2D) -> void:
 	if host == null or world == null:
 		return
 	data = host.data
+	asset = BuildingLightingAssetScript.from_building_data(data)
 	cell = host.cell
 	footprint = host.footprint
 	roof_root = host.roof_root
 	interior = host.interior
 
-	if str(data.get("light_shape", "rect")) == "circle":
+	if asset.shape == "circle":
 		_build_legacy()
 		return
 	_build_layered()
@@ -159,14 +163,9 @@ func _build_layered() -> void:
 		_add_world_light(interior_light)
 		interior_light.global_position = light_base_pos
 
-	var layered_cfg: Dictionary = data.get("sprite_layers", {})
-	var roof_origin_arr: Array = layered_cfg.get(
-		"light_roof_origin", layered_cfg.get("light_origin", [0, 0]))
-	var roof_origin := Vector2i(int(roof_origin_arr[0]), int(roof_origin_arr[1]))
-	var spill_origin_arr: Array = layered_cfg.get(
-		"light_spill_origin", layered_cfg.get("light_origin", [0, 0]))
-	var spill_origin := Vector2i(int(spill_origin_arr[0]), int(spill_origin_arr[1]))
-	var roof_path := str(layered_cfg.get("light_roof", ""))
+	var roof_origin := asset.roof_origin
+	var spill_origin := asset.spill_origin
+	var roof_path := asset.roof_texture_path
 	if roof_path != "" and ResourceLoader.exists(roof_path):
 		roof_light = _make_texture_light(
 			roof_path, warm, LIGHT_LAYER_ROOF, roof_origin)
@@ -184,12 +183,12 @@ func _build_layered() -> void:
 		_add_world_light(roof_light)
 		_position_light(roof_light)
 
-	var spill_path := str(layered_cfg.get("light_spill", ""))
+	var spill_path := asset.spill_texture_path
 	if spill_path != "" and ResourceLoader.exists(spill_path):
 		spill_light = _make_texture_light(
 			spill_path, warm, LIGHT_LAYER_SPILL, spill_origin)
 		spill_light_overlays.clear()
-		var guides: Array = layered_cfg.get("light_spill_guides", [])
+		var guides: Array = asset.spill_guides
 		for index in range(guides.size()):
 			var guide: Dictionary = guides[index]
 			var overlay := _make_directional_overlay(
@@ -214,9 +213,9 @@ func _build_layered() -> void:
 
 func _build_legacy() -> void:
 	var color := Color(1.0, 0.86, 0.62)
-	if str(data.get("light_shape", "rect")) == "circle":
+	if asset.shape == "circle":
 		night_light = _make_circle_light(
-			float(data.get("light_radius_cells", 2.0)) * float(CELL), color)
+			asset.radius_cells * float(CELL), color)
 	else:
 		night_light = _make_rect_light(
 			Vector2(footprint.x, footprint.y) * CELL,
@@ -232,7 +231,7 @@ func _build_legacy() -> void:
 	world.add_child(night_light)
 	refresh_positions()
 	_configure_timing()
-	var glow := float(data.get("light_glow_scale", 1.0))
+	var glow := asset.glow_scale
 	if glow != 1.0:
 		night_light.texture_scale *= glow
 
