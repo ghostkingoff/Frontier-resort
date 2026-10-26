@@ -464,8 +464,11 @@ func _run_build_checks() -> void:
 		and shop.spill_light != null and shop.night_light == shop.spill_light \
 		and shop.lighting != null and shop.lighting.asset != null \
 		and shop.lighting.asset.roof_origin == Vector2i(32, 107) \
+		and shop.lighting.backend_id == "sdf" \
+		and shop.lighting.sdf_occluders.size() == 1 \
 		and shop.roof_light_overlay != null and shop.spill_light_overlay != null \
 		and shop.spill_light_overlays.size() == 4 \
+		and shop.spill_light_overlay.material is ShaderMaterial \
 		and _spill_overlay_layout_ok(shop) \
 		and shop.roof_light.enabled \
 		and shop.roof_light.global_position.is_equal_approx(

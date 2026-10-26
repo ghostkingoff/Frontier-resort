@@ -18,6 +18,8 @@ const LIGHT_LAYER_ROOF := 2
 const LIGHT_LAYER_INTERIOR := 4
 
 const BuildingLightingAssetScript := preload("res://scripts/world/lighting/building_lighting_asset.gd")
+const SdfSpillOverlayScript := preload("res://scripts/world/lighting/sdf_spill_overlay.gd")
+const SDF_SPILL_SHADER := preload("res://shaders/lighting/spill_occlusion.gdshader")
 
 const LIGHT_RECT := "res://art/generated/light_rect.png"
 const LIGHT_RADIAL := "res://art/generated/light_radial.png"
@@ -42,6 +44,8 @@ var spill_light_overlays: Array[Sprite2D] = []
 var light_on_hour := LIGHT_ON_LATEST
 var light_off_hour := 0.0
 var light_base_pos := Vector2.ZERO
+var backend_id := "legacy"
+var sdf_occluders: Array[LightOccluder2D] = []
 
 
 func setup(building_host, world_ref: Node2D) -> void:
@@ -55,13 +59,20 @@ func setup(building_host, world_ref: Node2D) -> void:
 	footprint = host.footprint
 	roof_root = host.roof_root
 	interior = host.interior
+	backend_id = str(ProjectSettings.get_setting(
+		"lighting/building_backend", "legacy"))
+	if backend_id != "legacy" and backend_id != "sdf":
+		push_warning("未知建筑光照后端 %s，回退 legacy" % backend_id)
+		backend_id = "legacy"
 
 	if asset.shape == "circle":
 		_build_legacy()
-		return
-	_build_layered()
-	if spill_light == null:
-		_build_legacy()
+	else:
+		_build_layered()
+		if spill_light == null:
+			_build_legacy()
+	if backend_id == "sdf":
+		_build_sdf_occluder()
 
 
 func update(hour: float) -> void:
@@ -142,6 +153,10 @@ func release() -> void:
 	roof_light_overlay = null
 	spill_light_overlay = null
 	spill_light_overlays.clear()
+	for occluder in sdf_occluders:
+		if occluder != null and is_instance_valid(occluder):
+			occluder.queue_free()
+	sdf_occluders.clear()
 
 
 func _build_layered() -> void:
@@ -374,6 +389,9 @@ func _make_directional_overlay(node_name: String,
 	overlay.set_meta("start_width_px", start_width)
 	overlay.set_meta("length_px", length_px)
 	overlay.set_meta("spread_degrees", spread_degrees)
+	if backend_id == "sdf":
+		overlay.set_script(SdfSpillOverlayScript)
+		overlay.call("enable_sdf_occlusion", SDF_SPILL_SHADER)
 	return overlay
 
 
@@ -401,3 +419,22 @@ func _apply_light_mask(node: Node, bit: int) -> void:
 		node.light_mask = int(node.light_mask) | bit
 	for child in node.get_children():
 		_apply_light_mask(child, bit)
+
+
+func _build_sdf_occluder() -> void:
+	# 占地矩形是建筑光源自身墙体与后续场景遮挡的共同 SDF 基础。
+	var occluder := LightOccluder2D.new()
+	occluder.name = "BuildingLightOccluder"
+	occluder.occluder_light_mask = 1
+	occluder.sdf_collision = true
+	var polygon := OccluderPolygon2D.new()
+	var size := Vector2(footprint) * float(CELL)
+	polygon.polygon = PackedVector2Array([
+		Vector2.ZERO,
+		Vector2(size.x, 0.0),
+		size,
+		Vector2(0.0, size.y),
+	])
+	occluder.occluder = polygon
+	host.add_child(occluder)
+	sdf_occluders.append(occluder)

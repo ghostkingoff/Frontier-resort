@@ -19,6 +19,9 @@ func _ready() -> void:
 			SaveManager.new_game_mode = arg.split("=")[1]
 		elif arg.begins_with("--view="):
 			view_mode = arg.split("=")[1]
+		elif arg.begins_with("--lighting-backend="):
+			ProjectSettings.set_setting(
+				"lighting/building_backend", arg.split("=")[1])
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
 	var packed: PackedScene = load("res://scenes/main.tscn")
 	main = packed.instantiate()
@@ -121,7 +124,7 @@ func _spawn_demo_customers() -> void:
 
 func _process(_delta: float) -> void:
 	frames += 1
-	if view_mode == "lights":
+	if view_mode == "lights" or view_mode == "lights_occlusion":
 		_process_light_shots()
 		return
 	if janitor_cam_target != null and is_instance_valid(janitor_cam_target):
@@ -377,8 +380,11 @@ func _process_light_shots() -> void:
 		_set_hour(23.7)
 		shop.update_lights(23.7)
 		scene_world.set_view_mode(World.ViewMode.ROOF)
+		if view_mode == "lights_occlusion":
+			_add_sdf_occlusion_probe(shop)
 	if frames == 50:
-		_capture("shot_20_lights_roof.png")
+		_capture("shot_20_lights_roof_occlusion.png"
+			if view_mode == "lights_occlusion" else "shot_20_lights_roof.png")
 	if frames == 70:
 		scene_world.set_view_mode(World.ViewMode.INTERIOR)
 	if frames == 90:
@@ -389,6 +395,22 @@ func _process_light_shots() -> void:
 		_capture("shot_22_lights_ground.png")
 	if frames == 150:
 		get_tree().quit()
+
+
+func _add_sdf_occlusion_probe(shop: Building) -> void:
+	var occluder := LightOccluder2D.new()
+	occluder.name = "SdfOcclusionProbe"
+	occluder.position = Vector2(-28.0, 72.0)
+	occluder.sdf_collision = true
+	var polygon := OccluderPolygon2D.new()
+	polygon.polygon = PackedVector2Array([
+		Vector2.ZERO,
+		Vector2(14.0, 0.0),
+		Vector2(14.0, 36.0),
+		Vector2(0.0, 36.0),
+	])
+	occluder.occluder = polygon
+	shop.add_child(occluder)
 
 
 func _set_hour(hour: float) -> void:
