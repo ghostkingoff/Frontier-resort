@@ -121,6 +121,9 @@ func _spawn_demo_customers() -> void:
 
 func _process(_delta: float) -> void:
 	frames += 1
+	if view_mode == "lights":
+		_process_light_shots()
+		return
 	if janitor_cam_target != null and is_instance_valid(janitor_cam_target):
 		# 镜头跟着保洁工人走，方便看清扫过程
 		var camera: Camera2D = main.get_node("Camera")
@@ -354,6 +357,38 @@ func _force_transition() -> void:
 				Exploration.player_cell = cell
 				Exploration.exit_to(d)
 				return
+
+
+func _process_light_shots() -> void:
+	var scene_world: Node2D = main.get_node("World")
+	var camera: Camera2D = main.get_node("Camera")
+	var shop: Building = null
+	for b in scene_world.buildings:
+		if b.id == "shop_small":
+			shop = b
+			break
+	if shop == null:
+		get_tree().quit(1)
+		return
+	if frames == 30:
+		camera.set_process(false)
+		camera.zoom = Vector2(2.1, 2.1)
+		camera.position = shop.global_position + Vector2(96, 30)
+		_set_hour(23.7)
+		shop.update_lights(23.7)
+		scene_world.set_view_mode(World.ViewMode.ROOF)
+	if frames == 50:
+		_capture("shot_20_lights_roof.png")
+	if frames == 70:
+		scene_world.set_view_mode(World.ViewMode.INTERIOR)
+	if frames == 90:
+		_capture("shot_21_lights_interior.png")
+	if frames == 110:
+		scene_world.set_view_mode(World.ViewMode.GROUND)
+	if frames == 130:
+		_capture("shot_22_lights_ground.png")
+	if frames == 150:
+		get_tree().quit()
 
 
 func _set_hour(hour: float) -> void:

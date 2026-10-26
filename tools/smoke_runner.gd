@@ -193,6 +193,57 @@ func _run_ui_exclusivity_checks() -> void:
 		str(pause_ok), str(pause_highlight_ok), str(console_ok)])
 
 
+func _all_spill_overlays_visible(shop: Building) -> bool:
+	if shop.spill_light_overlays.size() != 4:
+		return false
+	for overlay in shop.spill_light_overlays:
+		if not overlay.visible:
+			return false
+	return true
+
+
+func _spill_overlay_layout_ok(shop: Building) -> bool:
+	if shop.spill_light_overlays.size() != 4:
+		return false
+	var expected_angles: Array[float] = [PI, PI * 0.5, PI * 0.5, 0.0]
+	var expected_positions: Array[Vector2] = [
+		Vector2(14.0, 73.0),
+		Vector2(52.0, 113.0),
+		Vector2(140.0, 112.0),
+		Vector2(176.0, 72.5),
+	]
+	var expected_start_widths: Array[float] = [15.0, 25.0, 25.0, 14.0]
+	var unique_positions: Dictionary = {}
+	for i in range(shop.spill_light_overlays.size()):
+		var overlay: Sprite2D = shop.spill_light_overlays[i]
+		if not is_equal_approx(overlay.rotation, expected_angles[i]):
+			return false
+		if not overlay.position.is_equal_approx(expected_positions[i]):
+			return false
+		if not is_equal_approx(float(overlay.get_meta("start_width_px", 0.0)),
+				expected_start_widths[i]):
+			return false
+		if not is_equal_approx(float(overlay.get_meta("length_px", 0.0)), 48.0):
+			return false
+		if not is_equal_approx(float(overlay.get_meta("spread_degrees", 0.0)), 45.0):
+			return false
+		var image := overlay.texture.get_image()
+		if image.get_width() != 49 or image.get_height() <= 2:
+			return false
+		var center_y := image.get_height() / 2
+		if image.get_pixel(0, center_y).a <= 0.0:
+			return false
+		var inner_alpha := image.get_pixel(10, center_y).a
+		var middle_alpha := image.get_pixel(35, center_y).a
+		var outer_alpha := image.get_pixel(45, center_y).a
+		if not (inner_alpha > middle_alpha and middle_alpha > outer_alpha):
+			return false
+		if image.get_pixel(image.get_width() - 1, center_y).a > 0.0:
+			return false
+		unique_positions[overlay.position] = true
+	return unique_positions.size() == 4
+
+
 func _run_build_mode_checks() -> void:
 	# 建造模式的进入 / 退出：右键必须和 ESC 等价（纯鼠标操作），且三种模式都要能退出
 	var bs := get_node_or_null("../BuildSystem")
@@ -403,9 +454,50 @@ func _run_build_checks() -> void:
 			strict_roam_ok = false
 			break
 	var roam_moved: bool = roam_probe.global_position.distance_to(roam_start) > 1.0
+	var indoor_light_mask_ok: bool = (roam_probe.light_mask & Building.LIGHT_LAYER_INTERIOR) != 0
 	roam_probe.leave_now()
-	checks.append("小超市游客实测：160 次细步移动全在遮罩内 %s ｜确实发生移动 %s" % [
-		str(strict_roam_ok), str(roam_moved)])
+	var outdoor_light_mask_ok: bool = roam_probe.light_mask == 1
+	checks.append("小超市游客实测：160 次细步移动全在遮罩内 %s ｜确实发生移动 %s ｜屋内/屋外光照遮罩 %s / %s" % [
+		str(strict_roam_ok), str(roam_moved), str(indoor_light_mask_ok), str(outdoor_light_mask_ok)])
+
+	var three_lights_ok: bool = shop.interior_light != null and shop.roof_light != null \
+		and shop.spill_light != null and shop.night_light == shop.spill_light \
+		and shop.roof_light_overlay != null and shop.spill_light_overlay != null \
+		and shop.spill_light_overlays.size() == 4 \
+		and _spill_overlay_layout_ok(shop) \
+		and shop.roof_light.enabled \
+		and shop.roof_light.global_position.is_equal_approx(
+			shop.global_position + Vector2(128.0, 21.0)) \
+		and shop.roof_light_overlay.position.is_equal_approx(Vector2(0.0, -107.0)) \
+		and shop.interior_light.range_item_cull_mask == Building.LIGHT_LAYER_INTERIOR \
+		and shop.roof_light.range_item_cull_mask == Building.LIGHT_LAYER_ROOF \
+		and shop.spill_light.range_item_cull_mask == Building.LIGHT_LAYER_SPILL \
+		and (shop.interior.light_mask & Building.LIGHT_LAYER_INTERIOR) != 0 \
+		and (shop.roof_root.light_mask & Building.LIGHT_LAYER_ROOF) != 0 \
+		and str(shop.interior_light.texture.resource_path).ends_with("light_rect.png") \
+		and str(shop.roof_light.texture.resource_path).ends_with("light_roof.png") \
+		and str(shop.spill_light.texture.resource_path).ends_with("light_spill.png")
+	shop.update_lights(21.0)
+	var light_energy_ok: bool = shop.interior_light.energy > shop.spill_light.energy \
+		and shop.roof_light.energy > shop.spill_light.energy \
+		and shop.spill_light.energy > 0.0 and shop.roof_light_overlay.modulate.a > 0.0 \
+		and shop.spill_light_overlay.modulate.a > 0.0
+	world.set_view_mode(World.ViewMode.INTERIOR)
+	var interior_light_mode_ok: bool = shop.interior_light.visible \
+		and not shop.roof_light.visible and shop.spill_light.visible \
+		and not shop.roof_light_overlay.visible and _all_spill_overlays_visible(shop)
+	world.set_view_mode(World.ViewMode.ROOF)
+	var roof_light_mode_ok: bool = not shop.interior_light.visible \
+		and shop.roof_light.visible and shop.spill_light.visible \
+		and shop.roof_light_overlay.visible and _all_spill_overlays_visible(shop)
+	world.set_view_mode(World.ViewMode.GROUND)
+	var ground_light_mode_ok: bool = not shop.interior_light.visible \
+		and not shop.roof_light.visible and shop.spill_light.visible \
+		and not shop.roof_light_overlay.visible and _all_spill_overlays_visible(shop)
+	world.set_view_mode(World.ViewMode.ROOF)
+	checks.append("房屋三层光照：光源与遮罩 %s ｜能量梯度 %s ｜屋内模式 %s ｜屋顶模式 %s ｜地面模式 %s" % [
+		str(three_lights_ok), str(light_energy_ok), str(interior_light_mode_ok),
+		str(roof_light_mode_ok), str(ground_light_mode_ok)])
 
 	# 3. 员工：挑一栋有员工编制的建筑招人（度假屋/招待厅本来就不雇人）
 	var staffed: Building = null

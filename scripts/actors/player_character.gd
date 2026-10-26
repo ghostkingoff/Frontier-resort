@@ -298,6 +298,7 @@ func enter_reception() -> void:
 	inside_reception = true
 	_inside_rect = Rect2(reception.global_position, Vector2(reception.footprint) * 32.0).grow(-10.0)
 	reparent(reception.interior, true)
+	light_mask = 5
 	global_position = reception.interior_point()
 	_apply_z()
 
@@ -310,6 +311,7 @@ func leave_reception() -> void:
 		return
 	inside_reception = false
 	reparent(world, true)
+	light_mask = 1
 	global_position = world.cell_center(reception.door_cell())
 	_apply_z()
 
@@ -319,6 +321,7 @@ func detach_to(at: Vector2) -> void:
 	inside_reception = false
 	if world != null:
 		reparent(world, true)
+		light_mask = 1
 	global_position = at
 	_apply_z()
 

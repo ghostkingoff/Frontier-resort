@@ -111,6 +111,10 @@ func _build_sprite() -> void:
 	_build_sprite_base(base + "/walk.png", base + "/idle.png")
 
 
+func set_indoor_lighting(on: bool) -> void:
+	light_mask = 5 if on else 1
+
+
 func _start_cell_candidates(from_cell: Vector2i) -> Array:
 	# 从建筑里走出来时，把这栋楼的所有出入口都当候选（门口排第一），
 	# 逐个试到「既能走、又能算到目标」的那个为止。
@@ -132,6 +136,7 @@ func _start_cell_candidates(from_cell: Vector2i) -> Array:
 func _on_start_cell_moved(_to_cell: Vector2i) -> void:
 	# 已经离开建筑：挂回场地层并清掉「在建筑内」的标记
 	reparent(world.customers_root, true)
+	set_indoor_lighting(false)
 	_inside_building = null
 
 
@@ -345,6 +350,7 @@ func _force_exit() -> void:
 	var building := _inside_building
 	_inside_building = null
 	reparent(world.customers_root, true)
+	set_indoor_lighting(false)
 	if building != null and is_instance_valid(building):
 		building.release_patient(self)   # 候诊/治疗引用一并摘掉，别让诊所留着悬空引用
 		if building.visitors.has(self):
@@ -427,6 +433,7 @@ func goto_room_for_night() -> bool:	# 「休息一晚」跳过夜晚时调用：
 	_release_reservation()
 	force_leave_current_building()
 	reparent(lodge.interior, true)
+	set_indoor_lighting(true)
 	global_position = lodge.interior_point()
 	_inside_building = lodge
 	target = lodge
@@ -448,6 +455,7 @@ func force_leave_current_building() -> void:
 		b.remove_visitor(self)
 	b.release_patient(self)
 	_inside_building = null
+	set_indoor_lighting(false)
 
 
 func _sleep_done() -> bool:
@@ -607,6 +615,7 @@ func _enter_room_rest() -> void:
 	var room := lodge if (lodge != null and is_instance_valid(lodge)) else target
 	if room:
 		reparent(room.interior, true)
+		set_indoor_lighting(true)
 		global_position = room.interior_point()
 		_inside_building = room
 	# 夜里就一觉睡到天亮，避免整晚在门口进进出出
@@ -654,6 +663,7 @@ func _enter_shop_now(b: Building) -> void:
 	b.add_visitor(self)
 	var entry_world := global_position
 	reparent(b.interior, true)
+	set_indoor_lighting(true)
 	_inside_building = b
 	if b.can_roam_interior():
 		global_position = b.interior_entry_point(entry_world)
@@ -726,6 +736,7 @@ func _enter_checkout() -> void:
 	var reception := target
 	if reception:
 		reparent(reception.interior, true)
+		set_indoor_lighting(true)
 		global_position = reception.interior_point()
 		_inside_building = reception
 	action_left = 2.5
@@ -789,6 +800,7 @@ func _finish_consume() -> void:
 		return
 	b.remove_visitor(self)
 	reparent(world.customers_root, true)
+	set_indoor_lighting(false)
 	var _exit_cell: Vector2i = world.nearest_entry_cell(b, world.world_to_cell(global_position))
 	if _exit_cell.x != -9999:
 		global_position = world.cell_center(_exit_cell)
@@ -1133,6 +1145,7 @@ func _enter_clinic() -> void:
 		return
 	clinic.accept_patient(self)
 	reparent(clinic.interior, true)
+	set_indoor_lighting(true)
 	global_position = clinic.interior_point()
 	_inside_building = clinic
 	sprite.frame = DIR_DOWN

@@ -35,6 +35,16 @@
         "interior": "res://art/characters/buildings/shop_small/interior.png",
         "roof": "res://art/characters/buildings/shop_small/roof.png",
         "walk_mask": "res://art/characters/buildings/shop_small/canwalk.png",
+        "light_roof": "res://art/characters/buildings/shop_small/light_roof.png",
+        "light_spill": "res://art/characters/buildings/shop_small/light_spill.png",
+        "light_spill_guides": [
+          { "start": [46, 177], "end": [46, 191], "direction": [-1, 0], "length": 48, "spread_degrees": 45 },
+          { "start": [72, 224], "end": [96, 224], "direction": [0, 1], "length": 48, "spread_degrees": 45 },
+          { "start": [160, 223], "end": [184, 223], "direction": [0, 1], "length": 48, "spread_degrees": 45 },
+          { "start": [208, 177], "end": [208, 190], "direction": [1, 0], "length": 48, "spread_degrees": 45 }
+        ],
+        "light_roof_origin": [0, 107],
+        "light_spill_origin": [32, 111],
         "origin": [0, 107]
       },
       "description": "开局就能建的小店。"
