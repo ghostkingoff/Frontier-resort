@@ -16,10 +16,12 @@ const LIGHT_OFF_SPREAD_HOURS := 0.5
 const LIGHT_LAYER_SPILL := 1
 const LIGHT_LAYER_ROOF := 2
 const LIGHT_LAYER_INTERIOR := 4
+const PLAYER_QUALITY_LIGHT_MASK := 8
 
 const BuildingLightingAssetScript := preload("res://scripts/world/lighting/building_lighting_asset.gd")
 const SdfSpillOverlayScript := preload("res://scripts/world/lighting/sdf_spill_overlay.gd")
 const SDF_SPILL_SHADER := preload("res://shaders/lighting/spill_occlusion.gdshader")
+const WINDOW_HALO_SHADER := preload("res://shaders/lighting/window_halo.gdshader")
 
 const LIGHT_RECT := "res://art/generated/light_rect.png"
 const LIGHT_RADIAL := "res://art/generated/light_radial.png"
@@ -39,12 +41,16 @@ var interior_light: PointLight2D
 var roof_light: PointLight2D
 var spill_light: PointLight2D
 var roof_light_overlay: Sprite2D
+var window_halo_overlay: Sprite2D
 var spill_light_overlay: Sprite2D
 var spill_light_overlays: Array[Sprite2D] = []
+var lamp_head_overlays: Array[Sprite2D] = []
+var lamp_point_lights: Array[PointLight2D] = []
 var light_on_hour := LIGHT_ON_LATEST
 var light_off_hour := 0.0
 var light_base_pos := Vector2.ZERO
 var backend_id := "legacy"
+var quality_id := "high"
 var sdf_occluders: Array[LightOccluder2D] = []
 
 
@@ -64,12 +70,16 @@ func setup(building_host, world_ref: Node2D) -> void:
 	if backend_id != "legacy" and backend_id != "sdf":
 		push_warning("未知建筑光照后端 %s，回退 legacy" % backend_id)
 		backend_id = "legacy"
+	quality_id = str(ProjectSettings.get_setting("lighting/quality", "high"))
+	if quality_id != "high" and quality_id != "low":
+		push_warning("未知建筑光照画质 %s，回退 high" % quality_id)
+		quality_id = "high"
 
 	if asset.shape == "circle":
 		_build_legacy()
 	else:
 		_build_layered()
-		if spill_light == null:
+		if interior_light == null and roof_light == null and spill_light == null:
 			_build_legacy()
 	if backend_id == "sdf":
 		_build_sdf_occluder()
@@ -91,20 +101,31 @@ func update(hour: float) -> void:
 	if h < light_on_hour:
 		k = 0.0
 	var energy := k * k * (3.0 - 2.0 * k)
+	var window_energy := energy * LIGHT_ENERGY * asset.window_energy_scale
+	var lamp_energy := energy * LIGHT_ENERGY * asset.lamp_energy_scale
+	var spill_energy := energy * 0.70 * asset.lamp_energy_scale
 	if interior_light:
-		interior_light.energy = energy * LIGHT_ENERGY
+		interior_light.energy = window_energy
 	if roof_light:
-		roof_light.energy = energy * LIGHT_ENERGY
+		roof_light.energy = window_energy
 	if spill_light:
-		spill_light.energy = energy * LIGHT_ENERGY * 0.48
+		spill_light.energy = lamp_energy * 0.48
 	elif night_light:
-		night_light.energy = energy * LIGHT_ENERGY
+		night_light.energy = window_energy
 	if roof_light_overlay:
-		roof_light_overlay.modulate.a = energy * LIGHT_ENERGY
+		roof_light_overlay.modulate.a = window_energy
+	if window_halo_overlay and window_halo_overlay.material is ShaderMaterial:
+		window_halo_overlay.material.set_shader_parameter(
+			"energy", window_energy * 0.55)
 	if spill_light_overlay:
-		spill_light_overlay.modulate.a = energy * 0.70
+		spill_light_overlay.modulate.a = spill_energy
 	for overlay in spill_light_overlays:
-		overlay.modulate.a = energy * 0.70
+		overlay.modulate.a = spill_energy
+	for overlay in lamp_head_overlays:
+		overlay.modulate.a = lamp_energy * 0.60
+	for light in lamp_point_lights:
+		var role := str(light.get_meta("lighting_role", "direct"))
+		light.energy = lamp_energy * (1.0 if role == "direct" else 0.35)
 
 
 func apply_view_state(show_interior_layer: bool, show_roof_layer: bool) -> void:
@@ -116,10 +137,16 @@ func apply_view_state(show_interior_layer: bool, show_roof_layer: bool) -> void:
 		spill_light.visible = true
 	if roof_light_overlay:
 		roof_light_overlay.visible = show_roof_layer
+	if window_halo_overlay:
+		window_halo_overlay.visible = show_roof_layer
 	if spill_light_overlay:
 		spill_light_overlay.visible = true
 	for overlay in spill_light_overlays:
 		overlay.visible = true
+	for overlay in lamp_head_overlays:
+		overlay.visible = true
+	for light in lamp_point_lights:
+		light.visible = true
 
 
 func refresh_positions() -> void:
@@ -129,7 +156,9 @@ func refresh_positions() -> void:
 		_position_light(roof_light)
 	if spill_light:
 		_position_light(spill_light)
-	elif night_light:
+	for light in lamp_point_lights:
+		_position_light(light)
+	if spill_light == null and night_light != null and night_light != roof_light:
 		night_light.global_position = light_base_pos \
 			+ Vector2(host.light_offset_cells()) * float(CELL)
 
@@ -137,6 +166,7 @@ func refresh_positions() -> void:
 func release() -> void:
 	# 世界根节点下的灯不随建筑自动释放，拆除建筑时必须显式回收。
 	var lights: Array = [interior_light, roof_light, spill_light, night_light]
+	lights.append_array(lamp_point_lights)
 	var freed_ids: Dictionary = {}
 	for light in lights:
 		if light == null or not is_instance_valid(light):
@@ -151,8 +181,11 @@ func release() -> void:
 	spill_light = null
 	night_light = null
 	roof_light_overlay = null
+	window_halo_overlay = null
 	spill_light_overlay = null
 	spill_light_overlays.clear()
+	lamp_head_overlays.clear()
+	lamp_point_lights.clear()
 	for occluder in sdf_occluders:
 		if occluder != null and is_instance_valid(occluder):
 			occluder.queue_free()
@@ -187,6 +220,10 @@ func _build_layered() -> void:
 		roof_light_overlay = _make_light_overlay(
 			"RoofLightGlow", roof_path, roof_origin)
 		roof_root.add_child(roof_light_overlay)
+		if quality_id == "high":
+			window_halo_overlay = _make_window_halo(
+				roof_path, roof_origin, asset.window_halo_radius_px)
+			roof_root.add_child(window_halo_overlay)
 	else:
 		roof_light = _make_circle_light(radius * 0.7, warm)
 		if roof_light:
@@ -199,7 +236,9 @@ func _build_layered() -> void:
 		_position_light(roof_light)
 
 	var spill_path := asset.spill_texture_path
-	if spill_path != "" and ResourceLoader.exists(spill_path):
+	if not asset.lamps.is_empty():
+		_build_lamp_markers()
+	elif spill_path != "" and ResourceLoader.exists(spill_path):
 		spill_light = _make_texture_light(
 			spill_path, warm, LIGHT_LAYER_SPILL, spill_origin)
 		spill_light_overlays.clear()
@@ -221,7 +260,7 @@ func _build_layered() -> void:
 		spill_light.name = "SpillLight"
 		_add_world_light(spill_light)
 		_position_light(spill_light)
-	night_light = spill_light
+	night_light = spill_light if spill_light != null else roof_light
 	_apply_light_mask(interior, LIGHT_LAYER_INTERIOR)
 	_apply_light_mask(roof_root, LIGHT_LAYER_ROOF)
 
@@ -236,6 +275,12 @@ func _build_legacy() -> void:
 			Vector2(footprint.x, footprint.y) * CELL,
 			LIGHT_SPREAD_CELLS * float(CELL),
 			color)
+	if night_light != null and asset.shape == "circle" and quality_id == "high":
+		night_light.shadow_enabled = true
+		night_light.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+		night_light.shadow_filter = Light2D.SHADOW_FILTER_PCF5
+		night_light.shadow_filter_smooth = 1.2
+		night_light.shadow_item_cull_mask = PLAYER_QUALITY_LIGHT_MASK
 	if night_light == null and interior_light == null \
 			and roof_light == null and spill_light == null:
 		return
@@ -244,6 +289,16 @@ func _build_legacy() -> void:
 	light_base_pos = world.cell_center(cell) \
 		+ Vector2(float(footprint.x - 1), float(footprint.y - 1)) * CELL * 0.5
 	world.add_child(night_light)
+	if asset.shape == "circle" and quality_id == "high":
+		var direct := _make_circle_light(
+			asset.radius_cells * float(CELL), color)
+		if direct != null:
+			direct.name = "LampPointLightDirect"
+			direct.range_item_cull_mask = PLAYER_QUALITY_LIGHT_MASK
+			direct.set_meta("lighting_role", "direct")
+			direct.set_meta("follow_lamp_offset", true)
+			_add_world_light(direct)
+			lamp_point_lights.append(direct)
 	refresh_positions()
 	_configure_timing()
 	var glow := asset.glow_scale
@@ -262,6 +317,187 @@ func _configure_timing() -> void:
 	else:
 		light_off_hour = close_h if close_h < host.open_hour() \
 			else close_h + randf_range(0.0, LIGHT_OFF_SPREAD_HOURS)
+
+
+func _build_lamp_markers() -> void:
+	for index in range(asset.lamps.size()):
+		var lamp: Dictionary = asset.lamps[index]
+		var overlay := _make_lamp_fan(index, lamp, asset.spill_origin)
+		host.add_child(overlay)
+		spill_light_overlays.append(overlay)
+		if spill_light_overlay == null:
+			spill_light_overlay = overlay
+		if quality_id == "high":
+			_add_key_lamp_lights(index, overlay)
+			var head_glow := _make_lamp_head_glow(index, lamp, asset.spill_origin)
+			host.add_child(head_glow)
+			lamp_head_overlays.append(head_glow)
+
+
+func _make_lamp_fan(index: int, lamp: Dictionary,
+		origin: Vector2i) -> Sprite2D:
+	var source_rect: Array = lamp.get("source", [0, 0, 0, 0])
+	var source_a := Vector2(float(source_rect[0]), float(source_rect[1]))
+	var source_b := Vector2(float(source_rect[2]), float(source_rect[3]))
+	var source_center := (source_a + source_b) * 0.5
+	var source_half_width := maxf((source_a.distance_to(source_b) + 1.0) * 0.5, 0.5)
+
+	var left: Array = lamp.get("left", [])
+	var right: Array = lamp.get("right", [])
+	var left_start := _point_from_values(left, 0, source_center + Vector2.LEFT)
+	var left_end := _point_from_values(left, 2, source_center + Vector2.DOWN)
+	var right_start := _point_from_values(right, 0, source_center + Vector2.RIGHT)
+	var right_end := _point_from_values(right, 2, source_center + Vector2.DOWN)
+
+	var axis_end := (left_end + right_end) * 0.5
+	var forward_axis := (axis_end - source_center).normalized()
+	if forward_axis == Vector2.ZERO:
+		forward_axis = Vector2.DOWN
+	var side_axis := Vector2(-forward_axis.y, forward_axis.x)
+	var left_angle := absf(forward_axis.angle_to((left_end - source_center).normalized()))
+	var right_angle := absf(forward_axis.angle_to((right_end - source_center).normalized()))
+	var half_angle := clampf((left_angle + right_angle) * 0.5, 0.01, PI * 0.48)
+	var fade_radius := maxf(
+		(source_center.distance_to(left_end) + source_center.distance_to(right_end)) * 0.5,
+		1.0)
+	var extent := ceili(fade_radius + source_half_width + 3.0)
+	var bounds_min := Vector2i(
+		floori(source_center.x) - extent,
+		floori(source_center.y) - extent)
+	var image_size := Vector2i(extent * 2 + 1, extent * 2 + 1)
+	var image := Image.create(
+		image_size.x, image_size.y, false, Image.FORMAT_RGBA8)
+	image.fill(Color(1.0, 1.0, 1.0, 0.0))
+	var slope := tan(half_angle)
+	for py in range(image_size.y):
+		for px in range(image_size.x):
+			var point := Vector2(bounds_min) + Vector2(float(px), float(py))
+			var delta := point - source_center
+			var forward := delta.dot(forward_axis)
+			if forward < -source_half_width:
+				continue
+			var lateral := absf(delta.dot(side_axis))
+			var half_width := source_half_width + maxf(forward, 0.0) * slope
+			if lateral > half_width:
+				continue
+			var radial := delta.length()
+			if radial > fade_radius:
+				continue
+			var radial_t := clampf(radial / fade_radius, 0.0, 1.0)
+			var radial_fade := 1.0 - smoothstep(0.28, 1.0, radial_t)
+			var side_fade := smoothstep(0.0, 2.25, half_width - lateral)
+			var start_fade := smoothstep(0.0, 1.25, radial)
+			var alpha := radial_fade * side_fade * start_fade
+			if alpha > 0.0:
+				image.set_pixel(px, py, Color(1.0, 1.0, 1.0, alpha))
+
+	var overlay := Sprite2D.new()
+	overlay.name = "LampFan%d" % index
+	overlay.texture = ImageTexture.create_from_image(image)
+	overlay.centered = false
+	overlay.position = source_center - Vector2(origin)
+	overlay.offset = Vector2(bounds_min) - source_center
+	overlay.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	overlay.material = CanvasItemMaterial.new()
+	overlay.material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	overlay.modulate = Color(
+		asset.lamp_color.r, asset.lamp_color.g, asset.lamp_color.b, 0.0)
+	overlay.z_index = 0
+	overlay.light_mask = LIGHT_LAYER_SPILL
+	overlay.set_meta("lamp_source_center", source_center)
+	overlay.set_meta("lamp_source_half_width_px", source_half_width)
+	overlay.set_meta("lamp_half_angle_radians", half_angle)
+	overlay.set_meta("lamp_fade_radius_px", fade_radius)
+	overlay.set_meta("lamp_texture_source_px",
+		source_center - Vector2(bounds_min))
+	if backend_id == "sdf":
+		overlay.set_script(SdfSpillOverlayScript)
+		overlay.call("enable_sdf_occlusion", SDF_SPILL_SHADER)
+	return overlay
+
+
+func _make_lamp_head_glow(index: int, lamp: Dictionary,
+		origin: Vector2i) -> Sprite2D:
+	var source_rect: Array = lamp.get("source", [0, 0, 0, 0])
+	var source_a := Vector2(float(source_rect[0]), float(source_rect[1]))
+	var source_b := Vector2(float(source_rect[2]), float(source_rect[3]))
+	var source_center := (source_a + source_b) * 0.5
+	var radius := maxf(asset.lamp_head_radius_px, 1.0)
+	var size := ceili(radius * 2.0) + 1
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	image.fill(Color(1.0, 1.0, 1.0, 0.0))
+	var center := Vector2(size - 1, size - 1) * 0.5
+	for y in range(size):
+		for x in range(size):
+			var distance := Vector2(float(x), float(y)).distance_to(center)
+			var alpha := pow(maxf(1.0 - distance / radius, 0.0), 1.7)
+			if alpha > 0.0:
+				image.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+	var glow := Sprite2D.new()
+	glow.name = "LampHeadGlow%d" % index
+	glow.texture = ImageTexture.create_from_image(image)
+	glow.position = source_center - Vector2(origin)
+	glow.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	glow.material = CanvasItemMaterial.new()
+	glow.material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	glow.modulate = Color(
+		asset.lamp_color.r, asset.lamp_color.g, asset.lamp_color.b, 0.0)
+	glow.z_index = 1
+	glow.light_mask = LIGHT_LAYER_SPILL
+	return glow
+
+
+func _add_key_lamp_lights(index: int, fan: Sprite2D) -> void:
+	var radius := maxf(float(fan.get_meta("lamp_fade_radius_px", 48.0)) * 0.9, 8.0)
+	var direct := _make_circle_light(radius, asset.lamp_color)
+	if direct != null:
+		direct.name = "LampPointLightDirect%d" % index
+		direct.energy = 0.0
+		direct.height = 18.0
+		direct.range_item_cull_mask = PLAYER_QUALITY_LIGHT_MASK
+		direct.set_meta("lighting_role", "direct")
+		_add_world_light(direct)
+		direct.global_position = host.global_position + fan.position
+		lamp_point_lights.append(direct)
+
+	var shadow := _make_circle_light(radius, asset.lamp_color)
+	if shadow != null:
+		shadow.name = "LampPointLightShadow%d" % index
+		shadow.energy = 0.0
+		shadow.height = 18.0
+		shadow.range_item_cull_mask = 1
+		shadow.shadow_enabled = true
+		shadow.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+		shadow.shadow_filter = Light2D.SHADOW_FILTER_PCF5
+		shadow.shadow_filter_smooth = 1.2
+		shadow.shadow_item_cull_mask = PLAYER_QUALITY_LIGHT_MASK
+		shadow.set_meta("lighting_role", "shadow")
+		_add_world_light(shadow)
+		shadow.global_position = host.global_position + fan.position
+		lamp_point_lights.append(shadow)
+
+
+func _make_window_halo(path: String, origin: Vector2i, radius_px: float) -> Sprite2D:
+	var overlay := Sprite2D.new()
+	overlay.name = "WindowHalo"
+	overlay.texture = load(path)
+	overlay.centered = false
+	overlay.position = -Vector2(origin)
+	overlay.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	var material := ShaderMaterial.new()
+	material.shader = WINDOW_HALO_SHADER
+	material.set_shader_parameter("radius_px", maxf(radius_px, 1.0))
+	material.set_shader_parameter("glow_color", Color(1.0, 0.74, 0.38))
+	material.set_shader_parameter("energy", 0.0)
+	overlay.material = material
+	overlay.light_mask = LIGHT_LAYER_ROOF
+	return overlay
+
+
+func _point_from_values(values: Array, offset: int, fallback: Vector2) -> Vector2:
+	if values.size() < offset + 2:
+		return fallback
+	return Vector2(float(values[offset]), float(values[offset + 1]))
 
 
 func _make_rect_light(inner_size: Vector2, _spread: float, color: Color) -> PointLight2D:
@@ -410,6 +646,8 @@ func _position_light(light: PointLight2D) -> void:
 			- Vector2(origin)
 	else:
 		light.global_position = light_base_pos
+		if bool(light.get_meta("follow_lamp_offset", false)):
+			light.global_position += Vector2(host.light_offset_cells()) * float(CELL)
 
 
 func _apply_light_mask(node: Node, bit: int) -> void:

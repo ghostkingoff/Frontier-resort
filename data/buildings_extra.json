@@ -37,12 +37,20 @@
         "walk_mask": "res://art/characters/buildings/shop_small/canwalk.png",
         "light_roof": "res://art/characters/buildings/shop_small/light_roof.png",
         "light_spill": "res://art/characters/buildings/shop_small/light_spill.png",
-        "light_spill_guides": [
-          { "start": [46, 177], "end": [46, 191], "direction": [-1, 0], "length": 48, "spread_degrees": 45 },
-          { "start": [72, 224], "end": [96, 224], "direction": [0, 1], "length": 48, "spread_degrees": 45 },
-          { "start": [160, 223], "end": [184, 223], "direction": [0, 1], "length": 48, "spread_degrees": 45 },
-          { "start": [208, 177], "end": [208, 190], "direction": [1, 0], "length": 48, "spread_degrees": 45 }
-        ],
+        "lighting": {
+          "window_scale": 0.8,
+          "window_halo_radius_px": 8,
+          "lamp_scale": 0.8,
+          "lamp_head_radius_px": 8,
+          "lamp_color": "#ffd36a",
+          "lamps": [
+            {
+              "source": [114, 179, 134, 179],
+              "left": [113, 178, 62, 229],
+              "right": [135, 178, 186, 229]
+            }
+          ]
+        },
         "light_roof_origin": [32, 107],
         "light_spill_origin": [32, 111],
         "origin": [0, 107]

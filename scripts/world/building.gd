@@ -86,12 +86,18 @@ var spill_light:
 var roof_light_overlay:
 	get:
 		return lighting.roof_light_overlay if lighting != null else null
+var window_halo_overlay:
+	get:
+		return lighting.window_halo_overlay if lighting != null else null
 var spill_light_overlay:
 	get:
 		return lighting.spill_light_overlay if lighting != null else null
 var spill_light_overlays:
 	get:
 		return lighting.spill_light_overlays if lighting != null else []
+var lamp_head_overlays:
+	get:
+		return lighting.lamp_head_overlays if lighting != null else []
 var light_on_hour: float:
 	get:
 		return lighting.light_on_hour if lighting != null else LIGHT_ON_LATEST

@@ -14,6 +14,12 @@ var roof_origin := Vector2i.ZERO
 var spill_texture_path := ""
 var spill_origin := Vector2i.ZERO
 var spill_guides: Array = []
+var window_energy_scale := 1.0
+var window_halo_radius_px := 8.0
+var lamp_energy_scale := 1.0
+var lamp_head_radius_px := 8.0
+var lamp_color := Color(1.0, 0.82, 0.54)
+var lamps: Array = []
 
 
 static func from_building_data(data: Dictionary) -> BuildingLightingAsset:
@@ -33,6 +39,15 @@ static func from_building_data(data: Dictionary) -> BuildingLightingAsset:
 			asset.layer_origin.x, asset.layer_origin.y])))
 	var guides: Array = layers.get("light_spill_guides", [])
 	asset.spill_guides = guides.duplicate(true)
+	var lighting: Dictionary = layers.get("lighting", {})
+	asset.window_energy_scale = float(lighting.get("window_scale", 1.0))
+	asset.window_halo_radius_px = float(lighting.get("window_halo_radius_px", 8.0))
+	asset.lamp_energy_scale = float(lighting.get("lamp_scale", 1.0))
+	asset.lamp_head_radius_px = float(lighting.get("lamp_head_radius_px", 8.0))
+	asset.lamp_color = Color.from_string(
+		str(lighting.get("lamp_color", "#ffd18a")), Color(1.0, 0.82, 0.54))
+	var lamps: Array = lighting.get("lamps", [])
+	asset.lamps = lamps.duplicate(true)
 	return asset
 
 

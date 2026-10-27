@@ -194,7 +194,7 @@ func _run_ui_exclusivity_checks() -> void:
 
 
 func _all_spill_overlays_visible(shop: Building) -> bool:
-	if shop.spill_light_overlays.size() != 4:
+	if shop.spill_light_overlays.size() != 1:
 		return false
 	for overlay in shop.spill_light_overlays:
 		if not overlay.visible:
@@ -203,45 +203,28 @@ func _all_spill_overlays_visible(shop: Building) -> bool:
 
 
 func _spill_overlay_layout_ok(shop: Building) -> bool:
-	if shop.spill_light_overlays.size() != 4:
+	if shop.spill_light_overlays.size() != 1:
 		return false
-	var expected_angles: Array[float] = [PI, PI * 0.5, PI * 0.5, 0.0]
-	var expected_positions: Array[Vector2] = [
-		Vector2(14.0, 73.0),
-		Vector2(52.0, 113.0),
-		Vector2(140.0, 112.0),
-		Vector2(176.0, 72.5),
-	]
-	var expected_start_widths: Array[float] = [15.0, 25.0, 25.0, 14.0]
-	var unique_positions: Dictionary = {}
-	for i in range(shop.spill_light_overlays.size()):
-		var overlay: Sprite2D = shop.spill_light_overlays[i]
-		if not is_equal_approx(overlay.rotation, expected_angles[i]):
-			return false
-		if not overlay.position.is_equal_approx(expected_positions[i]):
-			return false
-		if not is_equal_approx(float(overlay.get_meta("start_width_px", 0.0)),
-				expected_start_widths[i]):
-			return false
-		if not is_equal_approx(float(overlay.get_meta("length_px", 0.0)), 48.0):
-			return false
-		if not is_equal_approx(float(overlay.get_meta("spread_degrees", 0.0)), 45.0):
-			return false
-		var image := overlay.texture.get_image()
-		if image.get_width() != 49 or image.get_height() <= 2:
-			return false
-		var center_y := image.get_height() / 2
-		if image.get_pixel(0, center_y).a <= 0.0:
-			return false
-		var inner_alpha := image.get_pixel(10, center_y).a
-		var middle_alpha := image.get_pixel(35, center_y).a
-		var outer_alpha := image.get_pixel(45, center_y).a
-		if not (inner_alpha > middle_alpha and middle_alpha > outer_alpha):
-			return false
-		if image.get_pixel(image.get_width() - 1, center_y).a > 0.0:
-			return false
-		unique_positions[overlay.position] = true
-	return unique_positions.size() == 4
+	var overlay: Sprite2D = shop.spill_light_overlays[0]
+	if not overlay.position.is_equal_approx(Vector2(92.0, 68.0)):
+		return false
+	if not is_equal_approx(overlay.rotation, 0.0):
+		return false
+	if not is_equal_approx(float(overlay.get_meta("lamp_source_half_width_px", 0.0)), 10.5):
+		return false
+	var fade_radius := float(overlay.get_meta("lamp_fade_radius_px", 0.0))
+	if fade_radius < 78.0 or fade_radius > 81.0:
+		return false
+	var image := overlay.texture.get_image()
+	var source_px: Vector2 = overlay.get_meta("lamp_texture_source_px", Vector2.ZERO)
+	var centerline_x := int(round(source_px.x))
+	var inner_y := mini(image.get_height() - 1, int(round(source_px.y + fade_radius * 0.25)))
+	var middle_y := mini(image.get_height() - 1, int(round(source_px.y + fade_radius * 0.60)))
+	var outer_y := mini(image.get_height() - 1, int(round(source_px.y + fade_radius * 0.92)))
+	var inner_alpha := image.get_pixel(centerline_x, inner_y).a
+	var middle_alpha := image.get_pixel(centerline_x, middle_y).a
+	var outer_alpha := image.get_pixel(centerline_x, outer_y).a
+	return inner_alpha > middle_alpha and middle_alpha > outer_alpha and outer_alpha >= 0.0
 
 
 func _run_build_mode_checks() -> void:
@@ -460,49 +443,100 @@ func _run_build_checks() -> void:
 	checks.append("小超市游客实测：160 次细步移动全在遮罩内 %s ｜确实发生移动 %s ｜屋内/屋外光照遮罩 %s / %s" % [
 		str(strict_roam_ok), str(roam_moved), str(indoor_light_mask_ok), str(outdoor_light_mask_ok)])
 
-	var three_lights_ok: bool = shop.interior_light != null and shop.roof_light != null \
-		and shop.spill_light != null and shop.night_light == shop.spill_light \
-		and shop.lighting != null and shop.lighting.asset != null \
-		and shop.lighting.asset.roof_origin == Vector2i(32, 107) \
-		and shop.lighting.backend_id == "sdf" \
-		and shop.lighting.sdf_occluders.size() == 1 \
-		and shop.roof_light_overlay != null and shop.spill_light_overlay != null \
-		and shop.spill_light_overlays.size() == 4 \
-		and shop.spill_light_overlay.material is ShaderMaterial \
-		and _spill_overlay_layout_ok(shop) \
-		and shop.roof_light.enabled \
+	var light_nodes_ok: bool = shop.interior_light != null and shop.roof_light != null \
+		and shop.spill_light == null and shop.night_light == shop.roof_light
+	var light_asset_ok: bool = shop.lighting != null and shop.lighting.asset != null \
+		and shop.lighting.asset.roof_origin == Vector2i(32, 107)
+	var light_backend_ok: bool = shop.lighting.backend_id == "sdf" \
+		and shop.lighting.quality_id == "high" \
+		and shop.lighting.sdf_occluders.size() == 1
+	var light_features_ok: bool = shop.roof_light_overlay != null \
+		and shop.window_halo_overlay != null \
+		and shop.spill_light_overlay != null and shop.spill_light_overlays.size() == 1 \
+		and shop.lamp_head_overlays.size() == 1 \
+		and shop.spill_light_overlay.material is ShaderMaterial
+	var light_layout_ok := _spill_overlay_layout_ok(shop)
+	var light_position_ok: bool = shop.roof_light.enabled \
 		and shop.roof_light.global_position.is_equal_approx(
 			shop.global_position + Vector2(96.0, 21.0)) \
-		and shop.roof_light_overlay.position.is_equal_approx(Vector2(-32.0, -107.0)) \
-		and shop.interior_light.range_item_cull_mask == Building.LIGHT_LAYER_INTERIOR \
+		and shop.roof_light_overlay.position.is_equal_approx(Vector2(-32.0, -107.0))
+	var light_masks_ok: bool = shop.interior_light.range_item_cull_mask == Building.LIGHT_LAYER_INTERIOR \
 		and shop.roof_light.range_item_cull_mask == Building.LIGHT_LAYER_ROOF \
-		and shop.spill_light.range_item_cull_mask == Building.LIGHT_LAYER_SPILL \
 		and (shop.interior.light_mask & Building.LIGHT_LAYER_INTERIOR) != 0 \
-		and (shop.roof_root.light_mask & Building.LIGHT_LAYER_ROOF) != 0 \
-		and str(shop.interior_light.texture.resource_path).ends_with("light_rect.png") \
-		and str(shop.roof_light.texture.resource_path).ends_with("light_roof.png") \
-		and str(shop.spill_light.texture.resource_path).ends_with("light_spill.png")
+		and (shop.roof_root.light_mask & Building.LIGHT_LAYER_ROOF) != 0
+	var light_textures_ok: bool = str(shop.interior_light.texture.resource_path).ends_with("light_rect.png") \
+		and str(shop.roof_light.texture.resource_path).ends_with("light_roof.png")
+	var three_lights_ok: bool = light_nodes_ok and light_asset_ok and light_backend_ok \
+		and light_features_ok and light_layout_ok and light_position_ok \
+		and light_masks_ok and light_textures_ok
 	shop.update_lights(21.0)
-	var light_energy_ok: bool = shop.interior_light.energy > shop.spill_light.energy \
-		and shop.roof_light.energy > shop.spill_light.energy \
-		and shop.spill_light.energy > 0.0 and shop.roof_light_overlay.modulate.a > 0.0 \
-		and shop.spill_light_overlay.modulate.a > 0.0
+	var expected_window_alpha := 0.8 * 0.72
+	var expected_lamp_alpha := 0.8 * 0.70
+	var light_energy_ok: bool = is_equal_approx(
+			shop.roof_light_overlay.modulate.a, expected_window_alpha) \
+		and is_equal_approx(shop.interior_light.energy, expected_window_alpha) \
+		and is_equal_approx(shop.spill_light_overlay.modulate.a, expected_lamp_alpha) \
+		and shop.lamp_head_overlays[0].modulate.a > 0.0 \
+		and float(shop.window_halo_overlay.material.get_shader_parameter("energy")) > 0.0
 	world.set_view_mode(World.ViewMode.INTERIOR)
 	var interior_light_mode_ok: bool = shop.interior_light.visible \
-		and not shop.roof_light.visible and shop.spill_light.visible \
-		and not shop.roof_light_overlay.visible and _all_spill_overlays_visible(shop)
+		and not shop.roof_light.visible and shop.spill_light_overlay.visible \
+		and not shop.roof_light_overlay.visible and not shop.window_halo_overlay.visible \
+		and _all_spill_overlays_visible(shop) and shop.lamp_head_overlays[0].visible
 	world.set_view_mode(World.ViewMode.ROOF)
 	var roof_light_mode_ok: bool = not shop.interior_light.visible \
-		and shop.roof_light.visible and shop.spill_light.visible \
-		and shop.roof_light_overlay.visible and _all_spill_overlays_visible(shop)
+		and shop.roof_light.visible and shop.spill_light_overlay.visible \
+		and shop.roof_light_overlay.visible and shop.window_halo_overlay.visible \
+		and _all_spill_overlays_visible(shop) and shop.lamp_head_overlays[0].visible
 	world.set_view_mode(World.ViewMode.GROUND)
 	var ground_light_mode_ok: bool = not shop.interior_light.visible \
-		and not shop.roof_light.visible and shop.spill_light.visible \
-		and not shop.roof_light_overlay.visible and _all_spill_overlays_visible(shop)
+		and not shop.roof_light.visible and shop.spill_light_overlay.visible \
+		and not shop.roof_light_overlay.visible and not shop.window_halo_overlay.visible \
+		and _all_spill_overlays_visible(shop) and shop.lamp_head_overlays[0].visible
 	world.set_view_mode(World.ViewMode.ROOF)
-	checks.append("房屋三层光照：光源与遮罩 %s ｜能量梯度 %s ｜屋内模式 %s ｜屋顶模式 %s ｜地面模式 %s" % [
-		str(three_lights_ok), str(light_energy_ok), str(interior_light_mode_ok),
-		str(roof_light_mode_ok), str(ground_light_mode_ok)])
+	checks.append("房屋三层光照：节点 %s｜素材 %s｜后端 %s｜新特性 %s｜布局 %s｜定位 %s｜遮罩 %s｜贴图 %s｜能量 %s｜屋内 %s｜屋顶 %s｜地面 %s" % [
+		str(light_nodes_ok), str(light_asset_ok), str(light_backend_ok),
+		str(light_features_ok), str(light_layout_ok), str(light_position_ok),
+		str(light_masks_ok), str(light_textures_ok), str(light_energy_ok),
+		str(interior_light_mode_ok), str(roof_light_mode_ok), str(ground_light_mode_ok)])
+
+	ProjectSettings.set_setting("lighting/quality", "low")
+	var low_shop := Building.new()
+	world.buildings_root.add_child(low_shop)
+	low_shop.setup(DataRegistry.get_building("shop_small"), Vector2i(2, 2), world)
+	low_shop.update_lights(21.0)
+	var low_halo_absent: bool = low_shop.window_halo_overlay == null
+	var low_head_absent: bool = low_shop.lamp_head_overlays.is_empty()
+	var low_window_80: bool = is_equal_approx(
+		low_shop.roof_light_overlay.modulate.a, expected_window_alpha)
+	var low_lamp_80: bool = is_equal_approx(
+		low_shop.spill_light_overlay.modulate.a, expected_lamp_alpha)
+	var low_fan_present: bool = low_shop.spill_light_overlays.size() == 1
+	var low_quality_ok: bool = low_halo_absent and low_head_absent \
+		and low_fan_present and low_window_80 and low_lamp_80
+	low_shop.free()
+	ProjectSettings.set_setting("lighting/quality", "high")
+	checks.append("低画质光照：整体 %s｜无窗晕与灯头晕 %s｜门灯扇形保留 %s｜窗户 80%% %s｜门灯 80%% %s" % [
+		str(low_quality_ok), str(low_halo_absent and low_head_absent),
+		str(low_fan_present), str(low_window_80), str(low_lamp_80)])
+
+	var player = world.player_avatar
+	var daylight = get_node_or_null("../Daylight")
+	var player_lighting_ok: bool = player != null and player.high_quality \
+		and player.sprite.material is ShaderMaterial \
+		and player.sprite.light_mask == Building.LIGHT_LAYER_INTERIOR \
+		and player.light_occluder != null \
+		and player.light_occluder.occluder_light_mask == 8 \
+		and player.walk_normal_texture.get_size() == Vector2(192, 192) \
+		and player.idle_normal_texture.get_size() == Vector2(192, 96)
+	var sun_lighting_ok: bool = daylight != null and daylight.sun != null \
+		and daylight.shadow_sun != null \
+		and daylight.sun.range_item_cull_mask == 8 \
+		and daylight.shadow_sun.range_item_cull_mask == 1 \
+		and daylight.shadow_sun.shadow_enabled
+	checks.append("玩家高画质光照：法线材质 %s｜屋内遮罩 %s｜角色遮挡体 %s｜日照双通道 %s" % [
+		str(player_lighting_ok), str(player.sprite.light_mask == Building.LIGHT_LAYER_INTERIOR),
+		str(player.light_occluder != null), str(sun_lighting_ok)])
 
 	# 3. 员工：挑一栋有员工编制的建筑招人（度假屋/招待厅本来就不雇人）
 	var staffed: Building = null

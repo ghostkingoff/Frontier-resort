@@ -22,6 +22,8 @@ func _ready() -> void:
 		elif arg.begins_with("--lighting-backend="):
 			ProjectSettings.set_setting(
 				"lighting/building_backend", arg.split("=")[1])
+		elif arg.begins_with("--lighting-quality="):
+			ProjectSettings.set_setting("lighting/quality", arg.split("=")[1])
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
 	var packed: PackedScene = load("res://scenes/main.tscn")
 	main = packed.instantiate()
@@ -126,6 +128,9 @@ func _process(_delta: float) -> void:
 	frames += 1
 	if view_mode == "lights" or view_mode == "lights_occlusion":
 		_process_light_shots()
+		return
+	if view_mode == "player_light":
+		_process_player_light_shots()
 		return
 	if janitor_cam_target != null and is_instance_valid(janitor_cam_target):
 		# 镜头跟着保洁工人走，方便看清扫过程
@@ -400,17 +405,57 @@ func _process_light_shots() -> void:
 func _add_sdf_occlusion_probe(shop: Building) -> void:
 	var occluder := LightOccluder2D.new()
 	occluder.name = "SdfOcclusionProbe"
-	occluder.position = Vector2(-28.0, 72.0)
+	occluder.position = Vector2(78.0, 108.0)
 	occluder.sdf_collision = true
 	var polygon := OccluderPolygon2D.new()
 	polygon.polygon = PackedVector2Array([
 		Vector2.ZERO,
-		Vector2(14.0, 0.0),
-		Vector2(14.0, 36.0),
-		Vector2(0.0, 36.0),
+		Vector2(28.0, 0.0),
+		Vector2(28.0, 10.0),
+		Vector2(0.0, 10.0),
 	])
 	occluder.occluder = polygon
 	shop.add_child(occluder)
+
+
+func _process_player_light_shots() -> void:
+	var scene_world: Node2D = main.get_node("World")
+	var camera: Camera2D = main.get_node("Camera")
+	var shop: Building = null
+	for building in scene_world.buildings:
+		if building.id == "shop_small":
+			shop = building
+			break
+	if shop == null:
+		get_tree().quit(1)
+		return
+	var player: Node2D = scene_world.player_avatar
+	if player == null:
+		get_tree().quit(1)
+		return
+	if frames == 20:
+		camera.set_process(false)
+		camera.zoom = Vector2(3.0, 3.0)
+		scene_world.set_view_mode(World.ViewMode.ROOF)
+		_set_hour(7.0)
+		player.detach_to(shop.global_position + Vector2(160.0, 150.0))
+		player._facing = 2
+		player._show_idle_frame(false)
+		camera.position = player.global_position + Vector2(0.0, -18.0)
+	if frames == 45:
+		_capture("shot_30_player_sun.png")
+	if frames == 55:
+		_set_hour(23.7)
+		var lamp_source: Vector2 = shop.spill_light_overlay.global_position
+		player.detach_to(lamp_source + Vector2(24.0, 16.0))
+		player._facing = 2
+		player._show_idle_frame(false)
+		shop.update_lights(23.7)
+		camera.position = player.global_position + Vector2(0.0, -18.0)
+	if frames == 85:
+		_capture("shot_31_player_lamp.png")
+	if frames == 100:
+		get_tree().quit()
 
 
 func _set_hour(hour: float) -> void:

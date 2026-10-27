@@ -38,6 +38,7 @@ window/stretch/aspect="expand"
 [lighting]
 
 building_backend="sdf"
+quality="high"
 
 [physics]
 

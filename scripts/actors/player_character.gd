@@ -14,6 +14,9 @@ const INTERACT_RANGE := 96.0       # 在厅外离门口多近才能按 F（像�
 # 往下走时脚不会伸进不可行走的地砖——框的下边界贴到交界线就停。
 # （四边各内缩 0.5 像素：避免站在「边界线正上方」时被浮点误差判成下一格）
 const BODY_RECT := Rect2(-9.5, 1.5, 19.0, 14.0)
+const HIGH_LIGHT_MASK := 8
+const PLAYER_SURFACE_SHADER := preload("res://shaders/lighting/player_surface.gdshader")
+const SURFACE_DIR := "res://art/characters/player/star2a/"
 const MAX_STEP := 8.0              # 单次推进的像素上限（高倍速下不会一帧跨过整格）
 
 var world: Node2D = null
@@ -21,6 +24,16 @@ var sprite: Sprite2D
 var walk_texture: Texture2D
 var idle_texture: Texture2D
 var label: Label
+var surface_material: ShaderMaterial
+var walk_normal_texture: Texture2D
+var walk_specular_texture: Texture2D
+var walk_occlusion_texture: Texture2D
+var idle_normal_texture: Texture2D
+var idle_specular_texture: Texture2D
+var idle_occlusion_texture: Texture2D
+var light_occluder: LightOccluder2D
+var high_quality := false
+var _using_walk_surface := true
 var controlled := false            # 是否处于自我操纵模式
 var speed_multiplier := 1.0        # 共享单车等加成（玩家租单车免费）
 var _bike_left := 0.0              # 单车加速剩余时间（scaled 秒）
@@ -41,6 +54,47 @@ func setup(world_ref: Node2D) -> void:
 	reset_to_reception()
 
 
+func _activate_surface_set(set_name: String, normal_map: Texture2D,
+		specular_map: Texture2D, occlusion_map: Texture2D) -> void:
+	if surface_material == null:
+		return
+	surface_material.set_shader_parameter("normal_atlas", normal_map)
+	surface_material.set_shader_parameter("specular_atlas", specular_map)
+	surface_material.set_shader_parameter("occlusion_atlas", occlusion_map)
+	_using_walk_surface = set_name == "walk"
+	_update_surface_frame_uv()
+
+
+func _update_surface_frame_uv() -> void:
+	if surface_material == null or sprite == null:
+		return
+	var columns := maxi(sprite.hframes, 1)
+	var rows := maxi(sprite.vframes, 1)
+	var column := sprite.frame % columns
+	var row := sprite.frame / columns
+	surface_material.set_shader_parameter("atlas_frame_uv", Vector4(
+		float(column) / float(columns),
+		float(row) / float(rows),
+		1.0 / float(columns),
+		1.0 / float(rows)))
+
+
+func _build_light_occluder() -> void:
+	var polygon := OccluderPolygon2D.new()
+	var points := PackedVector2Array()
+	var center := Vector2(0.0, -7.0)
+	for index in range(12):
+		var angle := TAU * float(index) / 12.0
+		points.append(center + Vector2(cos(angle) * 7.0, sin(angle) * 13.0))
+	polygon.polygon = points
+	light_occluder = LightOccluder2D.new()
+	light_occluder.name = "PlayerLightOccluder"
+	light_occluder.occluder = polygon
+	light_occluder.sdf_collision = true
+	light_occluder.occluder_light_mask = HIGH_LIGHT_MASK
+	add_child(light_occluder)
+
+
 func _build_sprite() -> void:
 	sprite = Sprite2D.new()
 	sprite.name = "Sprite"
@@ -54,7 +108,25 @@ func _build_sprite() -> void:
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.scale = Vector2.ONE                    # 素材本身就是成年人体型，按 1 倍显示
 	sprite.offset = Vector2(0, -6)                # 脚底对齐到碰撞框底边（俯视角站地上）
+	high_quality = str(ProjectSettings.get_setting("lighting/quality", "high")) == "high"
+	if high_quality:
+		walk_normal_texture = load(SURFACE_DIR + "walk_n.png")
+		walk_specular_texture = load(SURFACE_DIR + "walk_s.png")
+		walk_occlusion_texture = load(SURFACE_DIR + "walk_o.png")
+		idle_normal_texture = load(SURFACE_DIR + "idle_n.png")
+		idle_specular_texture = load(SURFACE_DIR + "idle_s.png")
+		idle_occlusion_texture = load(SURFACE_DIR + "idle_o.png")
+		high_quality = walk_normal_texture != null and idle_normal_texture != null
+	if high_quality:
+		surface_material = ShaderMaterial.new()
+		surface_material.shader = PLAYER_SURFACE_SHADER
+		sprite.material = surface_material
+		sprite.light_mask = 1 | HIGH_LIGHT_MASK
+		_activate_surface_set("walk", walk_normal_texture,
+			walk_specular_texture, walk_occlusion_texture)
 	add_child(sprite)
+	if high_quality:
+		_build_light_occluder()
 
 
 func _build_label() -> void:
@@ -178,12 +250,16 @@ func _animate(dir: Vector2, delta: float) -> void:
 		sprite.texture = walk_texture
 		sprite.hframes = 4
 		sprite.vframes = 4
+		if high_quality:
+			_activate_surface_set("walk", walk_normal_texture,
+				walk_specular_texture, walk_occlusion_texture)
 	_set_frame(int(_walk_clock * 8.0) % 4, _facing)
 
 
 func _set_frame(step: int, column: int) -> void:
 	if sprite:
 		sprite.frame = step * sprite.hframes + column
+		_update_surface_frame_uv()
 
 
 func _tick_idle_animation(scaled_delta: float) -> void:
@@ -210,8 +286,12 @@ func _show_idle_frame(blink: bool) -> void:
 	sprite.texture = idle_texture
 	sprite.hframes = 4
 	sprite.vframes = 2
+	if high_quality:
+		_activate_surface_set("idle", idle_normal_texture,
+			idle_specular_texture, idle_occlusion_texture)
 	sprite.frame = (1 if blink else 0) * sprite.hframes + _facing
 	sprite.position.y = 0.0
+	_update_surface_frame_uv()
 
 
 func _apply_z() -> void:
@@ -298,7 +378,7 @@ func enter_reception() -> void:
 	inside_reception = true
 	_inside_rect = Rect2(reception.global_position, Vector2(reception.footprint) * 32.0).grow(-10.0)
 	reparent(reception.interior, true)
-	light_mask = 5
+	_apply_player_light_mask(5)
 	global_position = reception.interior_point()
 	_apply_z()
 
@@ -311,7 +391,7 @@ func leave_reception() -> void:
 		return
 	inside_reception = false
 	reparent(world, true)
-	light_mask = 1
+	_apply_player_light_mask(1)
 	global_position = world.cell_center(reception.door_cell())
 	_apply_z()
 
@@ -321,10 +401,24 @@ func detach_to(at: Vector2) -> void:
 	inside_reception = false
 	if world != null:
 		reparent(world, true)
-		light_mask = 1
+		_apply_player_light_mask(1)
 	global_position = at
 	_apply_z()
 
 
 func reset_to_reception() -> void:
 	enter_reception()
+
+
+func _apply_player_light_mask(base_mask: int) -> void:
+	var effective_mask := base_mask
+	if high_quality:
+		if base_mask == 1:
+			effective_mask = HIGH_LIGHT_MASK
+		elif base_mask == 5:
+			effective_mask = Building.LIGHT_LAYER_INTERIOR
+	light_mask = effective_mask
+	if sprite != null:
+		sprite.light_mask = effective_mask
+	if light_occluder != null:
+		light_occluder.visible = base_mask == 1
