@@ -26,6 +26,7 @@ var cleaned_total := 0               # 累计清掉的垃圾数
 func setup(building: Node2D, world_ref: Node2D) -> void:
 	home = building
 	world = world_ref
+	add_to_group("actors")
 	speed = JANITOR_SPEED
 	_build_sprite_base(
 		"res://art/placeholder/characters/OldMan/walk.png",

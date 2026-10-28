@@ -91,6 +91,7 @@ func setup(customer_type: Dictionary, world_ref: Node2D, spawn_pos: Vector2,
 		party.setup(budget_total)
 		party.add_member(self)
 	add_to_group("customers")       # 游客状态面板等按组枚举（住进建筑内部被换父节点也不受影响）
+	add_to_group("actors")
 	GameState.register_visit()      # 到访人数按人头统计
 	mood = MOOD_START
 	position = spawn_pos

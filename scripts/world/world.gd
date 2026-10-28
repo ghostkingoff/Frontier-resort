@@ -39,6 +39,7 @@ var map_layer_root: Node2D
 var outdoor_sort: Node2D
 var interior_sort: Node2D
 var ground_sort: Node2D
+var active_actor_sort: Node2D
 
 var buildings: Array = []
 var occupancy: Dictionary = {}
@@ -141,6 +142,7 @@ func _create_layers() -> void:
 	litter_root = outdoor_sort
 	staff_root = outdoor_sort
 	walls_root = outdoor_sort
+	active_actor_sort = outdoor_sort
 
 	buildings_root = Node2D.new()
 	buildings_root.name = "Buildings"
@@ -1040,6 +1042,20 @@ func set_view_mode(mode: int) -> void:
 	outdoor_sort.visible = true
 	interior_sort.visible = view_mode == ViewMode.INTERIOR
 	ground_sort.visible = view_mode == ViewMode.GROUND
+	var next_actor_sort := outdoor_sort
+	if view_mode == ViewMode.INTERIOR:
+		next_actor_sort = interior_sort
+	elif view_mode == ViewMode.GROUND:
+		next_actor_sort = ground_sort
+	active_actor_sort = next_actor_sort
+	for actor in get_tree().get_nodes_in_group("actors"):
+		if actor == null or not is_instance_valid(actor):
+			continue
+		var actor_parent := actor.get_parent()
+		if actor_parent in [outdoor_sort, interior_sort, ground_sort]:
+			actor.reparent(next_actor_sort, true)
+	customers_root = next_actor_sort
+	staff_root = next_actor_sort
 	for b in buildings:
 		b.apply_view_mode(view_mode)
 

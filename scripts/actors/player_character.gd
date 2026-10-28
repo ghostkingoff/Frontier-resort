@@ -49,6 +49,7 @@ var _facing := 0                   # 朝向：0 下 1 上 2 左 3 右（和走�
 func setup(world_ref: Node2D) -> void:
 	world = world_ref
 	add_to_group("player_avatar")
+	add_to_group("actors")
 	_build_sprite()
 	_build_label()
 	reset_to_reception()
@@ -387,7 +388,7 @@ func leave_reception() -> void:
 	if reception == null:
 		return
 	inside_reception = false
-	reparent(world.outdoor_sort, true)
+	reparent(world.customers_root, true)
 	_apply_player_light_mask(1)
 	global_position = world.cell_center(reception.door_cell())
 	_apply_z()
@@ -397,7 +398,7 @@ func detach_to(at: Vector2) -> void:
 	# 招待厅被拆/清场时调用：从楼里挪出来，别跟着一起被释放
 	inside_reception = false
 	if world != null:
-		reparent(world.outdoor_sort, true)
+		reparent(world.customers_root, true)
 		_apply_player_light_mask(1)
 	global_position = at
 	_apply_z()

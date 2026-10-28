@@ -132,6 +132,9 @@ func _process(_delta: float) -> void:
 	if view_mode == "player_light":
 		_process_player_light_shots()
 		return
+	if view_mode == "layer_player":
+		_process_layer_player_shots()
+		return
 	if janitor_cam_target != null and is_instance_valid(janitor_cam_target):
 		# 镜头跟着保洁工人走，方便看清扫过程
 		var camera: Camera2D = main.get_node("Camera")
@@ -455,6 +458,42 @@ func _process_player_light_shots() -> void:
 	if frames == 85:
 		_capture("shot_31_player_lamp.png")
 	if frames == 100:
+		get_tree().quit()
+
+
+func _process_layer_player_shots() -> void:
+	var scene_world: Node2D = main.get_node("World")
+	var camera: Camera2D = main.get_node("Camera")
+	var shop: Building = null
+	for building in scene_world.buildings:
+		if building.id == "shop_small":
+			shop = building
+			break
+	if shop == null or scene_world.player_avatar == null:
+		get_tree().quit(1)
+		return
+	var player: Node2D = scene_world.player_avatar
+	if frames == 20:
+		camera.set_process(false)
+		camera.zoom = Vector2(2.1, 2.1)
+		camera.position = shop.global_position + Vector2(96.0, 92.0)
+		player.detach_to(shop.global_position + Vector2(96.0, 160.0))
+		player._facing = 1
+		player._show_idle_frame(false)
+		_set_hour(23.7)
+		shop.update_lights(23.7)
+		scene_world.set_view_mode(World.ViewMode.INTERIOR)
+	if frames == 40:
+		_capture("shot_32_layer_interior_front.png")
+	if frames == 50:
+		scene_world.set_view_mode(World.ViewMode.GROUND)
+	if frames == 70:
+		_capture("shot_33_layer_ground_front.png")
+	if frames == 80:
+		scene_world.set_view_mode(World.ViewMode.ROOF)
+	if frames == 100:
+		_capture("shot_34_layer_roof_front.png")
+	if frames == 115:
 		get_tree().quit()
 
 

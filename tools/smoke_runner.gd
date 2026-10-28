@@ -371,18 +371,27 @@ func _run_build_checks() -> void:
 		checks.append("建造：失败")
 
 	# 2. 三层显示循环：屋顶 → 屋内 → 地面
+	var actor_probe := Node2D.new()
+	actor_probe.add_to_group("actors")
+	world.customers_root.add_child(actor_probe)
 	world.set_view_mode(World.ViewMode.INTERIOR)
 	var interior_ok: bool = (not shop.roof_visible()) and shop.interior_visible()
 	var interior_ground_hidden: bool = shop.ground_face != null and not shop.ground_face.visible
-	var interior_group_ok: bool = world.interior_sort.visible and not world.ground_sort.visible
+	var interior_group_ok: bool = world.interior_sort.visible and not world.ground_sort.visible \
+		and world.active_actor_sort == world.interior_sort \
+		and actor_probe.get_parent() == world.interior_sort
 	world.set_view_mode(World.ViewMode.GROUND)
 	var ground_ok: bool = (not shop.roof_visible()) and (not shop.interior_visible()) \
 		and shop.ground_face != null and shop.ground_face.visible
-	var ground_group_ok: bool = not world.interior_sort.visible and world.ground_sort.visible
+	var ground_group_ok: bool = not world.interior_sort.visible and world.ground_sort.visible \
+		and world.active_actor_sort == world.ground_sort \
+		and actor_probe.get_parent() == world.ground_sort
 	world.set_view_mode(World.ViewMode.ROOF)
 	var roof_ok: bool = shop.roof_visible() and (not shop.interior_visible())
 	var roof_ground_hidden: bool = shop.ground_face != null and not shop.ground_face.visible
-	var roof_group_ok: bool = not world.interior_sort.visible and not world.ground_sort.visible
+	var roof_group_ok: bool = not world.interior_sort.visible and not world.ground_sort.visible \
+		and world.active_actor_sort == world.outdoor_sort \
+		and actor_probe.get_parent() == world.outdoor_sort
 	var global_layers_ok: bool = shop.roof_root.get_parent() == world.outdoor_sort \
 		and shop.roof_light_root.get_parent() == world.outdoor_sort \
 		and shop.interior.get_parent() == world.interior_sort \
@@ -395,6 +404,7 @@ func _run_build_checks() -> void:
 	checks.append("全局显示层：结构 %s｜屋顶模式 %s｜屋内组合 %s｜地面组合 %s" % [
 		str(global_layers_ok), str(roof_group_ok), str(interior_group_ok),
 		str(ground_group_ok)])
+	actor_probe.free()
 	var layered_ok: bool = shop.ground_face != null and shop.ground_face.texture != null \
 		and shop.interior_texture != null and shop.interior_texture.texture != null \
 		and shop.exterior != null and shop.exterior.texture != null \
