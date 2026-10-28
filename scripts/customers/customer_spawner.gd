@@ -51,7 +51,7 @@ func _process(delta: float) -> void:
 		_run_hourly_check()
 	if _quota <= 0:
 		return
-	if world.customers_root.get_child_count() >= max_customers:
+	if world.outdoor_customer_count() >= max_customers:
 		return
 	_arrival_timer -= scaled
 	if _arrival_timer > 0.0:
@@ -181,7 +181,7 @@ func _try_spawn() -> int:
 	# 来一组客人（1~3 人），返回实际来的人数；没来成返回 0
 	if world.reception() == null:
 		return 0      # 没有招待厅就没法入住，先不来客人
-	if world.customers_root.get_child_count() >= max_customers:
+	if world.outdoor_customer_count() >= max_customers:
 		return 0
 	var entry := _pick_type()
 	if entry.is_empty():

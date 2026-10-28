@@ -34,6 +34,7 @@ var asset: BuildingLightingAsset
 var cell := Vector2i.ZERO
 var footprint := Vector2i(4, 4)
 var roof_root: Node2D
+var roof_light_root: Node2D
 var interior: Node2D
 
 var night_light: PointLight2D
@@ -64,6 +65,7 @@ func setup(building_host, world_ref: Node2D) -> void:
 	cell = host.cell
 	footprint = host.footprint
 	roof_root = host.roof_root
+	roof_light_root = host.roof_light_root
 	interior = host.interior
 	backend_id = str(ProjectSettings.get_setting(
 		"lighting/building_backend", "legacy"))
@@ -219,11 +221,11 @@ func _build_layered() -> void:
 			roof_path, warm, LIGHT_LAYER_ROOF, roof_origin)
 		roof_light_overlay = _make_light_overlay(
 			"RoofLightGlow", roof_path, roof_origin)
-		roof_root.add_child(roof_light_overlay)
+		roof_light_root.add_child(roof_light_overlay)
 		if quality_id == "high":
 			window_halo_overlay = _make_window_halo(
 				roof_path, roof_origin, asset.window_halo_radius_px)
-			roof_root.add_child(window_halo_overlay)
+			roof_light_root.add_child(window_halo_overlay)
 	else:
 		roof_light = _make_circle_light(radius * 0.7, warm)
 		if roof_light:
@@ -247,7 +249,7 @@ func _build_layered() -> void:
 			var guide: Dictionary = guides[index]
 			var overlay := _make_directional_overlay(
 				"SpillLight%d" % index, guide, spill_origin)
-			host.add_child(overlay)
+			roof_light_root.add_child(overlay)
 			spill_light_overlays.append(overlay)
 			if spill_light_overlay == null:
 				spill_light_overlay = overlay
@@ -323,14 +325,14 @@ func _build_lamp_markers() -> void:
 	for index in range(asset.lamps.size()):
 		var lamp: Dictionary = asset.lamps[index]
 		var overlay := _make_lamp_fan(index, lamp, asset.spill_origin)
-		host.add_child(overlay)
+		roof_light_root.add_child(overlay)
 		spill_light_overlays.append(overlay)
 		if spill_light_overlay == null:
 			spill_light_overlay = overlay
 		if quality_id == "high":
 			_add_key_lamp_lights(index, overlay)
 			var head_glow := _make_lamp_head_glow(index, lamp, asset.spill_origin)
-			host.add_child(head_glow)
+			roof_light_root.add_child(head_glow)
 			lamp_head_overlays.append(head_glow)
 
 

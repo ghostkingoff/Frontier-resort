@@ -35,6 +35,10 @@ var decor: Node2D
 var buildings_root: Node2D
 var customers_root: Node2D
 var walls_root: Node2D
+var map_layer_root: Node2D
+var outdoor_sort: Node2D
+var interior_sort: Node2D
+var ground_sort: Node2D
 
 var buildings: Array = []
 var occupancy: Dictionary = {}
@@ -74,6 +78,15 @@ func _spawn_player_avatar() -> void:
 	player_avatar = avatar
 
 
+func outdoor_customer_count() -> int:
+	var count := 0
+	for customer in get_tree().get_nodes_in_group("customers"):
+		if customer != null and is_instance_valid(customer) \
+				and not customer.is_queued_for_deletion():
+			count += 1
+	return count
+
+
 func _process(_delta: float) -> void:
 	# 店铺灯光：20:00~20:45 之间各栋陆续亮起；**熄灯时间跟着各栋的 close_hour()**
 	# （常规店 24:00，酒吧 04:00）。集中在这里统一驱动，建筑自己不用每帧算时间。
@@ -90,39 +103,48 @@ func _create_layers() -> void:
 	#   屋内层 = 每栋建筑内部的 InteriorLayer（地板 + 墙框 + 进店客人）
 	#   屋顶层 = 每栋建筑内部的 RoofLayer（外墙 / 侧面 / 正面 / 屋顶，盖在屋内层上）
 	# 建筑本身仍按 y 排序（z_index = position.y），前后遮挡与人物穿插都保持正确。
+	map_layer_root = Node2D.new()
+	map_layer_root.name = "MapLayer"
+	map_layer_root.z_index = -1000
+	add_child(map_layer_root)
+
 	ground = TileMapLayer.new()
 	ground.name = "Ground"
-	ground.z_index = -100
+	ground.z_index = 0
 	if ResourceLoader.exists(TILESET_PATH):
 		ground.tile_set = load(TILESET_PATH)
-	add_child(ground)
+	map_layer_root.add_child(ground)
 
-	decor = Node2D.new()
-	decor.name = "Decor"
-	decor.z_index = -50
-	add_child(decor)
+	outdoor_sort = Node2D.new()
+	outdoor_sort.name = "OutdoorYSort"
+	outdoor_sort.y_sort_enabled = true
+	outdoor_sort.z_index = 0
+	add_child(outdoor_sort)
+
+	interior_sort = Node2D.new()
+	interior_sort.name = "InteriorLayerGroup"
+	interior_sort.y_sort_enabled = true
+	interior_sort.z_index = 1000
+	interior_sort.visible = false
+	add_child(interior_sort)
+
+	ground_sort = Node2D.new()
+	ground_sort.name = "GroundLayerGroup"
+	ground_sort.y_sort_enabled = true
+	ground_sort.z_index = 2000
+	ground_sort.visible = false
+	add_child(ground_sort)
+
+	# 室外地图对象共享同一套 Y 排序；分类变量保留为兼容别名。
+	decor = outdoor_sort
+	customers_root = outdoor_sort
+	litter_root = outdoor_sort
+	staff_root = outdoor_sort
+	walls_root = outdoor_sort
 
 	buildings_root = Node2D.new()
 	buildings_root.name = "Buildings"
 	add_child(buildings_root)
-
-	customers_root = Node2D.new()
-	customers_root.name = "Customers"
-	customers_root.y_sort_enabled = false
-	add_child(customers_root)
-
-	litter_root = Node2D.new()
-	litter_root.name = "Litter"
-	add_child(litter_root)
-
-	staff_root = Node2D.new()
-	staff_root.name = "Staff"
-	staff_root.y_sort_enabled = true      # 保洁工人要和建筑按 y 正确遮挡
-	add_child(staff_root)
-
-	walls_root = Node2D.new()
-	walls_root.name = "Walls"
-	add_child(walls_root)
 
 
 func _build_walls() -> void:
@@ -153,7 +175,7 @@ func _spawn_wall(cell: Vector2i) -> void:
 	s.centered = false
 	s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	s.position = cell_to_world(cell)
-	s.z_index = int(s.position.y)
+	s.z_index = 0
 	walls_root.add_child(s)
 
 
@@ -451,7 +473,7 @@ func spawn_decoration(def: Dictionary, cell: Vector2i) -> Sprite2D:
 	s.scale = Vector2(DataRegistry.SPRITE_SCALE, DataRegistry.SPRITE_SCALE)
 	var pos := Vector2(cell.x * CELL, cell.y * CELL)
 	s.position = pos + Vector2(0, CELL) - Vector2(0, rect_arr[3] * DataRegistry.SPRITE_SCALE)
-	s.z_index = int(s.position.y)
+	s.z_index = 0
 	s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	decor.add_child(s)
 	return s
@@ -798,7 +820,7 @@ func rest_night() -> Dictionary:
 	# 没房间的（当日往返）在夜间收益结算完之后直接离开度假村。
 	var slept := 0
 	var left := 0
-	for c in customers_root.get_children():
+	for c in get_tree().get_nodes_in_group("customers"):
 		if c is Customer:
 			if c.goto_room_for_night():
 				slept += 1
@@ -912,7 +934,7 @@ func spawn_litter(cell: Vector2i) -> void:
 	s.scale = Vector2(1.4, 1.4)
 	s.modulate = Color(0.75, 0.72, 0.62)
 	s.position = cell_center(cell) + Vector2(randf_range(-8, 8), randf_range(-6, 6))
-	s.z_index = int(s.position.y) - 1
+	s.z_index = 0
 	litter_root.add_child(s)
 	litter_cells[cell] = s
 
@@ -1014,6 +1036,10 @@ func set_view_mode(mode: int) -> void:
 	view_mode = clampi(mode, ViewMode.ROOF, ViewMode.GROUND)
 	show_roofs = view_mode == ViewMode.ROOF
 	roof_mode_changed.emit(show_roofs)          # 兼容旧信号
+	map_layer_root.visible = true
+	outdoor_sort.visible = true
+	interior_sort.visible = view_mode != ViewMode.ROOF
+	ground_sort.visible = view_mode == ViewMode.GROUND
 	for b in buildings:
 		b.apply_view_mode(view_mode)
 

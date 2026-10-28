@@ -295,10 +295,7 @@ func _show_idle_frame(blink: bool) -> void:
 
 
 func _apply_z() -> void:
-	if inside_reception:
-		z_index = 0                      # 跟着室内层排：开屋顶时会被屋顶盖住
-	else:
-		z_index = int(global_position.y)
+	z_index = 0
 
 
 # ---------- 与招待厅交互 ----------
@@ -390,7 +387,7 @@ func leave_reception() -> void:
 	if reception == null:
 		return
 	inside_reception = false
-	reparent(world, true)
+	reparent(world.outdoor_sort, true)
 	_apply_player_light_mask(1)
 	global_position = world.cell_center(reception.door_cell())
 	_apply_z()
@@ -400,7 +397,7 @@ func detach_to(at: Vector2) -> void:
 	# 招待厅被拆/清场时调用：从楼里挪出来，别跟着一起被释放
 	inside_reception = false
 	if world != null:
-		reparent(world, true)
+		reparent(world.outdoor_sort, true)
 		_apply_player_light_mask(1)
 	global_position = at
 	_apply_z()

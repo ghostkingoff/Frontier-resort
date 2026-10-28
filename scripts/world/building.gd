@@ -35,6 +35,7 @@ var ground_face: Sprite2D           # 分层建筑素材的地面层（真实占
 var interior_texture: Sprite2D      # 分层建筑素材的屋内层
 var interior: Node2D
 var roof_root: Node2D            # 屋顶层：外墙 / 侧面 / 正面 / 屋顶，整体盖在屋内层上面
+var roof_light_root: Node2D
 var interior_floor: Sprite2D
 var label: Label
 var layer_origin := Vector2i.ZERO
@@ -203,18 +204,20 @@ func _exit_tree() -> void:
 	if lighting != null:
 		lighting.release()
 		lighting = null
+	for layer_node in [ground_face, interior, roof_root]:
+		if layer_node != null and is_instance_valid(layer_node):
+			layer_node.queue_free()
+	ground_face = null
+	interior = null
+	roof_light_root = null
+	roof_root = null
 
 
 func _relayer() -> void:
-	# 三层固定顺序：屋内层(0) → 屋顶层(1) → 标签(2)。
-	# 灯光挂在 World 下，不参与这里的分层。
-	for n in [interior, roof_root]:
-		if n != null and n.get_parent() == self:
-			move_child(n, -1)          # -1 = 移到末尾（最后绘制）
-	for n2 in get_children():
-		if n2 is Label:
-			n2.z_index = 2
-			move_child(n2, -1)         # 名字标签永远在最上面
+	if roof_light_root != null:
+		roof_light_root.z_index = 1
+	if label != null:
+		label.z_index = 2
 
 
 func update_lights(hour: float) -> void:
@@ -373,47 +376,53 @@ func _build_visuals() -> void:
 	interior = Node2D.new()
 	interior.name = "InteriorLayer"
 	interior.z_index = 0
+	interior.y_sort_enabled = true
 	add_child(interior)
 
-	if uses_layers:
-		interior_texture = _make_layer_sprite(
-			"InteriorTexture", str(layered_cfg.get("interior", "")))
-		interior.add_child(interior_texture)
-	else:
-		interior_floor = Sprite2D.new()
-		interior_floor.texture = load("res://art/placeholder/tiles/interior_floor.png")
-		interior_floor.region_enabled = true
-		interior_floor.region_rect = Rect2(0, 0, footprint.x * 16, footprint.y * 16)
-		interior_floor.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-		interior_floor.centered = false
-		interior_floor.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		interior_floor.scale = Vector2(DataRegistry.SPRITE_SCALE, DataRegistry.SPRITE_SCALE)
-		interior.add_child(interior_floor)
+	if _has_interior_visual():
+		if uses_layers:
+			interior_texture = _make_layer_sprite(
+				"InteriorTexture", str(layered_cfg.get("interior", "")))
+			interior.add_child(interior_texture)
+		else:
+			interior_floor = Sprite2D.new()
+			interior_floor.texture = load("res://art/placeholder/tiles/interior_floor.png")
+			interior_floor.region_enabled = true
+			interior_floor.region_rect = Rect2(0, 0, footprint.x * 16, footprint.y * 16)
+			interior_floor.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+			interior_floor.centered = false
+			interior_floor.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			interior_floor.scale = Vector2(DataRegistry.SPRITE_SCALE, DataRegistry.SPRITE_SCALE)
+			interior.add_child(interior_floor)
 
-		# 简易墙体边框，让“透视”状态看起来像室内
-		var border := 6.0
-		var w := footprint.x * CELL
-		var h := footprint.y * CELL
-		for spec in [
-			Rect2(0, 0, w, border),
-			Rect2(0, h - border, w, border),
-			Rect2(0, 0, border, h),
-			Rect2(w - border, 0, border, h),
-		]:
-			var cr := ColorRect.new()
-			cr.color = Color(0.16, 0.12, 0.10, 0.85)
-			cr.position = spec.position
-			cr.size = spec.size
-			cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			interior.add_child(cr)
+			# 简易墙体边框，让“透视”状态看起来像室内
+			var border := 6.0
+			var w := footprint.x * CELL
+			var h := footprint.y * CELL
+			for spec in [
+				Rect2(0, 0, w, border),
+				Rect2(0, h - border, w, border),
+				Rect2(0, 0, border, h),
+				Rect2(w - border, 0, border, h),
+			]:
+				var cr := ColorRect.new()
+				cr.color = Color(0.16, 0.12, 0.10, 0.85)
+				cr.position = spec.position
+				cr.size = spec.size
+				cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				interior.add_child(cr)
 
 	_build_label()
 
 	# 把外观相关的节点收进「屋顶层」，其余逻辑（旋转、灯光、显隐）都照旧
 	roof_root = Node2D.new()
 	roof_root.name = "RoofLayer"
-	roof_root.z_index = 1
+	roof_root.z_index = 0
 	add_child(roof_root)
+	roof_light_root = Node2D.new()
+	roof_light_root.name = "RoofLightLayer"
+	roof_light_root.z_index = 1
+	roof_root.add_child(roof_light_root)
 	if uses_layers:
 		var roof_texture := _make_layer_sprite(
 			"RoofTexture", str(layered_cfg.get("roof", "")))
@@ -423,7 +432,16 @@ func _build_visuals() -> void:
 		for node in [exterior, side_face, front_face, roof_face]:
 			if node != null and node.get_parent() == self:
 				node.reparent(roof_root, false)
+	_register_global_layers()
 	_relayer()
+
+
+func _has_interior_visual() -> bool:
+	if data.has("has_interior"):
+		return bool(data.get("has_interior"))
+	return not data.get("sprite_layers", {}).is_empty() \
+		or int(data.get("capacity_base", 0)) > 0 \
+		or service() != ""
 
 
 func _build_layered_visuals(cfg: Dictionary) -> void:
@@ -444,6 +462,23 @@ func _make_layer_sprite(node_name: String, texture_path: String) -> Sprite2D:
 	layer_sprite.position = -Vector2(layer_origin)
 	layer_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	return layer_sprite
+
+
+func _register_global_layers() -> void:
+	if world == null:
+		return
+	if interior != null:
+		interior.reparent(world.interior_sort, true)
+		interior.z_index = 0
+	if roof_root != null:
+		roof_root.reparent(world.outdoor_sort, true)
+		roof_root.z_index = 0
+	if ground_face != null:
+		ground_face.reparent(world.ground_sort, true)
+		ground_face.z_index = 0
+	if label != null and roof_root != null and label.get_parent() != roof_root:
+		label.reparent(roof_root, true)
+		label.z_index = 2
 
 
 func _load_interior_walk_cells(cfg: Dictionary) -> void:
@@ -1385,8 +1420,8 @@ func apply_view_mode(mode: int) -> void:
 	# 三种显示层：屋顶 / 屋内 / 地面。
 	# 屋顶层和地面层都隐藏整组 InteriorLayer —— 里面的游客自然也不显示；
 	# 只有「屋内」模式会打开 InteriorLayer。
-	var show_roof_layer := mode == World.ViewMode.ROOF
-	var show_interior_layer := mode == World.ViewMode.INTERIOR
+	var show_roof_layer := true
+	var show_interior_layer := mode != World.ViewMode.ROOF
 	var show_ground_layer := mode == World.ViewMode.GROUND
 	if ground_face:
 		ground_face.visible = show_ground_layer

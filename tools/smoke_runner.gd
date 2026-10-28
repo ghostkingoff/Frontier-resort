@@ -372,17 +372,28 @@ func _run_build_checks() -> void:
 
 	# 2. 三层显示循环：屋顶 → 屋内 → 地面
 	world.set_view_mode(World.ViewMode.INTERIOR)
-	var interior_ok: bool = (not shop.roof_visible()) and shop.interior_visible()
+	var interior_ok: bool = shop.roof_visible() and shop.interior_visible()
 	var interior_ground_hidden: bool = shop.ground_face != null and not shop.ground_face.visible
+	var interior_group_ok: bool = world.interior_sort.visible and not world.ground_sort.visible
 	world.set_view_mode(World.ViewMode.GROUND)
-	var ground_ok: bool = (not shop.roof_visible()) and (not shop.interior_visible()) \
+	var ground_ok: bool = shop.roof_visible() and shop.interior_visible() \
 		and shop.ground_face != null and shop.ground_face.visible
+	var ground_group_ok: bool = world.interior_sort.visible and world.ground_sort.visible
 	world.set_view_mode(World.ViewMode.ROOF)
 	var roof_ok: bool = shop.roof_visible() and (not shop.interior_visible())
 	var roof_ground_hidden: bool = shop.ground_face != null and not shop.ground_face.visible
+	var roof_group_ok: bool = not world.interior_sort.visible and not world.ground_sort.visible
+	var global_layers_ok: bool = shop.roof_root.get_parent() == world.outdoor_sort \
+		and shop.interior.get_parent() == world.interior_sort \
+		and shop.ground_face.get_parent() == world.ground_sort \
+		and world.interior_sort.z_index > world.outdoor_sort.z_index \
+		and world.ground_sort.z_index > world.interior_sort.z_index
 	checks.append("三层显示：屋顶 %s（占地层隐藏 %s）｜屋内 %s（占地层隐藏 %s）｜地面透视 %s（占地层显示）" % [
 		str(roof_ok), str(roof_ground_hidden), str(interior_ok),
 		str(interior_ground_hidden), str(ground_ok)])
+	checks.append("全局显示层：结构 %s｜屋顶模式 %s｜屋内累计 %s｜地面累计 %s" % [
+		str(global_layers_ok), str(roof_group_ok), str(interior_group_ok),
+		str(ground_group_ok)])
 	var layered_ok: bool = shop.ground_face != null and shop.ground_face.texture != null \
 		and shop.interior_texture != null and shop.interior_texture.texture != null \
 		and shop.exterior != null and shop.exterior.texture != null \
@@ -480,8 +491,8 @@ func _run_build_checks() -> void:
 		and float(shop.window_halo_overlay.material.get_shader_parameter("energy")) > 0.0
 	world.set_view_mode(World.ViewMode.INTERIOR)
 	var interior_light_mode_ok: bool = shop.interior_light.visible \
-		and not shop.roof_light.visible and shop.spill_light_overlay.visible \
-		and not shop.roof_light_overlay.visible and not shop.window_halo_overlay.visible \
+		and shop.roof_light.visible and shop.spill_light_overlay.visible \
+		and shop.roof_light_overlay.visible and shop.window_halo_overlay.visible \
 		and _all_spill_overlays_visible(shop) and shop.lamp_head_overlays[0].visible
 	world.set_view_mode(World.ViewMode.ROOF)
 	var roof_light_mode_ok: bool = not shop.interior_light.visible \
@@ -489,9 +500,9 @@ func _run_build_checks() -> void:
 		and shop.roof_light_overlay.visible and shop.window_halo_overlay.visible \
 		and _all_spill_overlays_visible(shop) and shop.lamp_head_overlays[0].visible
 	world.set_view_mode(World.ViewMode.GROUND)
-	var ground_light_mode_ok: bool = not shop.interior_light.visible \
-		and not shop.roof_light.visible and shop.spill_light_overlay.visible \
-		and not shop.roof_light_overlay.visible and not shop.window_halo_overlay.visible \
+	var ground_light_mode_ok: bool = shop.interior_light.visible \
+		and shop.roof_light.visible and shop.spill_light_overlay.visible \
+		and shop.roof_light_overlay.visible and shop.window_halo_overlay.visible \
 		and _all_spill_overlays_visible(shop) and shop.lamp_head_overlays[0].visible
 	world.set_view_mode(World.ViewMode.ROOF)
 	checks.append("房屋三层光照：节点 %s｜素材 %s｜后端 %s｜新特性 %s｜布局 %s｜定位 %s｜遮罩 %s｜贴图 %s｜能量 %s｜屋内 %s｜屋顶 %s｜地面 %s" % [
@@ -599,7 +610,7 @@ func _run_build_checks() -> void:
 func _process(delta: float) -> void:
 	elapsed += delta
 	if world and world.customers_root:
-		peak_customers = maxi(peak_customers, world.customers_root.get_child_count())
+		peak_customers = maxi(peak_customers, world.outdoor_customer_count())
 	if phase == 0 and not GameState.last_report().is_empty():
 		print("[smoke] 白天自然结束于第 %.1f 秒" % elapsed)
 		settle_time = elapsed

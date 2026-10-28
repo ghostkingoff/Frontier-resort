@@ -94,7 +94,7 @@ func setup(customer_type: Dictionary, world_ref: Node2D, spawn_pos: Vector2,
 	GameState.register_visit()      # 到访人数按人头统计
 	mood = MOOD_START
 	position = spawn_pos
-	z_index = int(position.y)
+	z_index = 0
 	_build_sprite()
 	# 从主路一端进场，先去招待厅
 	var reception: Building = world.reception()
@@ -247,7 +247,7 @@ func _process_behavior(delta: float) -> void:
 				if global_position.distance_to(exit_point) < 8.0:
 					state = State.DONE
 					queue_free()
-	z_index = int(global_position.y)
+	z_index = 0
 
 
 func _check_stuck(delta: float) -> void:

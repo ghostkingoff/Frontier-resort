@@ -228,9 +228,13 @@ func run() -> void:
 		var kept: bool = avatar.global_position.distance_to(pos_out) < 0.5 and not avatar.inside_reception
 		hud.set_player_control(true)
 		avatar.detach_to(reception.global_position - Vector2(0, 32))
-		var behind_ok: bool = avatar.z_index < reception.z_index
+		var behind_ok: bool = avatar.get_parent() == reception.roof_root.get_parent() \
+			and avatar.global_position.y < reception.roof_root.global_position.y \
+			and avatar.z_index == reception.roof_root.z_index
 		avatar.detach_to(reception.global_position + Vector2(0, reception.footprint.y * 32 + 32))
-		var front_ok: bool = avatar.z_index > reception.z_index
+		var front_ok: bool = avatar.get_parent() == reception.roof_root.get_parent() \
+			and avatar.global_position.y > reception.roof_root.global_position.y \
+			and avatar.z_index == reception.roof_root.z_index
 		hud.set_player_control(false)
 		hud.reset_player_if_idle()
 		var reset_ok: bool = avatar.inside_reception
