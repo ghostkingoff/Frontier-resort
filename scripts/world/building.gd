@@ -204,7 +204,7 @@ func _exit_tree() -> void:
 	if lighting != null:
 		lighting.release()
 		lighting = null
-	for layer_node in [ground_face, interior, roof_root]:
+	for layer_node in [ground_face, interior, roof_root, roof_light_root]:
 		if layer_node != null and is_instance_valid(layer_node):
 			layer_node.queue_free()
 	ground_face = null
@@ -473,11 +473,14 @@ func _register_global_layers() -> void:
 	if roof_root != null:
 		roof_root.reparent(world.outdoor_sort, true)
 		roof_root.z_index = 0
+	if roof_light_root != null:
+		roof_light_root.reparent(world.outdoor_sort, true)
+		roof_light_root.z_index = 1
 	if ground_face != null:
 		ground_face.reparent(world.ground_sort, true)
 		ground_face.z_index = 0
-	if label != null and roof_root != null and label.get_parent() != roof_root:
-		label.reparent(roof_root, true)
+	if label != null and label.get_parent() != world.outdoor_sort:
+		label.reparent(world.outdoor_sort, true)
 		label.z_index = 2
 
 
@@ -1420,8 +1423,8 @@ func apply_view_mode(mode: int) -> void:
 	# 三种显示层：屋顶 / 屋内 / 地面。
 	# 屋顶层和地面层都隐藏整组 InteriorLayer —— 里面的游客自然也不显示；
 	# 只有「屋内」模式会打开 InteriorLayer。
-	var show_roof_layer := true
-	var show_interior_layer := mode != World.ViewMode.ROOF
+	var show_roof_layer := mode == World.ViewMode.ROOF
+	var show_interior_layer := mode == World.ViewMode.INTERIOR
 	var show_ground_layer := mode == World.ViewMode.GROUND
 	if ground_face:
 		ground_face.visible = show_ground_layer
@@ -1430,7 +1433,7 @@ func apply_view_mode(mode: int) -> void:
 	if interior:
 		interior.visible = show_interior_layer
 	if lighting != null:
-		lighting.apply_view_state(show_interior_layer, show_roof_layer)
+		lighting.apply_view_state(show_interior_layer, true)
 
 
 func apply_roof_mode(show_roof: bool) -> void:

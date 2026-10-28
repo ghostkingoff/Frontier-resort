@@ -372,18 +372,19 @@ func _run_build_checks() -> void:
 
 	# 2. 三层显示循环：屋顶 → 屋内 → 地面
 	world.set_view_mode(World.ViewMode.INTERIOR)
-	var interior_ok: bool = shop.roof_visible() and shop.interior_visible()
+	var interior_ok: bool = (not shop.roof_visible()) and shop.interior_visible()
 	var interior_ground_hidden: bool = shop.ground_face != null and not shop.ground_face.visible
 	var interior_group_ok: bool = world.interior_sort.visible and not world.ground_sort.visible
 	world.set_view_mode(World.ViewMode.GROUND)
-	var ground_ok: bool = shop.roof_visible() and shop.interior_visible() \
+	var ground_ok: bool = (not shop.roof_visible()) and (not shop.interior_visible()) \
 		and shop.ground_face != null and shop.ground_face.visible
-	var ground_group_ok: bool = world.interior_sort.visible and world.ground_sort.visible
+	var ground_group_ok: bool = not world.interior_sort.visible and world.ground_sort.visible
 	world.set_view_mode(World.ViewMode.ROOF)
 	var roof_ok: bool = shop.roof_visible() and (not shop.interior_visible())
 	var roof_ground_hidden: bool = shop.ground_face != null and not shop.ground_face.visible
 	var roof_group_ok: bool = not world.interior_sort.visible and not world.ground_sort.visible
 	var global_layers_ok: bool = shop.roof_root.get_parent() == world.outdoor_sort \
+		and shop.roof_light_root.get_parent() == world.outdoor_sort \
 		and shop.interior.get_parent() == world.interior_sort \
 		and shop.ground_face.get_parent() == world.ground_sort \
 		and world.interior_sort.z_index > world.outdoor_sort.z_index \
@@ -391,7 +392,7 @@ func _run_build_checks() -> void:
 	checks.append("三层显示：屋顶 %s（占地层隐藏 %s）｜屋内 %s（占地层隐藏 %s）｜地面透视 %s（占地层显示）" % [
 		str(roof_ok), str(roof_ground_hidden), str(interior_ok),
 		str(interior_ground_hidden), str(ground_ok)])
-	checks.append("全局显示层：结构 %s｜屋顶模式 %s｜屋内累计 %s｜地面累计 %s" % [
+	checks.append("全局显示层：结构 %s｜屋顶模式 %s｜屋内组合 %s｜地面组合 %s" % [
 		str(global_layers_ok), str(roof_group_ok), str(interior_group_ok),
 		str(ground_group_ok)])
 	var layered_ok: bool = shop.ground_face != null and shop.ground_face.texture != null \
@@ -500,7 +501,7 @@ func _run_build_checks() -> void:
 		and shop.roof_light_overlay.visible and shop.window_halo_overlay.visible \
 		and _all_spill_overlays_visible(shop) and shop.lamp_head_overlays[0].visible
 	world.set_view_mode(World.ViewMode.GROUND)
-	var ground_light_mode_ok: bool = shop.interior_light.visible \
+	var ground_light_mode_ok: bool = not shop.interior_light.visible \
 		and shop.roof_light.visible and shop.spill_light_overlay.visible \
 		and shop.roof_light_overlay.visible and shop.window_halo_overlay.visible \
 		and _all_spill_overlays_visible(shop) and shop.lamp_head_overlays[0].visible

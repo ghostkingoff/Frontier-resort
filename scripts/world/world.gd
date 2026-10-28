@@ -1038,7 +1038,7 @@ func set_view_mode(mode: int) -> void:
 	roof_mode_changed.emit(show_roofs)          # 兼容旧信号
 	map_layer_root.visible = true
 	outdoor_sort.visible = true
-	interior_sort.visible = view_mode != ViewMode.ROOF
+	interior_sort.visible = view_mode == ViewMode.INTERIOR
 	ground_sort.visible = view_mode == ViewMode.GROUND
 	for b in buildings:
 		b.apply_view_mode(view_mode)
