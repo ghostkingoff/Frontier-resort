@@ -5,6 +5,7 @@ uniform sampler2D normal_texture : filter_linear, repeat_disable;
 uniform sampler2D specular_texture : filter_linear, repeat_disable;
 uniform sampler2D occlusion_texture : filter_linear, repeat_disable;
 uniform sampler2D sun_shadow_texture : filter_linear, repeat_disable;
+uniform sampler2D player_sun_shadow_texture : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_0 : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_1 : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_2 : filter_linear, repeat_disable;
@@ -67,6 +68,14 @@ void fragment() {
 		0.015,
 		0.72,
 		sun_visibility_luminance);
+	float player_sun_luminance = dot(
+		texture(player_sun_shadow_texture, SCREEN_UV).rgb,
+		vec3(0.2126, 0.7152, 0.0722));
+	float player_sun_visibility = smoothstep(
+		0.10,
+		0.82,
+		player_sun_luminance);
+	sun_visibility *= player_sun_visibility;
 	vec3 sun_direct = sun_color * sun_energy
 		* sun_ndotl * sun_visibility * mix(0.55, 1.0, ao);
 	vec3 sky_ambient = sky_color * sky_energy * ambient_ao;

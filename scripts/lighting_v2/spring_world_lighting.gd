@@ -22,6 +22,9 @@ const SHADOW_REGION_CELLS := 20
 const SHADOW_LIGHTS_PER_REGION := 3
 const MAX_SHADOW_LIGHTS := 12
 const MAX_LOCAL_LIGHTS := 32
+const PLAYER_SHADOW_PROXY_PATH := \
+	"res://art/characters/player/star2a/shadow_proxy.glb"
+const PLAYER_SHADOW_HEIGHT_PX := 44.0
 const WINDOW_HEAD_OPACITY := 0.3
 const LAMP_HEAD_OPACITY := 0.12
 const LAMP_HEAD_BRIGHTNESS := 0.18
@@ -137,6 +140,8 @@ func _process(delta: float) -> void:
 		and is_instance_valid(player)
 		and player.is_visible_in_tree()
 		and not bool(player.inside_reception))
+	if player != null:
+		rig.set_player_facing(int(player.get("_facing")))
 
 	var shadow_key := _shadow_state_key(
 		sun_screen,
@@ -271,6 +276,8 @@ func _make_tile_material_from_textures(
 	material.set_shader_parameter("occlusion_texture", occlusion_texture)
 	material.set_shader_parameter(
 		"sun_shadow_texture", rig.get_sun_texture())
+	material.set_shader_parameter(
+		"player_sun_shadow_texture", rig.get_player_sun_texture())
 	material.set_shader_parameter(
 		"lamp_shadow_texture_0", rig.get_lamp_texture(0))
 	material.set_shader_parameter(
@@ -1630,7 +1637,7 @@ func _shadow_state_key(
 			snappedf(position.y, 1.0),
 			snappedf(float(light["energy"]), 0.01),
 		])
-	return "%s|%s|%s|%s|%s|%s|%s|%s" % [
+	return "%s|%s|%s|%s|%s|%s|%s|%s|%s" % [
 		snappedf(camera_position.x, 0.5),
 		snappedf(camera_position.y, 0.5),
 		snappedf(zoom.x, 0.001),
@@ -1638,6 +1645,7 @@ func _shadow_state_key(
 		snappedf(sun_screen.y, 0.002),
 		snappedf(sun_screen.z, 0.002),
 		snappedf(player_foot.x, 1.0),
+		snappedf(player_foot.y, 1.0),
 		",".join(light_signature),
 	]
 
@@ -1703,7 +1711,11 @@ func _rebuild_proxies() -> void:
 	if world.player_avatar != null:
 		var foot := _player_foot_position()
 		foot = Vector2(roundf(foot.x), roundf(foot.y))
-		rig.add_capsule_proxy(foot, 9.0, 62.0)
+		if not rig.add_player_proxy(
+				PLAYER_SHADOW_PROXY_PATH,
+				foot,
+				PLAYER_SHADOW_HEIGHT_PX):
+			rig.add_capsule_proxy(foot, 9.0, 62.0)
 		last_player_foot = foot
 	last_shadow_key = ""
 

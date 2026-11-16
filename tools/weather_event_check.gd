@@ -166,6 +166,46 @@ func _ready() -> void:
 						walk_normal_is_per_frame = false
 			checks.append("角色法线按每个序列帧导入：%s" % [
 				str(walk_normal_is_per_frame)])
+			var proxy_ok: bool = spring_lighting.rig != null \
+				and spring_lighting.rig.player_proxy_resource_path.ends_with(
+					"shadow_proxy.glb") \
+				and spring_lighting.rig.player_proxies.size() >= 5 \
+				and spring_lighting.rig.player_contact_proxy != null
+			if proxy_ok:
+				var proxy_root: Node3D = spring_lighting.rig.player_proxies[0]
+				proxy_ok = proxy_root.find_children(
+					"*",
+					"MeshInstance3D",
+					true,
+					false).size() > 0
+				var yaw_values: Dictionary = {}
+				for facing in range(4):
+					spring_lighting.rig.set_player_facing(facing)
+					yaw_values[snappedf(
+						proxy_root.rotation.y,
+						0.001)] = true
+				proxy_ok = proxy_ok and yaw_values.size() == 4
+				spring_lighting.rig.set_player_facing(
+					int(player.get("_facing")))
+			var player_sun_viewport: SubViewport = null
+			if spring_lighting.rig != null:
+				player_sun_viewport = spring_lighting.rig.player_sun_pass.get(
+					"viewport") as SubViewport
+			proxy_ok = proxy_ok and player_sun_viewport != null \
+				and player_sun_viewport.render_target_update_mode \
+					== SubViewport.UPDATE_ALWAYS
+			var player_sun_texture := spring_lighting.rig.get_player_sun_texture()
+			var ground_material_ok := false
+			if player_sun_texture != null:
+				for material in spring_lighting.ground_materials:
+					if material.get_shader_parameter(
+							"player_sun_shadow_texture") == player_sun_texture:
+						ground_material_ok = true
+						break
+			proxy_ok = proxy_ok and player_sun_texture != null \
+				and ground_material_ok
+			checks.append("角色 3D 代理、独立太阳通道与四向旋转：%s" % [
+				str(proxy_ok)])
 
 	var spring := main.get_node_or_null("SpringWorldLighting")
 	if spring != null:

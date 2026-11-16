@@ -468,10 +468,18 @@ func _run_build_checks() -> void:
 		and (spring_lighting.rig.sun_pass["directional"] as DirectionalLight3D).shadow_blur >= 3.0 \
 		and (spring_lighting.rig.sun_pass["directional"] as DirectionalLight3D).directional_shadow_max_distance >= 12000.0 \
 		and spring_lighting.rig.get_sun_texture() != null
-	checks.append("玩家新光照：逐帧法线与整体背光门控 %s｜旧2D遮挡已移除 %s｜3D柔化太阳阴影 %s｜阴影脚底原点 %s" % [
+	var player_3d_proxy_ok: bool = spring_lighting != null \
+		and spring_lighting.rig != null \
+		and spring_lighting.rig.player_proxy_resource_path.ends_with(
+			"shadow_proxy.glb") \
+		and spring_lighting.rig.player_proxies.size() >= 5 \
+		and spring_lighting.rig.player_contact_proxy != null \
+		and spring_lighting.rig.get_player_sun_texture() != null
+	checks.append("玩家新光照：逐帧法线与整体背光门控 %s｜旧2D遮挡已移除 %s｜3D柔化太阳阴影 %s｜阴影脚底原点 %s｜角色 3D 代理 %s" % [
 		str(player_lighting_ok),
 		str(player.get_node_or_null("PlayerLightOccluder") == null),
-		str(sun_lighting_ok), str(foot_origin_ok)])
+		str(sun_lighting_ok), str(foot_origin_ok),
+		str(player_3d_proxy_ok)])
 	var lighting_debug_ok: bool = spring_lighting != null \
 		and spring_lighting.has_method("set_debug_mode")
 	checks.append("实时光照调试：F1 调试通道接口 %s" % str(lighting_debug_ok))

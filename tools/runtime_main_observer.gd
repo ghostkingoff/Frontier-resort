@@ -23,8 +23,10 @@ var focus_kind := ""
 var player_normal_mode := "normal"
 var lighting_debug_mode := -1
 var player_animation_frame := -1
+var player_facing_override := -1
 var place_debug_lamp := false
 var player_shared_atlas_uv := true
+var player_cell_override := Vector2i(-1, -1)
 var capture_marker: Label
 var schedule := [
 	{"name": "title_flow_0625_sunrise.png", "hour": SUNRISE_HOUR, "fog": false},
@@ -132,12 +134,18 @@ func _prepare() -> void:
 			elif focus_kind == "player_half_shadow":
 				target_offset = Vector2(48.0, 24.0)
 			var target := player.global_position
-			if lamp_for_player != null:
+			if player_cell_override.x >= 0 \
+					and player_cell_override.y >= 0:
+				target = world.cell_center(player_cell_override)
+				player.detach_to(target)
+			elif lamp_for_player != null:
 				target = lamp_for_player.global_position + target_offset
 				player.detach_to(target)
-			player.set("_facing", 2)
+			player.set(
+				"_facing",
+				player_facing_override if player_facing_override >= 0 else 2)
 			player.set_process(false)
-			camera.zoom = Vector2(8.0, 8.0)
+			camera.zoom = Vector2(2.35, 2.35)
 			camera.position = target + Vector2(0.0, -18.0)
 		return
 	if focus_kind == "street_lamp":
@@ -175,7 +183,16 @@ func _apply_schedule() -> void:
 	if player != null:
 		if player_animation_frame >= 0:
 			player.set("_walk_clock", float(player_animation_frame) / 8.0)
-			player.call("_animate", Vector2.LEFT, 0.0)
+			var facing := int(player.get("_facing"))
+			var direction := Vector2.DOWN
+			match facing:
+				1:
+					direction = Vector2.UP
+				2:
+					direction = Vector2.LEFT
+				3:
+					direction = Vector2.RIGHT
+			player.call("_animate", direction, 0.0)
 		else:
 			player.call("_show_idle_frame", false)
 	var panel := get_parent().get_node_or_null(
@@ -197,6 +214,7 @@ func _capture(file_name: String) -> void:
 	])
 	if hold_mode:
 		_write_hold_ready(path)
+		_capture_shadow_map()
 
 
 func _parse_capture_args() -> void:
@@ -220,11 +238,22 @@ func _parse_capture_args() -> void:
 				int(arg.trim_prefix("--player-frame=")),
 				0,
 				3)
+		elif arg.begins_with("--player-facing="):
+			player_facing_override = clampi(
+				int(arg.trim_prefix("--player-facing=")),
+				0,
+				3)
 		elif arg == "--debug-place-lamp":
 			place_debug_lamp = true
 		elif arg.begins_with("--player-shared-atlas-uv="):
 			player_shared_atlas_uv = \
 				arg.trim_prefix("--player-shared-atlas-uv=") != "0"
+		elif arg.begins_with("--player-cell="):
+			var parts := arg.trim_prefix("--player-cell=").split(",")
+			if parts.size() == 2:
+				player_cell_override = Vector2i(
+					int(parts[0]),
+					int(parts[1]))
 
 
 func _place_lamp_near(position: Vector2) -> Building:
@@ -278,6 +307,41 @@ func _write_hold_ready(viewport_path: String) -> void:
 		file.store_string(JSON.stringify(data, "\t"))
 		file.close()
 	print("[runtime-main] OS_HOLD_READY %s" % ready_path)
+
+
+func _capture_shadow_map() -> void:
+	var spring_lighting := spring as SpringWorldLighting
+	if spring_lighting == null or spring_lighting.rig == null:
+		return
+	var player_node := world.get("player_avatar") as Node2D
+	if player_node != null and camera != null:
+		var canvas_screen := get_viewport().get_canvas_transform() \
+			* player_node.global_position
+		var shadow_camera := spring_lighting.rig.sun_pass.get(
+			"camera") as Camera3D
+		print("[runtime-main] 相机对齐 player_world=%s camera_pos=%s screen_center=%s canvas_screen=%s viewport=%s sun_camera=%s sun_size=%.2f" % [
+			str(player_node.global_position),
+			str(camera.global_position),
+			str(camera.get_screen_center_position()),
+			str(canvas_screen),
+			str(get_viewport().get_visible_rect().size),
+			str(shadow_camera.position if shadow_camera != null else Vector3.ZERO),
+			shadow_camera.size if shadow_camera != null else 0.0,
+		])
+	var shadow_texture := spring_lighting.rig.get_sun_texture()
+	if shadow_texture != null:
+		var image := shadow_texture.get_image()
+		if image != null and not image.is_empty():
+			var shadow_path := "%s/sun_shadow_map.png" % output_dir
+			image.save_png(shadow_path)
+			print("[runtime-main] 太阳阴影图 -> %s" % shadow_path)
+	var player_shadow_texture := spring_lighting.rig.get_player_sun_texture()
+	if player_shadow_texture != null:
+		var player_shadow_image := player_shadow_texture.get_image()
+		if player_shadow_image != null and not player_shadow_image.is_empty():
+			var player_shadow_path := "%s/player_sun_shadow_map.png" % output_dir
+			player_shadow_image.save_png(player_shadow_path)
+			print("[runtime-main] 角色太阳阴影图 -> %s" % player_shadow_path)
 
 
 func _hour_file_token(hour: float) -> String:
