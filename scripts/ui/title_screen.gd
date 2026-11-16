@@ -373,7 +373,10 @@ func _is_dev_tool() -> bool:
 	var args := OS.get_cmdline_user_args()
 	if args.has("--title-shot"):
 		return false      # 标题截图工具例外：就要停在标题界面
-	return args.has("--smoke") or args.has("--screenshot") or args.has("--wake")
+	return args.has("--smoke") \
+		or args.has("--screenshot") \
+		or args.has("--wake") \
+		or args.has("--runtime-main-shot")
 
 
 # ---------- 设置 ----------

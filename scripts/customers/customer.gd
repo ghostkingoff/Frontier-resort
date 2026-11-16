@@ -907,11 +907,12 @@ func _choose_activity() -> void:
 		_go_to(lodge, Purpose.REST)
 		return
 	# 白天也偶尔回房间歇一会儿
-	if lodge != null and is_instance_valid(lodge) and randf() < 0.2:
+	if lodge != null and is_instance_valid(lodge) \
+			and DevEvents.roll("visitor.daytime_lodge_rest", 0.2):
 		_go_to(lodge, Purpose.REST)
 		return
 	# 有时就在村里闲逛，不会一直消费（也避免在店铺之间来回横跳）
-	if randf() > spend_frequency:
+	if not DevEvents.roll("visitor.spend_decision", spend_frequency):
 		_start_wander()
 		return
 	var prefers: Array = type_data.get("prefers", [])
@@ -1095,6 +1096,7 @@ func _roll_illness() -> bool:
 	var chance := float(cfg.get("base_chance", 0.035))
 	if target:
 		chance += float(cfg.get("crowding_chance", 0.012)) * float(target.visitors.size())
+	chance = DevEvents.chance("gameplay.illness", chance)
 	if randf() > chance:
 		return false
 	var max_level := int(DataRegistry.illness_config.get("max_level", 2))

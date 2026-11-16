@@ -19,9 +19,6 @@ func _ready() -> void:
 			SaveManager.new_game_mode = arg.split("=")[1]
 		elif arg.begins_with("--view="):
 			view_mode = arg.split("=")[1]
-		elif arg.begins_with("--lighting-backend="):
-			ProjectSettings.set_setting(
-				"lighting/building_backend", arg.split("=")[1])
 		elif arg.begins_with("--lighting-quality="):
 			ProjectSettings.set_setting("lighting/quality", arg.split("=")[1])
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
@@ -134,6 +131,9 @@ func _process(_delta: float) -> void:
 		return
 	if view_mode == "layer_player":
 		_process_layer_player_shots()
+		return
+	if view_mode == "next_lighting":
+		_process_next_lighting_shots()
 		return
 	if janitor_cam_target != null and is_instance_valid(janitor_cam_target):
 		# 镜头跟着保洁工人走，方便看清扫过程
@@ -373,63 +373,39 @@ func _force_transition() -> void:
 func _process_light_shots() -> void:
 	var scene_world: Node2D = main.get_node("World")
 	var camera: Camera2D = main.get_node("Camera")
-	var shop: Building = null
+	var lamp: Building = null
 	for b in scene_world.buildings:
-		if b.id == "shop_small":
-			shop = b
+		if b.id == "street_lamp":
+			lamp = b
 			break
-	if shop == null:
+	if lamp == null:
 		get_tree().quit(1)
 		return
 	if frames == 30:
 		camera.set_process(false)
-		camera.zoom = Vector2(2.1, 2.1)
-		camera.position = shop.global_position + Vector2(96, 30)
+		camera.zoom = Vector2(2.6, 2.6)
+		camera.position = lamp.global_position + Vector2(16.0, 12.0)
 		_set_hour(23.7)
-		shop.update_lights(23.7)
 		scene_world.set_view_mode(World.ViewMode.ROOF)
-		if view_mode == "lights_occlusion":
-			_add_sdf_occlusion_probe(shop)
 	if frames == 50:
-		_capture("shot_20_lights_roof_occlusion.png"
-			if view_mode == "lights_occlusion" else "shot_20_lights_roof.png")
+		_capture("shot_20_street_lamp_night.png")
 	if frames == 70:
-		scene_world.set_view_mode(World.ViewMode.INTERIOR)
+		lamp.rotate_clockwise()
 	if frames == 90:
-		_capture("shot_21_lights_interior.png")
+		_capture("shot_21_street_lamp_rotated.png")
 	if frames == 110:
-		scene_world.set_view_mode(World.ViewMode.GROUND)
-	if frames == 130:
-		_capture("shot_22_lights_ground.png")
-	if frames == 150:
 		get_tree().quit()
-
-
-func _add_sdf_occlusion_probe(shop: Building) -> void:
-	var occluder := LightOccluder2D.new()
-	occluder.name = "SdfOcclusionProbe"
-	occluder.position = Vector2(78.0, 108.0)
-	occluder.sdf_collision = true
-	var polygon := OccluderPolygon2D.new()
-	polygon.polygon = PackedVector2Array([
-		Vector2.ZERO,
-		Vector2(28.0, 0.0),
-		Vector2(28.0, 10.0),
-		Vector2(0.0, 10.0),
-	])
-	occluder.occluder = polygon
-	shop.add_child(occluder)
 
 
 func _process_player_light_shots() -> void:
 	var scene_world: Node2D = main.get_node("World")
 	var camera: Camera2D = main.get_node("Camera")
-	var shop: Building = null
+	var lamp: Building = null
 	for building in scene_world.buildings:
-		if building.id == "shop_small":
-			shop = building
+		if building.id == "street_lamp":
+			lamp = building
 			break
-	if shop == null:
+	if lamp == null:
 		get_tree().quit(1)
 		return
 	var player: Node2D = scene_world.player_avatar
@@ -441,7 +417,7 @@ func _process_player_light_shots() -> void:
 		camera.zoom = Vector2(3.0, 3.0)
 		scene_world.set_view_mode(World.ViewMode.ROOF)
 		_set_hour(7.0)
-		player.detach_to(shop.global_position + Vector2(160.0, 150.0))
+		player.detach_to(lamp.global_position + Vector2(48.0, 32.0))
 		player._facing = 2
 		player._show_idle_frame(false)
 		camera.position = player.global_position + Vector2(0.0, -18.0)
@@ -449,11 +425,13 @@ func _process_player_light_shots() -> void:
 		_capture("shot_30_player_sun.png")
 	if frames == 55:
 		_set_hour(23.7)
-		var lamp_source: Vector2 = shop.spill_light_overlay.global_position
+		var fp: Array = lamp.data.get("footprint", [1, 1])
+		var lamp_source: Vector2 = lamp.global_position + Vector2(
+			float(fp[0]) * World.CELL * 0.5,
+			float(fp[1]) * World.CELL * 0.5)
 		player.detach_to(lamp_source + Vector2(24.0, 16.0))
 		player._facing = 2
 		player._show_idle_frame(false)
-		shop.update_lights(23.7)
 		camera.position = player.global_position + Vector2(0.0, -18.0)
 	if frames == 85:
 		_capture("shot_31_player_lamp.png")
@@ -481,7 +459,6 @@ func _process_layer_player_shots() -> void:
 		player._facing = 1
 		player._show_idle_frame(false)
 		_set_hour(23.7)
-		shop.update_lights(23.7)
 		scene_world.set_view_mode(World.ViewMode.INTERIOR)
 	if frames == 40:
 		_capture("shot_32_layer_interior_front.png")
@@ -494,6 +471,91 @@ func _process_layer_player_shots() -> void:
 	if frames == 100:
 		_capture("shot_34_layer_roof_front.png")
 	if frames == 115:
+		get_tree().quit()
+
+
+func _process_next_lighting_shots() -> void:
+	var scene_world: Node2D = main.get_node("World")
+	var camera: Camera2D = main.get_node("Camera")
+	var lodge: Building = null
+	for building in scene_world.buildings:
+		if building.id == "lodge_ordinary":
+			lodge = building
+			break
+	if lodge == null:
+		get_tree().quit(1)
+		return
+	if frames == 20:
+		camera.set_process(false)
+		camera.zoom = Vector2(2.2, 2.2)
+		camera.position = lodge.global_position + Vector2(96.0, 52.0)
+		scene_world.set_view_mode(World.ViewMode.ROOF)
+		_set_hour(8.0)
+	if frames == 30:
+		var lighting := main.get_node_or_null("SpringWorldLighting")
+		print("[spring-lighting] active=%s sun_pass=%s" % [
+			str(lighting != null),
+			str(lighting.rig.sun_pass.get("directional") != null)
+				if lighting else "null"])
+	if frames == 45:
+		_capture("shot_next_lodge_roof_morning.png")
+	if frames == 55:
+		scene_world.set_view_mode(World.ViewMode.INTERIOR)
+	if frames == 85:
+		_capture("shot_next_lodge_interior_morning.png")
+	if frames == 95:
+		_set_hour(13.0)
+		scene_world.set_view_mode(World.ViewMode.ROOF)
+	if frames == 120:
+		_capture("shot_next_lodge_roof_noon.png")
+	if frames == 125:
+		_set_hour(8.0)
+		scene_world.set_view_mode(World.ViewMode.ROOF)
+		var player = scene_world.player_avatar
+		if player:
+			player.detach_to(lodge.global_position + Vector2(-280.0, 220.0))
+	if frames == 130:
+		_capture("shot_next_lodge_sun_08.png")
+	if frames == 132:
+		_set_hour(9.0)
+		var player = scene_world.player_avatar
+		if player:
+			player.detach_to(lodge.global_position + Vector2(238.0, 104.0))
+			player._facing = 2
+			player._show_idle_frame(false)
+	if frames == 145:
+		_capture("shot_next_lodge_wall_shadow.png")
+	if frames == 146:
+		var material := lodge.wall_texture.material as ShaderMaterial
+		if material:
+			material.set_shader_parameter("receive_projected_shadow", false)
+	if frames == 147:
+		_capture("shot_next_lodge_wall_shadow_off.png")
+	if frames == 148:
+		var material := lodge.wall_texture.material as ShaderMaterial
+		if material:
+			material.set_shader_parameter("receive_projected_shadow", true)
+	if frames == 150:
+		_set_hour(22.0)
+		scene_world.set_view_mode(World.ViewMode.ROOF)
+		var player = scene_world.player_avatar
+		if player:
+			player.detach_to(lodge.global_position + Vector2(-280.0, 220.0))
+	if frames == 175:
+		_capture("shot_next_lodge_roof_night.png")
+	if frames == 176:
+		var lighting := main.get_node_or_null("SpringWorldLighting")
+		print("[spring-lighting] night active=%s exposure=%s" % [
+			str(lighting != null),
+			str(
+				lighting._sample_light_state(
+					GameClock.hour_of_day()).get("exposure", -1.0))
+				if lighting else "null"])
+	if frames == 180:
+		scene_world.set_view_mode(World.ViewMode.INTERIOR)
+	if frames == 195:
+		_capture("shot_next_lodge_interior_night.png")
+	if frames == 205:
 		get_tree().quit()
 
 

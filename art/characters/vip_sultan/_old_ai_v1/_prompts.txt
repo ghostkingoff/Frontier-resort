@@ -1,0 +1,75 @@
+# chr-vip_sultan（明星／贵宾）生成参数记录
+生成日期：2026-10-16 ｜ 生成工具：本地 ComfyUI 0.41.0（E:\ComfyUI）+ RTX 4050 Laptop 6GB
+产出：walk.png 128×128（4列=方向 下/上/左/右 × 4行=走路帧）、idle.png 128×32（4列=方向）
+
+## 模型（全部来自 hf-mirror.com，huggingface.co / civitai.com 在本机网络下不通）
+
+| 用途 | 文件 | 来源仓库 |
+| --- | --- | --- |
+| 底模（像素画+精灵表，SD1.5） | `PixelartSpritesheet_V.1.ckpt` | `Onodofthenorth/SD_PixelArt_SpriteSheet_Generator` |
+| ControlNet（本轮最终配方未使用，留在库里备用） | `control_v11p_sd15_lineart_fp16.safetensors`、`control_v11p_sd15_openpose_fp16.safetensors` | `comfyanonymous/ControlNet-v1-1_fp16_safetensors` |
+| 备用底模 | `v1-5-pruned-emaonly.safetensors` | `stable-diffusion-v1-5/stable-diffusion-v1-5` |
+
+**底模的专用触发词**（决定视角，来自模型卡）：
+`PixelartFSS`=正面 / `PixelartBSS`=背面 / `PixelartLSS`=左侧 / `PixelartRSS`=右侧
+
+## 关键参数（全部实测确定，不是猜的）
+
+| 阶段 | 模式 | init 图 | denoise | 触发词 | seed |
+| --- | --- | --- | --- | --- | --- |
+| down 站立帧 | img2img | `star1.png` 最近邻放大 16× 到 512（品红底） | **0.50** | PixelartFSS | 12345 |
+| up 站立帧 | img2img | 模板 `Idle_Up` 按 star1 色板上色后的 512×512 | 0.55 | PixelartBSS | 12345 |
+| left 站立帧 | img2img | 模板 `Idle_Side` 上色后的 512×512 | 0.55 | PixelartLSS | 12345 |
+| right 站立帧 | — | left 水平镜像 | — | — | — |
+| 各方向 4 走路帧 | img2img | 模板对应走路姿势上色后的 512×512 | 0.55 | 对应视角触发词 | 12345+f |
+
+其它固定项：steps=28，cfg=7.0，sampler=dpmpp_2m，scheduler=karras，512×512，
+negative 见 `tools/pixel_pipeline/produce.py` 的 NEG（含 `magenta hair, purple hair, pink hair`）。
+
+## 负面提示词（实际使用）
+
+```
+blurry, soft edges, anti-aliased, gradient shading, photorealistic, 3d render,
+jpeg artifacts, noise, text, letters, numbers, logo, watermark, signature,
+cluttered, busy background, extra limbs, deformed, multiple characters, two people,
+magenta hair, purple hair, pink hair, two heads
+```
+
+## 正面提示词模板
+
+```
+{触发词}, a chibi girl with long blue hair, red eyes, white dress with teal collar,
+dark teal shoes, 2-head-tall chibi proportion
+[, front view facing the camera | back view seen from behind | left side profile view facing left]
+[, walking, mid-stride, one leg forward]
+, pixel art, crisp hard edges, no anti-aliasing, flat shading, clean solid shapes,
+bold 1px dark outline, flat solid magenta background
+```
+
+## 复现方式
+
+```powershell
+$py='E:\ComfyUI\ComfyUI_windows_portable\python_embeded\python.exe'
+$w='E:\godot\模拟经营类\tools\pixel_pipeline'
+& $py "$w\prep_poses.py" --walk-sheet "E:\素材\2d\Eris Esra's Character Template 4.1\16x32\16x32 Walk-Sheet.png" --idle-sheet "E:\素材\2d\Eris Esra's Character Template 4.1\16x32\16x32 Idle-Sheet.png" --out "$w\work"
+& $py "$w\colorize_template.py"          # 模板姿势 -> star1 配色（关键一步）
+& $py "$w\produce.py" --walk-denoise 0.55
+& $py "$w\build_sheet.py" --frames "$w\work\gen" --palette-source "E:\素材\aseprite\star1.png" --out "$w\work\sheet_v4"
+& $py "$w\validate.py" "$w\work\sheet_v4\walk.png" "$w\work\sheet_v4\idle.png"
+```
+
+## 为什么这么绕（踩过的坑，下次别重走）
+
+1. **这个底模一次输出"一排 4 个精灵"**，纯文生图虽然视角对，但发色会变品红、比例 3~4 头身，且不听颜色描述。
+2. **init 图决定身份与配色**：init=star1 时（denoise 0.5）才能拿到蓝发/红眼/白裙。
+3. **模型不会做 3D 旋转**：init 是正面图时 denoise 0.7~0.8 也转不过去；denoise 0.9 能转但画质崩坏。
+   → 解法：先用模板的背面/侧面姿势**按 star1 色板重新上色**当 init，denoise 0.55 就能得到"背面/侧面的 star1"。
+4. **走路帧同理**：用模板的走路姿势上色图当 init，才既有腿的交替又保住配色。
+   ControlNet 强制姿势的路子（强度 0.35 无效 / 0.8 把脸压坏）已被验证为下策。
+5. 上色时必须**把身体的明暗交替抹平**，否则模型会把 1px 交替放大成竖条纹。
+
+## 已知不足（按规范第六节，需人工收尾）
+
+- 部分帧脸部有 1~2px 杂点（如 down 第 3 帧嘴部偏红），建议在 Aseprite 里手工点掉。
+- 走路幅度偏小：腿的交替来自模板的 4 帧姿势，属于"能看出在走"但不算有弹性。
+- 红花发饰只在 down 站立/走路帧上保留，其余方向丢失（32×32 下约 1px，可接受）。

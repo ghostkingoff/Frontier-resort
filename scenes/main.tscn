@@ -10,9 +10,10 @@
 [ext_resource type="Script" uid="uid://cjhna080dmahi" path="res://scripts/ui/inventory_panel.gd" id="8_ipanel"]
 [ext_resource type="Script" uid="uid://bouml6rpjij1a" path="res://scripts/ui/exploration_panel.gd" id="9_expanel"]
 [ext_resource type="Script" uid="uid://btwl1qsdkmyjo" path="res://scripts/ui/stats_panel.gd" id="10_spanel"]
-[ext_resource type="Script" uid="uid://cemhup0qby64e" path="res://scripts/world/daylight.gd" id="11_daylight"]
 [ext_resource type="Script" uid="uid://5xqa2c18741j" path="res://scripts/ui/visitor_panel.gd" id="12_vpanel"]
 [ext_resource type="Script" uid="uid://b57biycweditu" path="res://scripts/ui/console_panel.gd" id="13_console"]
+[ext_resource type="Script" path="res://scripts/lighting_v2/spring_world_lighting.gd" id="14_spring_lighting"]
+[ext_resource type="Script" path="res://scripts/ui/lighting_v2_debug_panel.gd" id="15_dev_events_panel"]
 
 [node name="Main" type="Node2D" unique_id=1523221713]
 script = ExtResource("1_main")
@@ -20,11 +21,11 @@ script = ExtResource("1_main")
 [node name="World" type="Node2D" parent="." unique_id=1967799962]
 script = ExtResource("2_world")
 
-[node name="Daylight" type="CanvasModulate" parent="." unique_id=1009039914]
-script = ExtResource("11_daylight")
-
 [node name="Camera" type="Camera2D" parent="." unique_id=1494243965]
 script = ExtResource("3_camera")
+
+[node name="SpringWorldLighting" type="Node2D" parent="."]
+script = ExtResource("14_spring_lighting")
 
 [node name="BuildSystem" type="Node2D" parent="." unique_id=1445846233]
 script = ExtResource("4_build")
@@ -33,22 +34,33 @@ script = ExtResource("4_build")
 script = ExtResource("5_spawner")
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=2139208004]
+layer = 10
 script = ExtResource("6_hud")
 
 [node name="BuildingPanel" type="CanvasLayer" parent="." unique_id=1985063856]
+layer = 10
 script = ExtResource("7_bpanel")
 
 [node name="InventoryPanel" type="CanvasLayer" parent="." unique_id=1734907837]
+layer = 10
 script = ExtResource("8_ipanel")
 
 [node name="ExplorationPanel" type="CanvasLayer" parent="." unique_id=1677635888]
+layer = 10
 script = ExtResource("9_expanel")
 
 [node name="StatsPanel" type="CanvasLayer" parent="." unique_id=127989295]
+layer = 10
 script = ExtResource("10_spanel")
 
 [node name="VisitorPanel" type="CanvasLayer" parent="." unique_id=1194275863]
+layer = 10
 script = ExtResource("12_vpanel")
 
 [node name="ConsolePanel" type="CanvasLayer" parent="." unique_id=1738490526]
+layer = 10
 script = ExtResource("13_console")
+
+[node name="LightingV2DebugPanel" type="CanvasLayer" parent="."]
+layer = 100
+script = ExtResource("15_dev_events_panel")

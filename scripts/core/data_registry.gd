@@ -38,6 +38,7 @@ var exploration_settings: Dictionary = {}
 var exploration_events: Array = []
 var events_by_zone: Dictionary = {}
 var lighting_keyframes: Array = []
+var lighting_ambient_multiplier := 1.0
 var terrains: Dictionary = {}
 var terrain_order: Array = []
 
@@ -169,6 +170,8 @@ func events_for_zone(zone: String) -> Array:
 func _load_lighting() -> void:
 	var raw := _read_json(LIGHTING_PATH)
 	lighting_keyframes.clear()
+	lighting_ambient_multiplier = clampf(
+		float(raw.get("ambient_multiplier", 1.0)), 0.0, 2.0)
 	for k in raw.get("keyframes", []):
 		lighting_keyframes.append({
 			"hour": float(k.get("hour", 0.0)),

@@ -5,10 +5,12 @@ extends Node2D
 
 signal roof_mode_changed(show_roof: bool)
 signal building_placed(building)
+signal building_removed(building)
 
 const CELL := 32
-const TILESET_PATH := "res://art/generated/ground_tileset.tres"
+const TILESET_PATH := "res://art/generated/spring_ground_tileset.tres"
 const PLAYER_CHARACTER := preload("res://scripts/actors/player_character.gd")
+const PINE_DIR := "res://art/characters/trees/pine/"
 
 # 地面类型：普通草地 / 荒地（不可通行）、草坪 / 地砖 / 石砖地（可通行）
 const GROUND_WILD := "grass"
@@ -31,6 +33,8 @@ enum ViewMode { ROOF, INTERIOR, GROUND }   # 当前显示层：屋顶 / 屋内 /
 @export var road_row := 72
 
 var ground: TileMapLayer
+var ground_path: TileMapLayer
+var ground_misc: TileMapLayer
 var decor: Node2D
 var buildings_root: Node2D
 var customers_root: Node2D
@@ -89,14 +93,7 @@ func outdoor_customer_count() -> int:
 
 
 func _process(_delta: float) -> void:
-	# 店铺灯光：20:00~20:45 之间各栋陆续亮起；**熄灯时间跟着各栋的 close_hour()**
-	# （常规店 24:00，酒吧 04:00）。集中在这里统一驱动，建筑自己不用每帧算时间。
-	if buildings.is_empty():
-		return
-	var hour := GameClock.hour_of_day()      # 0~24，与 buildings.json 的 open/close_hour 同口径
-	for b in buildings:
-		if b != null and is_instance_valid(b) and b.has_method("update_lights"):
-			b.update_lights(hour)
+	pass
 
 func _create_layers() -> void:
 	# 三层显示：
@@ -109,12 +106,12 @@ func _create_layers() -> void:
 	map_layer_root.z_index = -1000
 	add_child(map_layer_root)
 
-	ground = TileMapLayer.new()
-	ground.name = "Ground"
-	ground.z_index = 0
+	var shared_tileset: TileSet = null
 	if ResourceLoader.exists(TILESET_PATH):
-		ground.tile_set = load(TILESET_PATH)
-	map_layer_root.add_child(ground)
+		shared_tileset = load(TILESET_PATH)
+	ground = _make_ground_layer("GroundGrass", shared_tileset)
+	ground_path = _make_ground_layer("GroundPath", shared_tileset)
+	ground_misc = _make_ground_layer("GroundMisc", shared_tileset)
 
 	outdoor_sort = Node2D.new()
 	outdoor_sort.name = "OutdoorYSort"
@@ -147,6 +144,15 @@ func _create_layers() -> void:
 	buildings_root = Node2D.new()
 	buildings_root.name = "Buildings"
 	add_child(buildings_root)
+
+
+func _make_ground_layer(layer_name: String, shared_tileset: TileSet) -> TileMapLayer:
+	var layer := TileMapLayer.new()
+	layer.name = layer_name
+	layer.z_index = 0
+	layer.tile_set = shared_tileset
+	map_layer_root.add_child(layer)
+	return layer
 
 
 func _build_walls() -> void:
@@ -223,7 +229,14 @@ func _paint_ground_tile(cell: Vector2i) -> void:
 	var kind := str(ground_types.get(cell, GROUND_WILD))
 	var tile_cfg := DataRegistry.ground_tile_config(kind)
 	var coords: Array = tile_cfg.get("coords", [3, 3])
-	ground.set_cell(cell, int(tile_cfg.get("source", 0)),
+	for layer in [ground, ground_path, ground_misc]:
+		(layer as TileMapLayer).erase_cell(cell)
+	var target := ground
+	if kind == GROUND_PATH or kind == GROUND_STONE_TILE:
+		target = ground_path
+	elif kind == GROUND_DENSE_GRASS or kind == GROUND_WASTELAND:
+		target = ground_misc
+	target.set_cell(cell, int(tile_cfg.get("source", 0)),
 		Vector2i(int(coords[0]), int(coords[1])))
 
 
@@ -454,6 +467,8 @@ func _scatter_decorations() -> void:
 func _try_decor(rng: RandomNumberGenerator, defs: Array, cell: Vector2i, force_tree: bool) -> void:
 	var pool: Array = []
 	for d in defs:
+		if str(d.get("id", "")) == "pond":
+			continue
 		if force_tree and not str(d.get("id", "")).begins_with("tree"):
 			continue
 		var w := int(d.get("weight", 1))
@@ -465,7 +480,9 @@ func _try_decor(rng: RandomNumberGenerator, defs: Array, cell: Vector2i, force_t
 	spawn_decoration(def, cell)
 
 
-func spawn_decoration(def: Dictionary, cell: Vector2i) -> Sprite2D:
+func spawn_decoration(def: Dictionary, cell: Vector2i) -> Node2D:
+	if str(def.get("id", "")).begins_with("tree"):
+		return _spawn_pine_decoration(cell)
 	var rect_arr: Array = def.get("rect", [0, 0, 16, 16])
 	var s := Sprite2D.new()
 	s.texture = load(def.get("atlas", ""))
@@ -479,6 +496,24 @@ func spawn_decoration(def: Dictionary, cell: Vector2i) -> Sprite2D:
 	s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	decor.add_child(s)
 	return s
+
+
+func _spawn_pine_decoration(cell: Vector2i) -> Node2D:
+	var root := Node2D.new()
+	root.name = "PineDecoration"
+	root.position = cell_center(cell) + Vector2(0.0, CELL * 0.5)
+	root.add_to_group("lighting_pines")
+	decor.add_child(root)
+
+	var sprite := Sprite2D.new()
+	sprite.name = "PineSurface"
+	sprite.texture = load(PINE_DIR + "color.png")
+	sprite.centered = false
+	sprite.position = Vector2(-32.0, -128.0)
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	sprite.add_to_group("lighting_surface_sprites")
+	root.add_child(sprite)
+	return root
 
 
 func _spawn_starter_buildings() -> void:
@@ -732,6 +767,7 @@ func remove_building(b: Node2D) -> void:
 			freed.append(c)          # 拆掉后这些格子恢复成「看地面类型」
 	_mark_astar_cells(freed)
 	buildings.erase(b)
+	building_removed.emit(b)
 	b.queue_free()
 
 

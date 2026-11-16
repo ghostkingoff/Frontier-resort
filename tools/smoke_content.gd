@@ -517,7 +517,7 @@ func run() -> void:
 		for h in [0.0, 3.0, 8.0, 15.0, 23.5]:
 			net_open_ok = net_open_ok and net.is_open_at(h)
 		var net_light_ok: bool = is_equal_approx(net.light_off_hour, 6.0) \
-			and net.light_on_hour >= 20.0 and net.light_on_hour <= 20.75
+			and net.light_on_hour >= 18.0 and net.light_on_hour <= 18.75
 		net_note = "网吧：全天营业 %s ｜ 关灯 %.1f 点 ｜ 开灯 %.2f 点（同其他店错峰）%s" % [
 			str(net_open_ok), net.light_off_hour, net.light_on_hour, str(net_light_ok)]
 	checks.append("本轮调整：%s" % staff_note)

@@ -7,7 +7,10 @@ var _pending := ""      # _enter_tree() 里取一次就存下来，_ready() 里�
 func _enter_tree() -> void:
 	# 自动化测试模式要在子节点 _ready 之前设好，避免弹出开始菜单把时钟暂停
 	var args := OS.get_cmdline_user_args()
-	var dev_tool: bool = args.has("--smoke") or args.has("--screenshot") or args.has("--wake")
+	var dev_tool: bool = args.has("--smoke") \
+		or args.has("--screenshot") \
+		or args.has("--wake") \
+		or args.has("--runtime-main-shot")
 	# 详细日志：默认关掉「每次花钱 / 每次存盘」这类刷屏输出，需要排查时加 --verbose
 	GameState.verbose_log = args.has("--verbose") or dev_tool
 	# 开局模式必须在这里应用：World 是子节点，它的 _ready() 会先于本节点的 _ready() 跑，
@@ -41,3 +44,6 @@ func _ready() -> void:
 	elif OS.get_cmdline_user_args().has("--wake"):
 		print("[Main] 进入住客作息专项体检模式")
 		add_child(load("res://tools/wake_check.gd").new())
+	elif OS.get_cmdline_user_args().has("--runtime-main-shot"):
+		print("[Main] 进入真实启动流程截图模式")
+		add_child(load("res://tools/runtime_main_observer.gd").new())

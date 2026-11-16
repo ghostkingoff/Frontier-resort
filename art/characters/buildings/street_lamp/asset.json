@@ -1,0 +1,164 @@
+{
+  "asset_id": "street_lamp",
+  "source_dir": "art/source/buildings/street_lamp",
+  "runtime_dir": "art/characters/buildings/street_lamp",
+  "canvas": [
+    64,
+    64
+  ],
+  "layers": [
+    {
+      "index": 0,
+      "name": "参考图层 1",
+      "flags": 66,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/street_lamp/layers/参考图层_1.png",
+      "alpha_bounds": [
+        0,
+        5,
+        64,
+        59
+      ],
+      "components": []
+    },
+    {
+      "index": 1,
+      "name": "layer",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/street_lamp/layers/layer.png",
+      "alpha_bounds": [
+        16,
+        32,
+        32,
+        32
+      ],
+      "components": []
+    },
+    {
+      "index": 2,
+      "name": "wall",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/street_lamp/layers/wall.png",
+      "alpha_bounds": [
+        27,
+        6,
+        9,
+        44
+      ],
+      "components": []
+    },
+    {
+      "index": 3,
+      "name": "roof",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/street_lamp/layers/roof.png",
+      "alpha_bounds": [
+        22,
+        1,
+        18,
+        6
+      ],
+      "components": []
+    },
+    {
+      "index": 4,
+      "name": "light",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/street_lamp/layers/light.png",
+      "alpha_bounds": [
+        11,
+        6,
+        41,
+        48
+      ],
+      "components": [
+        {
+          "bounds": [
+            11,
+            6,
+            41,
+            48
+          ],
+          "center": [
+            31.0,
+            29.5
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 102
+        }
+      ]
+    }
+  ],
+  "proxy_source": "art/source/buildings/street_lamp/Light1_3DShadowProxy.blend",
+  "proxy_runtime": "art/characters/buildings/street_lamp/shadow_proxy.glb",
+  "lighting_maps": {
+    "roof.png": "1b0a858cf11b6eaf620bafb9b8e514b74355977574a32e214e9b5d41998799b4",
+    "roof_n.png": "f57cff1d18cc1a39c7bec6ae4110b17fa6252174374b1e694bc4b64cbb629054",
+    "roof_o.png": "a9a1e9b8e6333c56df5b2175e1ae0e59d089f3e077384f985f8ee9c8de317a9b",
+    "roof_s.png": "ae2a231d382b12551fa351b4f4e6782d619d38a344ac28eeaf484005d60be693",
+    "wall.png": "f0fefbcdb0695f4b99379aee859ecbc9b6c9430e624bc6dc84c2ad47e0c235c8",
+    "wall_n.png": "60673572e366cad7527c67cfee3aa10ba217569989dafde4bde48c558688b01e",
+    "wall_o.png": "9ff083d460c9cde35856ec918617a525b35bc5861532ae751ceff07d171f82dc",
+    "wall_s.png": "a8da55a84529cc6399d05ecf96f7781e60c510fac94acf4199e0ed5e9f045ac9"
+  },
+  "source_hashes": {
+    "ligh1t.png": "23132a40bdb9a3c795e29358a4bc3cbf765c8014b82589f04186406724c28f71",
+    "light.aseprite": "7bb47a8a78d251a0586b8207ae1525bbd5c9ff498b166d869f6ce6f9d25c712d",
+    "light.png": "eea3726455e3de478c70bb3d0dd6c31ea5b2f2629fcfe751bfb372d1ef7a93f2",
+    "Light1_3DShadowProxy.blend": "7000dd2274ecde5a150e57203139a9ed23cbe5099f36c634903c1d219da1eab7",
+    "light_lighting/roof.png": "1b0a858cf11b6eaf620bafb9b8e514b74355977574a32e214e9b5d41998799b4",
+    "light_lighting/roof_n.png": "f57cff1d18cc1a39c7bec6ae4110b17fa6252174374b1e694bc4b64cbb629054",
+    "light_lighting/roof_o.png": "a9a1e9b8e6333c56df5b2175e1ae0e59d089f3e077384f985f8ee9c8de317a9b",
+    "light_lighting/roof_s.png": "ae2a231d382b12551fa351b4f4e6782d619d38a344ac28eeaf484005d60be693",
+    "light_lighting/wall.png": "f0fefbcdb0695f4b99379aee859ecbc9b6c9430e624bc6dc84c2ad47e0c235c8",
+    "light_lighting/wall_n.png": "60673572e366cad7527c67cfee3aa10ba217569989dafde4bde48c558688b01e",
+    "light_lighting/wall_o.png": "9ff083d460c9cde35856ec918617a525b35bc5861532ae751ceff07d171f82dc",
+    "light_lighting/wall_s.png": "a8da55a84529cc6399d05ecf96f7781e60c510fac94acf4199e0ed5e9f045ac9"
+  },
+  "proxy_metadata": {
+    "source_blend": "E:/godot/模拟经营类/art/source/buildings/street_lamp/Light1_3DShadowProxy.blend",
+    "proxy_file": "E:/godot/模拟经营类/art/characters/buildings/street_lamp/shadow_proxy.glb",
+    "uniform_scale": 58.35270439578866,
+    "footprint_px": [
+      32.0,
+      32.0
+    ],
+    "bounds_min_px": [
+      -16.4117,
+      -15.6085,
+      0.0
+    ],
+    "bounds_max_px": [
+      16.4117,
+      15.6085,
+      89.3526
+    ],
+    "size_px": [
+      32.8234,
+      31.2169,
+      89.3526
+    ],
+    "pivot_px": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "ground_y_px": 0.0,
+    "triangle_count": 278,
+    "mesh_count": 1
+  }
+}

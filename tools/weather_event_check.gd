@@ -1,0 +1,353 @@
+extends Node
+## Focused regression check for weather timing, probability overrides and F10 UI.
+
+const SUNRISE_HOUR := 6.0 + 25.0 / 60.0
+const SUNSET_HOUR := 19.0 + 25.0 / 60.0
+
+
+func _ready() -> void:
+	var checks: Array[String] = []
+	DevEvents.reset_all()
+	WorldWeather.clear_force_overrides()
+	WorldWeather.set_fog_force(1)
+	var at_start := WorldWeather.fog_strength(6.0)
+	var at_mid_fade_in := WorldWeather.fog_strength(6.25)
+	var at_full := WorldWeather.fog_strength(7.0)
+	var at_mid_fade_out := WorldWeather.fog_strength(8.75)
+	var at_end := WorldWeather.fog_strength(9.0)
+	checks.append("06:00 雾逻辑强度为 0：%s（%.3f）" % [
+		str(is_zero_approx(at_start)), at_start])
+	checks.append("06:15 雾逻辑淡入一半：%s（%.3f）" % [
+		str(absf(at_mid_fade_in - 0.5) < 0.02), at_mid_fade_in])
+	checks.append("07:00 雾逻辑满强度：%s（%.3f）" % [
+		str(is_equal_approx(at_full, 1.0)), at_full])
+	checks.append("08:45 雾逻辑淡出一半：%s（%.3f）" % [
+		str(at_mid_fade_out > 0.1 and at_mid_fade_out < 0.95),
+		at_mid_fade_out])
+	checks.append("09:00 雾逻辑结束：%s（%.3f）" % [
+		str(is_zero_approx(at_end)), at_end])
+
+	WorldWeather.clear_force_overrides()
+	WorldWeather.set_yesterday_rain_force(0)
+	DevEvents.clear_chance_override("weather.post_rain_fog")
+	WorldWeather.refresh()
+	checks.append("昨日不下雨时不会起雾：%s" % [
+		str(not WorldWeather.fog_event)])
+	WorldWeather.set_yesterday_rain_force(1)
+	DevEvents.set_chance_override("weather.post_rain_fog", 1.0)
+	WorldWeather.refresh()
+	checks.append("昨日下雨且雨后起雾概率 100%%：%s" % [
+		str(WorldWeather.fog_event)])
+	DevEvents.set_chance_override("weather.post_rain_fog", 0.0)
+	WorldWeather.refresh()
+	checks.append("昨日下雨但雨后起雾概率 0%%：%s" % [
+		str(not WorldWeather.fog_event)])
+
+	DevEvents.set_chance_override("visitor.lodge_priority", 0.25)
+	checks.append("通用概率接管生效：%s" % [
+		str(is_equal_approx(
+			DevEvents.chance("visitor.lodge_priority", 0.85),
+			0.25))])
+	DevEvents.set_multiplier("exploration.risk_multiplier", 0.0)
+	checks.append("整体倍率生效：%s" % [
+		str(is_zero_approx(DevEvents.scale(
+			"exploration.risk_multiplier",
+			1.0)))])
+
+	var main := (load("res://scenes/main.tscn") as PackedScene).instantiate()
+	add_child(main)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var panel := main.get_node_or_null(
+		"LightingV2DebugPanel") as LightingV2DebugPanel
+	checks.append("F10 面板已接入主场景：%s" % [str(panel != null)])
+	if panel != null:
+		checks.append("F10 面板层级在 HUD 之上：%s" % [
+			str(panel.layer > 10)])
+		var key_event := InputEventKey.new()
+		key_event.keycode = KEY_F10
+		key_event.pressed = true
+		panel._input(key_event)
+		checks.append("F10 可打开面板并锁定移动键：%s" % [
+			str(panel.visible and GameState.text_input_active)])
+		var close_event := key_event.duplicate() as InputEventKey
+		panel._input(close_event)
+		checks.append("再次按 F10 可关闭并恢复移动键：%s" % [
+			str(not panel.visible and not GameState.text_input_active)])
+		checks.append("F10 光照调参控件已接入：%s（%d 项）" % [
+			str(panel.lighting_tuning_controls.size() >= 10),
+			panel.lighting_tuning_controls.size(),
+		])
+		panel._on_print_lighting_tuning()
+		var tuning_doc: Variant = JSON.parse_string(
+			FileAccess.get_file_as_string(
+				"res://.tmp/lighting_tuning.json"))
+		var tuning_ok: bool = tuning_doc is Dictionary \
+			and tuning_doc.get("settings", {}) is Dictionary \
+			and tuning_doc["settings"].size() >= 10 \
+			and tuning_doc.get("derived", {}) is Dictionary
+		checks.append("光照参数打印并写入 .tmp/lighting_tuning.json：%s" % [
+			str(tuning_ok)])
+
+	var spring := main.get_node_or_null("SpringWorldLighting")
+	if spring != null:
+		WorldWeather.set_fog_force(1)
+		spring._update_fog(7.0, 0.0)
+		checks.append("视觉雾层在满强度时显示：%s" % [
+			str(
+				spring.fog_layer != null
+				and spring.fog_layer.visible
+				and is_equal_approx(
+					float(spring.fog_material.get_shader_parameter(
+						"fog_intensity")),
+					1.0))])
+		spring._update_fog(6.25, 0.0)
+		checks.append("视觉雾层参与 30 分钟淡入：%s" % [
+			str(is_equal_approx(
+				float(spring.fog_material.get_shader_parameter(
+					"fog_intensity")),
+				0.5))])
+		spring._update_fog(9.0, 0.0)
+		checks.append("视觉雾层在 09:00 隐藏：%s" % [
+			str(not spring.fog_layer.visible)])
+		WorldWeather.set_fog_force(-1)
+		var midnight: Dictionary = spring._sample_light_state(2.0)
+		var before_sunrise: Dictionary = spring._sample_light_state(
+			SUNRISE_HOUR - 0.001)
+		var sunrise: Dictionary = spring._sample_light_state(SUNRISE_HOUR)
+		var dawn: Dictionary = spring._sample_light_state(6.5)
+		var morning: Dictionary = spring._sample_light_state(7.0)
+		var noon: Dictionary = spring._sample_light_state(12.0)
+		var evening: Dictionary = spring._sample_light_state(18.5)
+		var sunset: Dictionary = spring._sample_light_state(SUNSET_HOUR)
+		var after_sunset: Dictionary = spring._sample_light_state(
+			SUNSET_HOUR + 0.001)
+		var dawn_color: Color = dawn["sun_color"]
+		var evening_color: Color = evening["sun_color"]
+		var sunrise_color: Color = sunrise["sun_color"]
+		var noon_color: Color = noon["sun_color"]
+		var sunset_color: Color = sunset["sun_color"]
+		checks.append("清晨太阳偏红：%s" % [
+			str(dawn_color.r - dawn_color.g > 0.35)])
+		checks.append("傍晚太阳偏红：%s" % [
+			str(evening_color.r - evening_color.g > 0.25)])
+		checks.append("日出最红、正午最白、日落最红：%s" % [
+			str(
+				sunrise_color.r - sunrise_color.g > 0.45
+				and sunset_color.r - sunset_color.g > 0.45
+				and noon_color.r - noon_color.b < 0.08)])
+		checks.append("太阳只在 06:25–19:25 发光：%s（%.4f→%.4f / %.4f→%.4f）" % [
+			str(
+				is_zero_approx(float(before_sunrise["sun_energy"]))
+				and float(sunrise["sun_energy"]) > 0.0
+				and float(sunset["sun_energy"]) > 0.0
+				and is_zero_approx(float(after_sunset["sun_energy"]))),
+			float(before_sunrise["sun_energy"]),
+			float(sunrise["sun_energy"]),
+			float(sunset["sun_energy"]),
+			float(after_sunset["sun_energy"]),
+		])
+		checks.append("太阳能量晨增暮减：%s" % [
+			str(
+				float(sunrise["sun_energy"]) < float(morning["sun_energy"])
+				and float(morning["sun_energy"]) < float(noon["sun_energy"])
+				and float(sunset["sun_energy"]) < float(evening["sun_energy"])
+				and float(evening["sun_energy"]) < float(noon["sun_energy"]))])
+		var night_exposure := float(midnight["exposure"])
+		var day_exposure := float(noon["exposure"])
+		checks.append("夜间曝光低于白天且保持可辨识：%s（%.2f < %.2f）" % [
+			str(
+				night_exposure < day_exposure
+				and night_exposure <= 0.62),
+			night_exposure,
+			day_exposure,
+		])
+		checks.append("夜间环境亮度已降低：%s（%.2f）" % [
+			str(float(midnight["sky_energy"]) <= 0.05),
+			float(midnight["sky_energy"]),
+		])
+		var softness := float(spring.config.get(
+			"sun", {}).get("wall_facing_softness", 0.08))
+		var wall_at_1130 := smoothstep(
+			-softness,
+			softness,
+			spring._sun_to_screen_direction(11.5).y)
+		var wall_at_1230 := smoothstep(
+			-softness,
+			softness,
+			spring._sun_to_screen_direction(12.5).y)
+		var wall_at_1330 := smoothstep(
+			-softness,
+			softness,
+			spring._sun_to_screen_direction(13.5).y)
+		var wall_at_1400 := smoothstep(
+			-softness,
+			softness,
+			spring._sun_to_screen_direction(14.0).y)
+		checks.append(
+			"墙面背光变化连续且单调：%s（%.2f→%.2f→%.2f→%.2f）" % [
+				str(
+					wall_at_1130 < 0.02
+					and wall_at_1130 < wall_at_1230
+					and wall_at_1230 < wall_at_1330
+					and wall_at_1330 < wall_at_1400
+					and wall_at_1400 > 0.98),
+				wall_at_1130,
+				wall_at_1230,
+				wall_at_1330,
+				wall_at_1400,
+			])
+		var lodge: Building = null
+		for building in main.get_node("World").buildings:
+			if building.id == "lodge_ordinary":
+				lodge = building
+				break
+		var materials: Array = spring.building_materials.get(lodge, [])
+		if materials.size() >= 2:
+			var wall_material := materials[0] as ShaderMaterial
+			var roof_material := materials[1] as ShaderMaterial
+			checks.append("墙面排除自身投影并启用背光整面判定：%s / %s" % [
+				str(bool(wall_material.get_shader_parameter(
+					"ignore_self_projected_shadow"))),
+				str(bool(wall_material.get_shader_parameter(
+					"apply_wall_facing_gate"))),
+			])
+			checks.append("屋顶排除自身地面投影：%s" % [
+				str(bool(roof_material.get_shader_parameter(
+					"ignore_self_projected_shadow")))])
+			checks.append("墙面整面渐变宽度已写入材质：%s（%.3f）" % [
+				str(is_equal_approx(
+					float(wall_material.get_shader_parameter(
+						"wall_facing_softness")),
+					softness)),
+				float(wall_material.get_shader_parameter(
+					"wall_facing_softness")),
+			])
+		var world := main.get_node("World")
+		var terrain_material := lodge.ground_terrain.material as ShaderMaterial \
+			if lodge != null and lodge.ground_terrain != null else null
+		var previous_view := int(world.view_mode)
+		world.set_view_mode(World.ViewMode.ROOF)
+		var roof_visible := lodge.ground_terrain.visible \
+			if lodge != null and lodge.ground_terrain != null else false
+		world.set_view_mode(World.ViewMode.INTERIOR)
+		var interior_hidden := not lodge.ground_terrain.visible \
+			if lodge != null and lodge.ground_terrain != null else false
+		world.set_view_mode(World.ViewMode.GROUND)
+		var ground_hidden := not lodge.ground_terrain.visible \
+			if lodge != null and lodge.ground_terrain != null else false
+		world.set_view_mode(previous_view)
+		checks.append("新增 ground 地形层仅屋顶视图显示：%s（%s / %s / %s）" % [
+			str(roof_visible and interior_hidden and ground_hidden),
+			str(roof_visible),
+			str(interior_hidden),
+			str(ground_hidden),
+		])
+		checks.append("ground 层使用地面光照材质：%s" % [
+			str(
+				terrain_material != null
+				and spring.ground_materials.has(terrain_material)
+				and terrain_material.shader != null
+				and terrain_material.shader.resource_path.ends_with(
+					"spring_tile.gdshader")
+				and terrain_material.get_shader_parameter(
+					"normal_texture") != null)])
+		spring._update_window_effects(
+			midnight,
+			spring._sun_to_screen_direction(1.0),
+			1.0)
+		var portal_entry: Dictionary = spring.portal_entries.get(lodge, {})
+		var emission_materials: Array = portal_entry.get(
+			"emission_materials", [])
+		var lamp_config: Dictionary = DataRegistry.get_building(
+			"street_lamp").get("street_lamp_lighting", {})
+		var lamp_color := Color.from_string(
+			str(lamp_config.get("color", "#ffd36a")),
+			Color("#ffd36a"))
+		var expected_spill_range := 17.5
+		var expected_spill_energy := float(
+			lamp_config.get("player_energy", 2.6)) * 0.09
+		var expected_spill_height := float(
+			lamp_config.get("height_px", 44.0))
+		var expected_head_energy := float(
+			lamp_config.get("glow_energy", 1.0)) * 0.3
+		var window_lamp_state: Dictionary = spring._update_lamp_state(
+			1.0,
+			float(midnight["sun_energy"]))
+		var shadow_count := int(window_lamp_state.get("shadow_count", 0))
+		var window_light_indices: Array[int] = []
+		var all_lights: Array = window_lamp_state.get("lights", [])
+		for index in range(all_lights.size()):
+			var light_spec: Dictionary = all_lights[index]
+			if bool(light_spec.get("window_light", false)):
+				window_light_indices.append(index)
+		var window_light_ok := window_light_indices.size() >= 2 \
+			and emission_materials.size() >= 2
+		var window_positions: Array[Vector2] = []
+		for sprite_value in portal_entry.get("emission_sprites", []):
+			var window_sprite := sprite_value as Sprite2D
+			if window_sprite != null:
+				window_positions.append(window_sprite.global_position)
+		if window_light_ok:
+			var emission_material := emission_materials[0] as ShaderMaterial
+			var emission_sprite := portal_entry.get(
+				"emission_sprites", [])[0] as Sprite2D
+			var emission_color := emission_material.get_shader_parameter(
+				"emission_color") as Color
+			window_light_ok = emission_color.is_equal_approx(lamp_color) \
+				and is_equal_approx(
+					float(emission_material.get_shader_parameter(
+						"emission_energy")),
+					expected_head_energy) \
+				and is_equal_approx(
+					emission_sprite.scale.x * 64.0,
+					19.0)
+			for light_index in window_light_indices:
+				var light_spec: Dictionary = all_lights[light_index]
+				var matches_window_position := false
+				for window_position in window_positions:
+					if (light_spec["position"] as Vector2).is_equal_approx(
+							window_position):
+						matches_window_position = true
+						break
+				window_light_ok = window_light_ok \
+					and light_index >= shadow_count \
+					and matches_window_position \
+					and (light_spec["color"] as Color).is_equal_approx(
+						lamp_color) \
+					and is_equal_approx(
+						float(light_spec["energy"]),
+						expected_spill_energy) \
+					and is_equal_approx(
+						float(light_spec["range"]),
+						expected_spill_range) \
+					and is_equal_approx(
+						float(light_spec["attenuation_range"]),
+						expected_spill_range * 1.75) \
+					and is_equal_approx(
+						float(light_spec["attenuation_power"]),
+						4.0) \
+					and is_equal_approx(
+						float(light_spec["attenuation_curve"]),
+						2.0) \
+					and is_equal_approx(
+						float(light_spec["ground_ellipse_aspect"]),
+						1.0) \
+					and is_equal_approx(
+						float(light_spec["height"]),
+						expected_spill_height)
+		checks.append("窗户矩形灯头光 + 无阴影路灯局部光：%s（%d 盏）" % [
+			str(window_light_ok),
+			window_light_indices.size(),
+		])
+
+	var failed := 0
+	for line in checks:
+		print("[weather-event-check] %s" % line)
+		if line.contains("false"):
+			failed += 1
+	print("[weather-event-check] 结果：%s（失败 %d）" % [
+		"通过" if failed == 0 else "失败",
+		failed,
+	])
+	get_tree().quit(0 if failed == 0 else 1)

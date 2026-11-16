@@ -49,4 +49,4 @@ func remove_member(customer: Node2D) -> void:
 
 
 func is_split_roll() -> bool:
-	return randf() < split_chance
+	return DevEvents.roll("visitor.split_party", split_chance)

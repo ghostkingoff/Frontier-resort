@@ -35,24 +35,6 @@
         "interior": "res://art/characters/buildings/shop_small/interior.png",
         "roof": "res://art/characters/buildings/shop_small/roof.png",
         "walk_mask": "res://art/characters/buildings/shop_small/canwalk.png",
-        "light_roof": "res://art/characters/buildings/shop_small/light_roof.png",
-        "light_spill": "res://art/characters/buildings/shop_small/light_spill.png",
-        "lighting": {
-          "window_scale": 0.8,
-          "window_halo_radius_px": 8,
-          "lamp_scale": 0.8,
-          "lamp_head_radius_px": 8,
-          "lamp_color": "#ffd36a",
-          "lamps": [
-            {
-              "source": [114, 179, 134, 179],
-              "left": [113, 178, 62, 229],
-              "right": [135, 178, 186, 229]
-            }
-          ]
-        },
-        "light_roof_origin": [32, 107],
-        "light_spill_origin": [32, 111],
         "origin": [0, 107]
       },
       "description": "开局就能建的小店。"
@@ -74,6 +56,67 @@
     { "id": "amenity_toilet", "name": "公共卫生间", "category": "other", "footprint": [2, 2], "unlock_fame": 0, "cost": 8000, "open_hour": 0, "close_hour": 24, "spend": 0, "mood_bonus": 8, "staff_slots": 0, "staff_wage": 0, "service": "toilet", "sprite": { "atlas": "res://art/placeholder/tiles/house.png", "rect": [384, 0, 64, 64] }, "description": "客人使用后不花钱，但心情会变好。" },
     { "id": "amenity_cleaning", "name": "保洁间", "category": "other", "footprint": [2, 2], "unlock_fame": 0, "cost": 8000, "open_hour": 0, "close_hour": 24, "spend": 0, "mood_bonus": 0, "staff_slots": 2, "staff_wage": 400, "service": "cleaning", "sprite": { "atlas": "res://art/placeholder/tiles/house.png", "rect": [256, 0, 64, 64] }, "description": "雇保洁后他们会分白班/夜班清扫附近约 40 格内的垃圾。" },
     { "id": "amenity_bike", "name": "共享单车租借所", "category": "other", "footprint": [3, 2], "unlock_fame": 400, "cost": 20000, "open_hour": 0, "close_hour": 24, "spend": 50, "mood_bonus": 3, "staff_slots": 0, "staff_wage": 0, "service": "bike", "sprite": { "atlas": "res://art/placeholder/tiles/house.png", "rect": [64, 0, 64, 64] }, "description": "客人租车后移动速度大幅提升。" },
-    { "id": "street_lamp", "capacity_base": 0, "name": "路灯", "category": "other", "footprint": [1, 1], "unlock_fame": 0, "cost": 1000, "open_hour": 20, "close_hour": 4, "max_level": 1, "spend": 0, "mood_bonus": 0, "staff_slots": 0, "staff_wage": 0, "rotatable": true, "has_interior": false, "light_shape": "circle", "light_radius_cells": 2.0, "light_on_hour": 20.0, "sprite": { "atlas": "res://art/generated/lamp_dirs.png", "rect": [0, 0, 16, 16], "dir_rects": [[0, 0, 16, 16], [16, 0, 16, 16], [32, 0, 16, 16], [48, 0, 16, 16]] }, "description": "不挣钱，只有照明：20:00 点亮、04:00 熄灭。在详情里可以旋转朝向，灯头与灯光一起转向。" }
+    {
+      "id": "street_lamp",
+      "capacity_base": 0,
+      "name": "路灯",
+      "category": "other",
+      "footprint": [1, 1],
+      "unlock_fame": 0,
+      "cost": 1000,
+      "open_hour": 18,
+      "close_hour": 8,
+      "max_level": 1,
+      "spend": 0,
+      "mood_bonus": 0,
+      "staff_slots": 0,
+      "staff_wage": 0,
+      "rotatable": true,
+      "has_interior": false,
+      "lighting_backend": "next",
+      "lighting_kind": "street_lamp",
+      "light_shape": "circle",
+      "light_radius_cells": 2.0,
+      "light_on_hour": 18.0,
+      "light_off_hour": 8.0,
+      "light_fade_hours": 0.12,
+      "sprite_layers": {
+        "ground": "res://art/characters/buildings/street_lamp/layers/layer.png",
+        "wall": "res://art/characters/buildings/street_lamp/layers/wall.png",
+        "roof": "res://art/characters/buildings/street_lamp/layers/roof.png",
+        "light_mask": "res://art/characters/buildings/street_lamp/layers/light.png",
+        "wall_normal": "res://art/characters/buildings/street_lamp/lighting/wall_n.png",
+        "wall_specular": "res://art/characters/buildings/street_lamp/lighting/wall_s.png",
+        "wall_occlusion": "res://art/characters/buildings/street_lamp/lighting/wall_o.png",
+        "roof_normal": "res://art/characters/buildings/street_lamp/lighting/roof_n.png",
+        "roof_specular": "res://art/characters/buildings/street_lamp/lighting/roof_s.png",
+        "roof_occlusion": "res://art/characters/buildings/street_lamp/lighting/roof_o.png",
+        "origin": [16, 32],
+        "canvas": [64, 64],
+        "wall_foot_y_px": 50.0,
+        "shadow_proxy": "res://art/characters/buildings/street_lamp/shadow_proxy.glb"
+      },
+      "street_lamp_lighting": {
+        "head_local": [15.5, -25.5],
+        "height_px": 44.0,
+        "shadow_proxy_height_scale": 0.54,
+        "point_height_px": 18.0,
+        "range_px": 64.0,
+        "point_energy": 0.80,
+        "player_energy": 2.6,
+        "spot_range_px": 140.0,
+        "spot_angle_degrees": 84.0,
+        "shadow_energy": 0.0,
+        "color": "#ffd36a",
+        "glow_radius_px": 12.0,
+        "glow_energy": 1.0,
+        "point_pool_scale_x": 1.45,
+        "point_pool_scale_y": 0.85,
+        "shadow_max_length_px": 110.0,
+        "shadow_opacity": 0.55,
+        "shadow_edge_softness": 0.45
+      },
+      "description": "不挣钱，只有照明：18:00 点亮、次日 08:00 熄灭。底座周围形成固定椭圆光池并产生实时地面阴影，旋转只改变灯具外观。"
+    }
   ]
 }

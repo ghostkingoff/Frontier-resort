@@ -2,13 +2,11 @@ extends Node2D
 class_name Building
 
 const JANITOR := preload("res://scripts/customers/janitor.gd")
-const BuildingLightingRuntime := preload("res://scripts/world/building_lighting.gd")
-const LIGHT_ON_EARLIEST := 20.0    # 20:00 起陆续开灯
-const LIGHT_ON_LATEST := 20.75     # 20:45 全部亮起
-const LIGHT_LAYER_SPILL := 1
-const LIGHT_LAYER_ROOF := 2
+const StreetLampLightRuntime := preload("res://scripts/world/lighting/street_lamp_light.gd")
+const LIGHT_ON_EARLIEST := 18.0    # 18:00 起陆续开灯
+const LIGHT_ON_LATEST := 18.75     # 18:45 全部亮起
 const LIGHT_LAYER_INTERIOR := 4
-const LIGHT_OFF_SPREAD_HOURS := 0.5   # 打烊后「陆续关灯」的错峰窗口：常规店 24:00 打烊 → 24:00~24:30 之间各自熄灭
+const LIGHT_LAYER_GROUND_LAMP := 32
 # 熄灯时间不再写死：常规店在打烊后 0~0.5 小时里陆续关，跨夜店跟自己的打烊时间（见 update_lights）
 ## 单栋建筑：外观、屋顶开关、同时招待人数、员工、升级、展厅展示位、诊所治疗。
 
@@ -16,6 +14,9 @@ const LIGHT_OFF_SPREAD_HOURS := 0.5   # 打烊后「陆续关灯」的错峰窗�
 const CELL := 32
 const INTERIOR_NAV_STEP := 8
 const INTERIOR_BODY_RADIUS := 8.0
+const INTERIOR_WALK_MASK_COLOR := Color(0.305882, 0.780392, 0.215686, 1.0)
+const INTERIOR_INTERACTION_MASK_COLOR := Color(0.890196, 0.317647, 0.815686, 1.0)
+const MASK_COLOR_TOLERANCE_SQ := 0.12 * 0.12
 const ENERGY_PER_GUEST := 10.0     # 每接待一位客人，全员合计消耗的体力
 const ENERGY_RECOVER_CLOSED := 15.0  # 打烊 / 下班时每游戏小时恢复的体力（夜里一觉基本回满）
 const ENERGY_RECOVER_OPEN := 2.5     # 营业中也慢慢回体力（有 3 名员工就扛得住高峰）
@@ -32,14 +33,19 @@ var world: Node2D
 
 var exterior: Sprite2D
 var ground_face: Sprite2D           # 分层建筑素材的地面层（真实占地）
+var ground_terrain: Sprite2D        # 地面视图之外的永久地形装饰层
 var interior_texture: Sprite2D      # 分层建筑素材的屋内层
 var interior: Node2D
 var roof_root: Node2D            # 屋顶层：外墙 / 侧面 / 正面 / 屋顶，整体盖在屋内层上面
+var wall_texture: Sprite2D
+var roof_texture: Sprite2D
+var window_leak_root: Node2D
 var roof_light_root: Node2D
 var interior_floor: Sprite2D
 var label: Label
 var layer_origin := Vector2i.ZERO
 var interior_walk_cells: Array[Vector2i] = []
+var interior_interaction_cells: Array[Vector2i] = []
 var interior_roam_grid: Dictionary = {}
 var interior_roam_grid_cells: Array[Vector2i] = []
 var interior_walk_image: Image
@@ -71,40 +77,16 @@ var understaffed_notice := false
 
 # 光照后端由适配层持有。以下只读属性是第一阶段给旧冒烟测试和旧工具用的
 # 兼容面，建筑玩法代码不引用任何具体灯光或着色器类型。
-var lighting
+var local_lighting
 var night_light:
 	get:
-		return lighting.night_light if lighting != null else null
-var interior_light:
-	get:
-		return lighting.interior_light if lighting != null else null
-var roof_light:
-	get:
-		return lighting.roof_light if lighting != null else null
-var spill_light:
-	get:
-		return lighting.spill_light if lighting != null else null
-var roof_light_overlay:
-	get:
-		return lighting.roof_light_overlay if lighting != null else null
-var window_halo_overlay:
-	get:
-		return lighting.window_halo_overlay if lighting != null else null
-var spill_light_overlay:
-	get:
-		return lighting.spill_light_overlay if lighting != null else null
-var spill_light_overlays:
-	get:
-		return lighting.spill_light_overlays if lighting != null else []
-var lamp_head_overlays:
-	get:
-		return lighting.lamp_head_overlays if lighting != null else []
+		return local_lighting.point_light if local_lighting != null else null
 var light_on_hour: float:
 	get:
-		return lighting.light_on_hour if lighting != null else LIGHT_ON_LATEST
+		return float(data.get("light_on_hour", LIGHT_ON_LATEST))
 var light_off_hour: float:
 	get:
-		return lighting.light_off_hour if lighting != null else 0.0
+		return float(data.get("light_off_hour", close_hour()))
 var rot_step := 0                      # 可旋转建筑的朝向：0=下、1=左、2=上、3=右（顺时针一档 90°）
 
 
@@ -126,8 +108,12 @@ func setup(building_data: Dictionary, at_cell: Vector2i, world_ref: Node2D) -> v
 
 
 func _build_lights() -> void:
-	lighting = BuildingLightingRuntime.new()
-	lighting.setup(self, world)
+	if str(data.get("lighting_kind", "")) != "street_lamp":
+		return
+	if str(ProjectSettings.get_setting("lighting/system", "legacy")) == "v2":
+		return
+	local_lighting = StreetLampLightRuntime.new()
+	local_lighting.setup(self, world)
 	_relayer()
 
 func is_rotatable() -> bool:
@@ -172,6 +158,8 @@ func _apply_rotation() -> void:
 	#   旋转才是绕建筑中心转，否则会绕角转飞。）
 	if not is_rotatable():
 		return
+	if str(data.get("lighting_kind", "")) == "street_lamp":
+		return
 	var vis: Sprite2D = exterior
 	if vis == null:
 		return   # 备用 3/4 视角没有这条路径，需要时再补
@@ -196,18 +184,19 @@ func light_offset_cells() -> Vector2i:
 
 
 func _refresh_light_position() -> void:
-	if lighting != null:
-		lighting.refresh_positions()
+	if local_lighting != null:
+		local_lighting.refresh_positions()
 
 
 func _exit_tree() -> void:
-	if lighting != null:
-		lighting.release()
-		lighting = null
-	for layer_node in [ground_face, interior, roof_root, roof_light_root]:
+	if local_lighting != null:
+		local_lighting.release()
+		local_lighting = null
+	for layer_node in [ground_face, ground_terrain, interior, roof_root, roof_light_root]:
 		if layer_node != null and is_instance_valid(layer_node):
 			layer_node.queue_free()
 	ground_face = null
+	ground_terrain = null
 	interior = null
 	roof_light_root = null
 	roof_root = null
@@ -221,8 +210,24 @@ func _relayer() -> void:
 
 
 func update_lights(hour: float) -> void:
-	if lighting != null:
-		lighting.update(hour)
+	if local_lighting != null:
+		local_lighting.update(hour)
+
+
+func lamp_energy_at(hour: float) -> float:
+	var on := light_on_hour
+	var off := light_off_hour
+	var h := hour
+	if h < 12.0:
+		h += 24.0
+	if off < on:
+		off += 24.0
+	if h < on:
+		return 0.0
+	var fade := maxf(float(data.get("light_fade_hours", 0.12)), 0.001)
+	if h < off:
+		return smoothstep(on, on + fade, h)
+	return clampf(1.0 - smoothstep(off, off + fade, h), 0.0, 1.0)
 
 
 func _process(delta: float) -> void:
@@ -424,8 +429,16 @@ func _build_visuals() -> void:
 	roof_light_root.z_index = 1
 	roof_root.add_child(roof_light_root)
 	if uses_layers:
-		var roof_texture := _make_layer_sprite(
+		wall_texture = _make_layer_sprite(
+			"WallTexture", str(layered_cfg.get("wall", layered_cfg.get("roof", ""))))
+		roof_texture = _make_layer_sprite(
 			"RoofTexture", str(layered_cfg.get("roof", "")))
+		roof_root.add_child(wall_texture)
+		if str(data.get("lighting_backend", "legacy")) == "next":
+			window_leak_root = Node2D.new()
+			window_leak_root.name = "WindowLeak"
+			window_leak_root.z_index = 1
+			roof_root.add_child(window_leak_root)
 		roof_root.add_child(roof_texture)
 		exterior = roof_texture
 	else:
@@ -450,6 +463,11 @@ func _build_layered_visuals(cfg: Dictionary) -> void:
 	ground_face = _make_layer_sprite("GroundLayer", str(cfg.get("ground", "")))
 	ground_face.z_index = -1
 	add_child(ground_face)
+	var terrain_path := str(cfg.get("ground_terrain", ""))
+	if terrain_path != "" and ResourceLoader.exists(terrain_path):
+		ground_terrain = _make_layer_sprite("GroundTerrainLayer", terrain_path)
+		ground_terrain.z_index = 1
+		add_child(ground_terrain)
 	_load_interior_walk_cells(cfg)
 
 
@@ -479,6 +497,9 @@ func _register_global_layers() -> void:
 	if ground_face != null:
 		ground_face.reparent(world.ground_sort, true)
 		ground_face.z_index = 0
+	if ground_terrain != null:
+		ground_terrain.reparent(world.map_layer_root, true)
+		ground_terrain.z_index = 1
 	if label != null and label.get_parent() != world.outdoor_sort:
 		label.reparent(world.outdoor_sort, true)
 		label.z_index = 2
@@ -486,6 +507,7 @@ func _register_global_layers() -> void:
 
 func _load_interior_walk_cells(cfg: Dictionary) -> void:
 	interior_walk_cells.clear()
+	interior_interaction_cells.clear()
 	interior_roam_grid.clear()
 	interior_roam_grid_cells.clear()
 	interior_walk_image = null
@@ -506,18 +528,33 @@ func _load_interior_walk_cells(cfg: Dictionary) -> void:
 	var required := int(ceil(float(samples_per_side * samples_per_side) * 0.35))
 	for cy in range(footprint.y):
 		for cx in range(footprint.x):
-			var opaque := 0
+			var walk_samples := 0
+			var interaction_samples := 0
 			for sy in range(0, CELL, sample_step):
 				for sx in range(0, CELL, sample_step):
 					var px := layer_origin.x + cx * CELL + sx
 					var py := layer_origin.y + cy * CELL + sy
 					if px < 0 or py < 0 or px >= image.get_width() or py >= image.get_height():
 						continue
-					if image.get_pixel(px, py).a > 0.05:
-						opaque += 1
-			if opaque >= required:
+					var color := image.get_pixel(px, py)
+					if _mask_color_matches(color, INTERIOR_WALK_MASK_COLOR):
+						walk_samples += 1
+					elif _mask_color_matches(color, INTERIOR_INTERACTION_MASK_COLOR):
+						interaction_samples += 1
+			if walk_samples >= required:
 				interior_walk_cells.append(Vector2i(cx, cy))
+			if interaction_samples >= required:
+				interior_interaction_cells.append(Vector2i(cx, cy))
 	_build_interior_roam_grid(image)
+
+
+func _mask_color_matches(color: Color, target: Color) -> bool:
+	if color.a <= 0.05:
+		return false
+	var dr := color.r - target.r
+	var dg := color.g - target.g
+	var db := color.b - target.b
+	return dr * dr + dg * dg + db * db <= MASK_COLOR_TOLERANCE_SQ
 
 
 func _build_interior_roam_grid(image: Image) -> void:
@@ -560,7 +597,8 @@ func _mask_clearance(image: Image, center: Vector2, radius: float) -> bool:
 		if sample.x < 0 or sample.y < 0 \
 				or sample.x >= image.get_width() or sample.y >= image.get_height():
 			return false
-		if image.get_pixel(sample.x, sample.y).a <= 0.05:
+		if not _mask_color_matches(
+				image.get_pixel(sample.x, sample.y), INTERIOR_WALK_MASK_COLOR):
 			return false
 	return true
 
@@ -1195,7 +1233,13 @@ func settle_display_sales() -> int:
 		return 0
 	var income := 0
 	var score := display_score()
-	var chance := clampf(0.10 + 0.01 * float(score) + 0.004 * float(GameState.daily_visitors), 0.05, 0.7)
+	var chance := DevEvents.chance(
+		"economy.showroom_sale",
+		clampf(
+			0.10 + 0.01 * float(score)
+				+ 0.004 * float(GameState.daily_visitors),
+			0.05,
+			0.7))
 	for entry in displayed.duplicate():
 		if randf() > chance:
 			continue
@@ -1428,12 +1472,14 @@ func apply_view_mode(mode: int) -> void:
 	var show_ground_layer := mode == World.ViewMode.GROUND
 	if ground_face:
 		ground_face.visible = show_ground_layer
+	if ground_terrain:
+		ground_terrain.visible = show_roof_layer
 	if roof_root:
 		roof_root.visible = show_roof_layer
 	if interior:
 		interior.visible = show_interior_layer
-	if lighting != null:
-		lighting.apply_view_state(show_interior_layer, true)
+	if local_lighting != null:
+		local_lighting.apply_view_state(show_interior_layer, true)
 
 
 func apply_roof_mode(show_roof: bool) -> void:

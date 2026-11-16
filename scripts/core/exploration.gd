@@ -145,11 +145,14 @@ func _generate_world() -> void:
 	# 地形分配：相邻更容易是同一种地形，看起来更自然
 	var order: Array = cells.keys()
 	_shuffle(order)
+	var continuity_chance := DevEvents.chance(
+		"exploration.terrain_continuity",
+		0.55)
 	for cell in order:
 		var terrain := ""
 		for d in DIRS:
 			var n: Vector2i = cell + d
-			if world_map.has(n) and _rng.randf() < 0.55:
+			if world_map.has(n) and _rng.randf() < continuity_chance:
 				terrain = str(world_map[n]["terrain"])
 				break
 		if terrain == "":
@@ -292,6 +295,9 @@ func move_to(cell: Vector2i) -> void:
 	if _check_depletion():
 		return
 	var chance := float(settings().get("event_chance_revisit" if visited else "event_chance_new", 0.5))
+	chance = DevEvents.chance(
+		"exploration.event_revisit" if visited else "exploration.event_new",
+		chance)
 	if _rng.randf() < chance:
 		_trigger_event(messages)
 		return
@@ -306,7 +312,10 @@ func _is_adjacent(a: Vector2i, b: Vector2i) -> bool:
 
 func _find_grey_stone() -> int:
 	var terrain := DataRegistry.get_terrain(terrain_at(current_tile))
-	if _rng.randf() > float(terrain.get("grey_chance", 0.5)):
+	var chance := DevEvents.chance(
+		"exploration.grey_stone",
+		float(terrain.get("grey_chance", 0.5)))
+	if _rng.randf() > chance:
 		return 0
 	var amount: Array = terrain.get("grey_amount", [1, 1])
 	var n := _rng.randi_range(int(amount[0]), int(amount[1]))
@@ -340,6 +349,9 @@ func _setup_transition(from_tile: Vector2i, to_tile: Vector2i, dir: Vector2i) ->
 	var sides := [Vector2i(0, 1), Vector2i(0, -1)] if horizontal else [Vector2i(1, 0), Vector2i(-1, 0)]
 	var tent_dir: Vector2i = sides[_rng.randi() % 2]
 	var merchant_dir: Vector2i = sides[1] if tent_dir == sides[0] else sides[0]
+	var merchant_chance := DevEvents.chance(
+		"exploration.merchant",
+		float(settings().get("merchant_chance", 0.4)))
 	transition = {
 		"from": from_tile,
 		"to": to_tile,
@@ -348,7 +360,7 @@ func _setup_transition(from_tile: Vector2i, to_tile: Vector2i, dir: Vector2i) ->
 		"exit": dir,
 		"tent": tent_dir,
 		"merchant": merchant_dir,
-		"has_merchant": _rng.randf() < float(settings().get("merchant_chance", 0.4)),
+		"has_merchant": _rng.randf() < merchant_chance,
 		"tent_used": false,
 	}
 	transition_cell = -dir
@@ -511,7 +523,16 @@ func choose(index: int) -> void:
 
 	var risk: Dictionary = option.get("risk", {})
 	if not risk.is_empty():
-		var chance := maxf(0.0, float(risk.get("chance", 0.0)) - (PlayerStats.luck_bonus() + luck_bonus) * 0.5)
+		var chance := maxf(
+			0.0,
+			float(risk.get("chance", 0.0))
+				- (PlayerStats.luck_bonus() + luck_bonus) * 0.5)
+		chance = clampf(
+			chance * DevEvents.scale(
+				"exploration.risk_multiplier",
+				1.0),
+			0.0,
+			1.0)
 		if _rng.randf() < chance:
 			text += "\n\n" + str(risk.get("text", ""))
 			if str(risk.get("type", "")) == "monster":
@@ -556,7 +577,15 @@ func _gain_rewards(rewards: Array) -> Array:
 		var once := bool(r.get("once", false))
 		if once and PlayerStats.achievements.has(item_id):
 			continue
-		var chance := minf(1.0, float(r.get("chance", 1.0)) + luck * 0.3)
+		var chance := minf(
+			1.0,
+			float(r.get("chance", 1.0)) + luck * 0.3)
+		chance = clampf(
+			chance * DevEvents.scale(
+				"exploration.reward_multiplier",
+				1.0),
+			0.0,
+			1.0)
 		if _rng.randf() > chance:
 			continue
 		var count := _rng.randi_range(int(r.get("min", 1)), int(r.get("max", 1)))

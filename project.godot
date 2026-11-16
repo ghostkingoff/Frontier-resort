@@ -13,7 +13,7 @@ config_version=5
 config/name="边境度假村"
 config/description="在奇幻边境从零建起一座度假村。"
 run/main_scene="res://scenes/title.tscn"
-config/features=PackedStringArray("4.7", "Mobile")
+config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
@@ -23,6 +23,8 @@ Settings="*res://scripts/core/settings_manager.gd"
 GameState="*res://scripts/core/game_state.gd"
 PlayerStats="*res://scripts/core/player_stats.gd"
 GameClock="*res://scripts/core/game_clock.gd"
+DevEvents="*res://scripts/core/dev_events.gd"
+WorldWeather="*res://scripts/core/world_weather.gd"
 Exploration="*res://scripts/core/exploration.gd"
 SaveManager="*res://scripts/core/save_manager.gd"
 
@@ -37,8 +39,8 @@ window/stretch/aspect="expand"
 
 [lighting]
 
-building_backend="sdf"
 quality="high"
+system="v2"
 
 [physics]
 
@@ -48,4 +50,3 @@ quality="high"
 
 textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
-renderer/rendering_method="mobile"

@@ -1,0 +1,447 @@
+{
+  "asset_id": "lodge_ordinary",
+  "source_dir": "art/source/buildings/lodge_ordinary",
+  "runtime_dir": "art/characters/buildings/lodge_ordinary",
+  "canvas": [
+    256,
+    256
+  ],
+  "layers": [
+    {
+      "index": 0,
+      "name": "layer",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/layer.png",
+      "alpha_bounds": [
+        32,
+        95,
+        192,
+        129
+      ],
+      "components": []
+    },
+    {
+      "index": 1,
+      "name": "interior",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/interior.png",
+      "alpha_bounds": [
+        61,
+        71,
+        135,
+        127
+      ],
+      "components": []
+    },
+    {
+      "index": 2,
+      "name": "portal",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/portal.png",
+      "alpha_bounds": [
+        77,
+        174,
+        102,
+        25
+      ],
+      "components": [
+        {
+          "bounds": [
+            77,
+            174,
+            19,
+            19
+          ],
+          "center": [
+            86.0,
+            183.0
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 361
+        },
+        {
+          "bounds": [
+            120,
+            174,
+            17,
+            25
+          ],
+          "center": [
+            128.0,
+            186.0
+          ],
+          "color": "#FF9A3C",
+          "pixel_count": 425
+        },
+        {
+          "bounds": [
+            160,
+            174,
+            19,
+            19
+          ],
+          "center": [
+            169.0,
+            183.0
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 361
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "canwalk",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/canwalk.png",
+      "alpha_bounds": [
+        70,
+        113,
+        118,
+        79
+      ],
+      "components": []
+    },
+    {
+      "index": 4,
+      "name": "ground",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/ground.png",
+      "alpha_bounds": [
+        42,
+        122,
+        171,
+        95
+      ],
+      "components": []
+    },
+    {
+      "index": 5,
+      "name": "wall",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/wall.png",
+      "alpha_bounds": [
+        51,
+        122,
+        158,
+        84
+      ],
+      "components": []
+    },
+    {
+      "index": 6,
+      "name": "roof",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/roof.png",
+      "alpha_bounds": [
+        52,
+        34,
+        152,
+        124
+      ],
+      "components": []
+    },
+    {
+      "index": 7,
+      "name": "light",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/light.png",
+      "alpha_bounds": [
+        77,
+        132,
+        102,
+        61
+      ],
+      "components": [
+        {
+          "bounds": [
+            121,
+            132,
+            6,
+            6
+          ],
+          "center": [
+            123.5,
+            134.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 36
+        },
+        {
+          "bounds": [
+            129,
+            132,
+            6,
+            6
+          ],
+          "center": [
+            131.5,
+            134.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 36
+        },
+        {
+          "bounds": [
+            121,
+            139,
+            6,
+            4
+          ],
+          "center": [
+            123.5,
+            140.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 24
+        },
+        {
+          "bounds": [
+            129,
+            139,
+            6,
+            4
+          ],
+          "center": [
+            131.5,
+            140.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 24
+        },
+        {
+          "bounds": [
+            109,
+            171,
+            13,
+            12
+          ],
+          "center": [
+            115.0,
+            176.5
+          ],
+          "color": "#DEE80A",
+          "pixel_count": 42
+        },
+        {
+          "bounds": [
+            77,
+            174,
+            9,
+            10
+          ],
+          "center": [
+            81.0,
+            178.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 90
+        },
+        {
+          "bounds": [
+            87,
+            174,
+            9,
+            10
+          ],
+          "center": [
+            91.0,
+            178.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 90
+        },
+        {
+          "bounds": [
+            160,
+            174,
+            9,
+            10
+          ],
+          "center": [
+            164.0,
+            178.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 90
+        },
+        {
+          "bounds": [
+            170,
+            174,
+            9,
+            10
+          ],
+          "center": [
+            174.0,
+            178.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 90
+        },
+        {
+          "bounds": [
+            77,
+            185,
+            9,
+            8
+          ],
+          "center": [
+            81.0,
+            188.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 72
+        },
+        {
+          "bounds": [
+            87,
+            185,
+            9,
+            8
+          ],
+          "center": [
+            91.0,
+            188.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 72
+        },
+        {
+          "bounds": [
+            160,
+            185,
+            9,
+            8
+          ],
+          "center": [
+            164.0,
+            188.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 72
+        },
+        {
+          "bounds": [
+            170,
+            185,
+            9,
+            8
+          ],
+          "center": [
+            174.0,
+            188.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 72
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "name": "图层 2",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/lodge_ordinary/layers/图层_2.png",
+      "alpha_bounds": [
+        24,
+        22,
+        23,
+        41
+      ],
+      "components": []
+    }
+  ],
+  "proxy_source": "art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v2.blend",
+  "proxy_runtime": "art/characters/buildings/lodge_ordinary/shadow_proxy.glb",
+  "lighting_maps": {
+    "ground.png": "426dc127d2693981deba0424efcde208e25f01c1ddaca8f3adc1a40f0c5f1ac3",
+    "ground_n.png": "3acf9928cfb872b9324e7fcaac092ef1e06f87645f4c0691094ab9ed2de58b90",
+    "ground_o.png": "5f91d07d9087749a129270036c010ff08187519cf33417afbb3778a0a3f130bd",
+    "ground_s.png": "3858a8a3df46b07a313b243a4a7c0950ba6348f9dcba8e8aac0c1c562670c9c6",
+    "roof.png": "d903e955d92403611ed673ad892768c1f6815070a6f54a0c315fdb8dfe7b85d1",
+    "roof_n.png": "96f0be6fb8ac4ea0796e029e67b0ae85ad212fe2ac4b712432e03ca61600f82c",
+    "roof_o.png": "ea7bc2b0a98119328ee32096c029e5b25dbb6ac3afe9079caf0b206354d24b2b",
+    "roof_s.png": "27cae636052aaf8fa026386d6b076e37e79be8ac36ce028d3d65b4ba1a3c31a4",
+    "wall.png": "82853182af84cf57cec92565bc571640cb4a7942af99ad4c30585b5a7ec9f63c",
+    "wall_n.png": "967754b222396cb8063dfdd7080b7f93ae5e1d451e44fcefa10f26b028035990",
+    "wall_o.png": "ee0298d813f63966cfa2890d91bcdfc1f68df24a6e96aed9692e4b41cf8f9c4a",
+    "wall_s.png": "d7b2779033992e9802e0e435e58c3d23ecb3605fa67d142b812f2a3dcfb811f6"
+  },
+  "source_hashes": {
+    "PuTongDuJiaWu.aseprite": "102368b87369b770bfacb8ba2cbcdbb0e55581d7a36c013f63e99a308613601b",
+    "PuTongDuJiaWu.png": "5b391f152c9c9bf07e65a3aae5e5573ff4069e3a230ccb1ab1a91ed35bfe9613",
+    "PuTongDuJiaWu_3DShadowProxy_v2.blend": "1036358586458e4b95e5e8eb9e0d0b650c36cc97c53b64ea29dcc43099414eaf",
+    "PuTongDuJiaWu_3DShadowProxy_v2.blend1": "b102e3766f13b39f6688420b829a7cb2ca9608be19b29bae6d73adb824ca2ab1",
+    "PuTongDuJiaWu_layers_lighting/ground.png": "426dc127d2693981deba0424efcde208e25f01c1ddaca8f3adc1a40f0c5f1ac3",
+    "PuTongDuJiaWu_layers_lighting/ground_n.png": "3acf9928cfb872b9324e7fcaac092ef1e06f87645f4c0691094ab9ed2de58b90",
+    "PuTongDuJiaWu_layers_lighting/ground_o.png": "5f91d07d9087749a129270036c010ff08187519cf33417afbb3778a0a3f130bd",
+    "PuTongDuJiaWu_layers_lighting/ground_s.png": "3858a8a3df46b07a313b243a4a7c0950ba6348f9dcba8e8aac0c1c562670c9c6",
+    "PuTongDuJiaWu_layers_lighting/roof.png": "d903e955d92403611ed673ad892768c1f6815070a6f54a0c315fdb8dfe7b85d1",
+    "PuTongDuJiaWu_layers_lighting/roof_n.png": "96f0be6fb8ac4ea0796e029e67b0ae85ad212fe2ac4b712432e03ca61600f82c",
+    "PuTongDuJiaWu_layers_lighting/roof_o.png": "ea7bc2b0a98119328ee32096c029e5b25dbb6ac3afe9079caf0b206354d24b2b",
+    "PuTongDuJiaWu_layers_lighting/roof_s.png": "27cae636052aaf8fa026386d6b076e37e79be8ac36ce028d3d65b4ba1a3c31a4",
+    "PuTongDuJiaWu_layers_lighting/wall.png": "82853182af84cf57cec92565bc571640cb4a7942af99ad4c30585b5a7ec9f63c",
+    "PuTongDuJiaWu_layers_lighting/wall_n.png": "967754b222396cb8063dfdd7080b7f93ae5e1d451e44fcefa10f26b028035990",
+    "PuTongDuJiaWu_layers_lighting/wall_o.png": "ee0298d813f63966cfa2890d91bcdfc1f68df24a6e96aed9692e4b41cf8f9c4a",
+    "PuTongDuJiaWu_layers_lighting/wall_s.png": "d7b2779033992e9802e0e435e58c3d23ecb3605fa67d142b812f2a3dcfb811f6"
+  },
+  "proxy_metadata": {
+    "source_blend": "E:/godot/模拟经营类/art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v2.blend",
+    "proxy_file": "E:/godot/模拟经营类/art/characters/buildings/lodge_ordinary/shadow_proxy.glb",
+    "uniform_scale": 30.664241330241715,
+    "footprint_px": [
+      144.0,
+      96.0
+    ],
+    "bounds_min_px": [
+      -70.0461,
+      -49.3774,
+      0.0
+    ],
+    "bounds_max_px": [
+      70.0461,
+      49.3774,
+      116.7308
+    ],
+    "size_px": [
+      140.0922,
+      98.7547,
+      116.7308
+    ],
+    "pivot_px": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "ground_y_px": 0.0,
+    "triangle_count": 16,
+    "mesh_count": 1
+  }
+}

@@ -7,11 +7,18 @@ uniform sampler2D occlusion_atlas : filter_nearest, repeat_disable;
 uniform float normal_strength : hint_range(0.0, 2.0) = 0.9;
 uniform float specular_strength : hint_range(0.0, 1.0) = 0.35;
 uniform float occlusion_strength : hint_range(0.0, 1.0) = 0.65;
+uniform vec2 local_light_position = vec2(0.0);
+uniform vec3 local_light_color : source_color = vec3(1.0, 0.82, 0.42);
+uniform float local_light_energy = 0.0;
+uniform float local_light_range_px = 64.0;
+uniform float local_light_height_px = 18.0;
 
 varying vec2 v_map_uv;
+varying vec2 v_world_position;
 
 void vertex() {
 	v_map_uv = UV;
+	v_world_position = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy;
 }
 
 void fragment() {
@@ -20,6 +27,24 @@ void fragment() {
 	NORMAL = normalize(vec3(encoded_normal.x, -encoded_normal.y, encoded_normal.z));
 	float ao = texture(occlusion_atlas, v_map_uv).r;
 	COLOR.rgb *= mix(1.0, ao, occlusion_strength);
+
+	if (local_light_energy > 0.0) {
+		vec2 delta = local_light_position - v_world_position;
+		float distance_to_light = length(vec3(
+			delta, local_light_height_px));
+		float attenuation = pow(
+			clamp(1.0 - distance_to_light / max(local_light_range_px, 1.0), 0.0, 1.0),
+			1.35);
+		vec3 to_local_light = normalize(vec3(
+			delta, local_light_height_px));
+		float local_ndotl = clamp(dot(normalize(NORMAL), to_local_light), 0.0, 1.0);
+		vec3 local_direct = local_light_color * local_light_energy
+			* attenuation * mix(0.35, 1.0, local_ndotl);
+		COLOR.rgb = clamp(
+			COLOR.rgb + local_direct * 0.95 + COLOR.rgb * local_direct * 0.65,
+			0.0,
+			1.0);
+	}
 }
 
 void light() {

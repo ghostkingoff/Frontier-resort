@@ -14,6 +14,13 @@
 # tools/ 下截图脚本、自检脚本的输出目录
 .tmp/
 /tmp/
+/0/
+
+# Blender 自动备份
+*.blend1
+
+# 像素角色处理中间产物
+tools/pixel_pipeline/work/
 
 # Python tooling caches
 __pycache__/

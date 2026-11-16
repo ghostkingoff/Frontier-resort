@@ -31,7 +31,6 @@ var walk_occlusion_texture: Texture2D
 var idle_normal_texture: Texture2D
 var idle_specular_texture: Texture2D
 var idle_occlusion_texture: Texture2D
-var light_occluder: LightOccluder2D
 var high_quality := false
 var _using_walk_surface := true
 var controlled := false            # 是否处于自我操纵模式
@@ -80,22 +79,6 @@ func _update_surface_frame_uv() -> void:
 		1.0 / float(rows)))
 
 
-func _build_light_occluder() -> void:
-	var polygon := OccluderPolygon2D.new()
-	var points := PackedVector2Array()
-	var center := Vector2(0.0, -7.0)
-	for index in range(12):
-		var angle := TAU * float(index) / 12.0
-		points.append(center + Vector2(cos(angle) * 7.0, sin(angle) * 13.0))
-	polygon.polygon = points
-	light_occluder = LightOccluder2D.new()
-	light_occluder.name = "PlayerLightOccluder"
-	light_occluder.occluder = polygon
-	light_occluder.sdf_collision = true
-	light_occluder.occluder_light_mask = HIGH_LIGHT_MASK
-	add_child(light_occluder)
-
-
 func _build_sprite() -> void:
 	sprite = Sprite2D.new()
 	sprite.name = "Sprite"
@@ -126,8 +109,6 @@ func _build_sprite() -> void:
 		_activate_surface_set("walk", walk_normal_texture,
 			walk_specular_texture, walk_occlusion_texture)
 	add_child(sprite)
-	if high_quality:
-		_build_light_occluder()
 
 
 func _build_label() -> void:
@@ -418,5 +399,3 @@ func _apply_player_light_mask(base_mask: int) -> void:
 	light_mask = effective_mask
 	if sprite != null:
 		sprite.light_mask = effective_mask
-	if light_occluder != null:
-		light_occluder.visible = base_mask == 1

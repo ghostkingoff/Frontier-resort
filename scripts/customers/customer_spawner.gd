@@ -243,7 +243,9 @@ func _pick_type() -> Dictionary:
 	# 有空房就优先放「会住宿且住得下」的客人：入住客人不计入客流量，
 	# 前期就是靠他们把人撑起来的；没空房 / 没合适的就按普通池子抽
 	var lodge_pool := _build_pool(true)
-	if not lodge_pool.is_empty() and randf() < LODGE_PRIORITY_CHANCE:
+	if not lodge_pool.is_empty() and DevEvents.roll(
+			"visitor.lodge_priority",
+			LODGE_PRIORITY_CHANCE):
 		return lodge_pool[randi() % lodge_pool.size()]
 	var pool := _build_pool(false)
 	if pool.is_empty():
@@ -315,7 +317,9 @@ func _is_special(entry: Dictionary) -> bool:
 func _pick_special() -> Dictionary:
 	# 明星 / 富商：频率打对折，而且每天最多 3 位、同时在场最多 5 位
 	var on_map := specials_on_map()
-	var chance := GameState.star_arrival_chance() * SPECIAL_CHANCE_SCALE
+	var chance := DevEvents.chance(
+		"visitor.star_arrival",
+		GameState.star_arrival_chance() * SPECIAL_CHANCE_SCALE)
 	if chance <= 0.0:
 		return {}
 	if randf() > chance:

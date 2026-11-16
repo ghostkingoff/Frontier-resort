@@ -1,0 +1,40 @@
+{
+  "asset_id": "lodge_ordinary",
+  "interior_light_groups": {
+    "default": {
+      "inherit_building_hours": true
+    }
+  },
+  "portals": [
+    {
+      "id": "front_window_left",
+      "type": "window",
+      "marker_center_local": [54.0, 88.0],
+      "width_px": 19.0,
+      "height_px": 19.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.75,
+      "leak_strength": 1.0
+    },
+    {
+      "id": "front_door",
+      "type": "solid_door",
+      "marker_center_local": [96.0, 91.0],
+      "width_px": 17.0,
+      "height_px": 25.0,
+      "interior_light_group": "",
+      "sun_transmission": 0.0,
+      "leak_strength": 0.0
+    },
+    {
+      "id": "front_window_right",
+      "type": "window",
+      "marker_center_local": [137.0, 88.0],
+      "width_px": 19.0,
+      "height_px": 19.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.75,
+      "leak_strength": 1.0
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "season": "spring",
+  "rain_chance": 0.24,
+  "post_rain_fog_chance": 0.68,
+  "fog_start_hour": 6.0,
+  "fog_full_hour": 6.5,
+  "fog_fade_start_hour": 8.5,
+  "fog_end_hour": 9.0,
+  "fog_color": "#aab9b8",
+  "fog_max_alpha": 0.34,
+  "fog_noise_scale_px": 620.0,
+  "fog_depth_scale_px": 940.0,
+  "fog_drift_speed": [0.006, 0.003],
+  "fog_depth_drift_scale": -0.067
+}
