@@ -20,6 +20,11 @@ var hold_mode := false
 var hold_hour := 12.0
 var hold_fog := false
 var focus_kind := ""
+var player_normal_mode := "normal"
+var lighting_debug_mode := -1
+var player_animation_frame := -1
+var place_debug_lamp := false
+var player_shared_atlas_uv := true
 var capture_marker: Label
 var schedule := [
 	{"name": "title_flow_0625_sunrise.png", "hour": SUNRISE_HOUR, "fog": false},
@@ -65,7 +70,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	frame += 1
-	if frame == 8:
+	if frame == 45:
 		_prepare()
 		_apply_schedule()
 		return
@@ -88,8 +93,53 @@ func _prepare() -> void:
 	world = get_tree().get_first_node_in_group("world")
 	camera = get_viewport().get_camera_2d()
 	spring = get_parent().get_node_or_null("SpringWorldLighting")
+	var spring_lighting := spring as SpringWorldLighting
+	if spring_lighting != null:
+		spring_lighting.reset_player_surface_map_disables()
+		spring_lighting.set_player_shared_atlas_uv(player_shared_atlas_uv)
+		match player_normal_mode:
+			"off":
+				spring_lighting.set_player_surface_map_disabled("normal", true)
+			"smooth":
+				spring_lighting.set_player_smooth_normal_enabled(true)
+			_:
+				pass
+		if lighting_debug_mode >= 0:
+			spring_lighting.set_debug_mode(lighting_debug_mode)
 	camera.set_process(false)
 	camera.zoom = Vector2(2.35, 2.35)
+	if focus_kind in [
+			"player",
+			"player_below_lamp",
+			"player_equal_lamp",
+			"player_half_shadow"]:
+		var player: Node2D = world.player_avatar as Node2D
+		var lamp_for_player: Building = null
+		for building in world.buildings:
+			if building.id == "street_lamp":
+				lamp_for_player = building
+				break
+		if lamp_for_player == null and place_debug_lamp and player != null:
+			lamp_for_player = _place_lamp_near(player.global_position)
+		if player != null:
+			if bool(player.get("inside_reception")):
+				player.leave_reception()
+			var target_offset := Vector2(48.0, 48.0)
+			if focus_kind == "player_below_lamp":
+				target_offset = Vector2(-48.0, -32.0)
+			elif focus_kind == "player_equal_lamp":
+				target_offset = Vector2(48.0, 0.0)
+			elif focus_kind == "player_half_shadow":
+				target_offset = Vector2(48.0, 24.0)
+			var target := player.global_position
+			if lamp_for_player != null:
+				target = lamp_for_player.global_position + target_offset
+				player.detach_to(target)
+			player.set("_facing", 2)
+			player.set_process(false)
+			camera.zoom = Vector2(8.0, 8.0)
+			camera.position = target + Vector2(0.0, -18.0)
+		return
 	if focus_kind == "street_lamp":
 		var lamp: Building = null
 		for building in world.buildings:
@@ -121,6 +171,13 @@ func _apply_schedule() -> void:
 	GameClock.phase = GameClock.Phase.RUNNING
 	GameClock.paused = true
 	GameClock.tick.emit(GameClock.progress, GameClock.current_hour())
+	var player := world.get("player_avatar") as Node2D
+	if player != null:
+		if player_animation_frame >= 0:
+			player.set("_walk_clock", float(player_animation_frame) / 8.0)
+			player.call("_animate", Vector2.LEFT, 0.0)
+		else:
+			player.call("_show_idle_frame", false)
 	var panel := get_parent().get_node_or_null(
 		"LightingV2DebugPanel") as LightingV2DebugPanel
 	if panel != null:
@@ -154,6 +211,34 @@ func _parse_capture_args() -> void:
 			hold_fog = arg.trim_prefix("--hold-fog=") == "1"
 		elif arg.begins_with("--focus="):
 			focus_kind = arg.trim_prefix("--focus=")
+		elif arg.begins_with("--player-normal="):
+			player_normal_mode = arg.trim_prefix("--player-normal=")
+		elif arg.begins_with("--lighting-debug="):
+			lighting_debug_mode = int(arg.trim_prefix("--lighting-debug="))
+		elif arg.begins_with("--player-frame="):
+			player_animation_frame = clampi(
+				int(arg.trim_prefix("--player-frame=")),
+				0,
+				3)
+		elif arg == "--debug-place-lamp":
+			place_debug_lamp = true
+		elif arg.begins_with("--player-shared-atlas-uv="):
+			player_shared_atlas_uv = \
+				arg.trim_prefix("--player-shared-atlas-uv=") != "0"
+
+
+func _place_lamp_near(position: Vector2) -> Building:
+	var preferred: Vector2i = world.world_to_cell(position) + Vector2i(1, 0)
+	var footprint := Vector2i(1, 1)
+	for radius in range(0, 8):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var cell: Vector2i = preferred + Vector2i(dx, dy)
+				if world.can_place(cell, footprint):
+					return world.place_building("street_lamp", cell) as Building
+	return null
 
 
 func _create_capture_marker() -> void:

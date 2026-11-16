@@ -4,6 +4,10 @@ render_mode unshaded;
 uniform sampler2D normal_texture : filter_linear, repeat_disable;
 uniform sampler2D specular_texture : filter_linear, repeat_disable;
 uniform sampler2D occlusion_texture : filter_linear, repeat_disable;
+uniform sampler2D normal_texture_nearest : filter_nearest, repeat_disable;
+uniform sampler2D specular_texture_nearest : filter_nearest, repeat_disable;
+uniform sampler2D occlusion_texture_nearest : filter_nearest, repeat_disable;
+uniform bool use_nearest_surface = false;
 uniform sampler2D sun_shadow_texture : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_0 : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_1 : filter_linear, repeat_disable;
@@ -11,6 +15,7 @@ uniform sampler2D lamp_shadow_texture_2 : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_3 : filter_linear, repeat_disable;
 
 uniform vec4 atlas_frame_uv = vec4(0.0, 0.0, 1.0, 1.0);
+uniform bool use_shared_atlas_uv = false;
 uniform bool receive_projected_shadow = false;
 uniform bool ignore_self_projected_shadow = false;
 uniform vec4 self_shadow_world_rect = vec4(
@@ -18,6 +23,10 @@ uniform vec4 self_shadow_world_rect = vec4(
 uniform bool apply_wall_facing_gate = false;
 uniform vec2 wall_facing_normal = vec2(0.0, 1.0);
 uniform float wall_facing_softness : hint_range(0.001, 0.25) = 0.08;
+uniform bool apply_character_facing_gate = false;
+uniform vec2 character_facing_anchor_world = vec2(0.0);
+uniform float character_shadow_transition_px : hint_range(0.1, 128.0) = 48.0;
+uniform float character_sun_transition : hint_range(0.001, 0.5) = 0.08;
 uniform bool clip_to_normal_alpha = true;
 uniform float canvas_height_px = 256.0;
 uniform float surface_foot_uv_y = 1.0;
@@ -57,7 +66,18 @@ void vertex() {
 
 void fragment() {
 	vec4 base = texture(TEXTURE, UV);
-	vec4 normal_sample = texture(normal_texture, v_map_uv);
+	vec2 map_uv = use_shared_atlas_uv ? UV : v_map_uv;
+	if (!use_shared_atlas_uv
+			&& (atlas_frame_uv.z < 0.999 || atlas_frame_uv.w < 0.999)) {
+		vec2 atlas_size = vec2(textureSize(normal_texture, 0));
+		vec2 half_texel = 0.5 / atlas_size;
+		vec2 frame_min = atlas_frame_uv.xy + half_texel;
+		vec2 frame_max = atlas_frame_uv.xy + atlas_frame_uv.zw - half_texel;
+		map_uv = clamp(v_map_uv, frame_min, frame_max);
+	}
+	vec4 normal_sample = use_nearest_surface
+		? texture(normal_texture_nearest, map_uv)
+		: texture(normal_texture, map_uv);
 	float alpha_mask = base.a;
 	if (clip_to_normal_alpha) {
 		alpha_mask *= normal_sample.a;
@@ -73,8 +93,12 @@ void fragment() {
 		-encoded_normal.y,
 		max(encoded_normal.z, 0.08)));
 
-	float ao = texture(occlusion_texture, v_map_uv).r;
-	float gloss = texture(specular_texture, v_map_uv).r;
+	float ao = use_nearest_surface
+		? texture(occlusion_texture_nearest, map_uv).r
+		: texture(occlusion_texture, map_uv).r;
+	float gloss = use_nearest_surface
+		? texture(specular_texture_nearest, map_uv).r
+		: texture(specular_texture, map_uv).r;
 	float ambient_ao = mix(1.0, ao, occlusion_strength);
 
 	vec3 to_sun = normalize(sun_direction);
@@ -113,6 +137,12 @@ void fragment() {
 		* step(projected_world.x, self_shadow_world_rect.z)
 		* step(self_shadow_world_rect.y, projected_world.y)
 		* step(projected_world.y, self_shadow_world_rect.w);
+	float self_world_mask = step(
+		self_shadow_world_rect.x,
+		v_world_position.x)
+		* step(v_world_position.x, self_shadow_world_rect.z)
+		* step(self_shadow_world_rect.y, v_world_position.y)
+		* step(v_world_position.y, self_shadow_world_rect.w);
 	sun_visibility_luminance = mix(
 		sun_visibility_luminance,
 		1.0,
@@ -132,6 +162,14 @@ void fragment() {
 			facing);
 	}
 	sun_visibility *= wall_facing_visibility;
+	if (apply_character_facing_gate) {
+		float sun_above_foot = max(-sun_screen_direction.y, 0.0);
+		float character_sun_facing = 1.0 - smoothstep(
+			0.0,
+			character_sun_transition,
+			sun_above_foot);
+		sun_visibility *= character_sun_facing;
+	}
 	vec3 sun_direct = sun_color * sun_energy
 		* sun_ndotl * sun_visibility * mix(0.55, 1.0, ao);
 	vec3 sky_ambient = sky_color * sky_energy * ambient_ao;
@@ -195,6 +233,22 @@ void fragment() {
 				1.0,
 				light_visibility,
 				lamp_shadow_strength);
+			if (ignore_self_projected_shadow) {
+				light_visibility = mix(
+					light_visibility,
+					1.0,
+					self_world_mask);
+			}
+		}
+		if (apply_character_facing_gate) {
+			float foot_below_light = max(
+				character_facing_anchor_world.y - light_world.y,
+				0.0);
+			float light_facing = 1.0 - smoothstep(
+				0.0,
+				character_shadow_transition_px,
+				foot_below_light);
+			light_visibility *= light_facing;
 		}
 		lamp_visibility = max(lamp_visibility, light_visibility);
 

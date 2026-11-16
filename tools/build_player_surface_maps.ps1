@@ -1,5 +1,5 @@
 param(
-    [string]$SourceDir = "E:\素材\aseprite\star2a",
+    [string]$SourceDir = (Join-Path $PSScriptRoot "..\art\source\characters\star2a"),
     [string]$DestDir = (Join-Path $PSScriptRoot "..\art\characters\player\star2a")
 )
 
@@ -44,8 +44,15 @@ function Copy-Frame(
     $graphics.Dispose()
 }
 
-foreach ($suffix in @("n", "s", "o")) {
-    $sourcePath = Join-Path $SourceDir ("star2a_{0}.png" -f $suffix)
+$mapSpecs = @(
+    @{ SourceName = "star2a.png"; OutputSuffix = "" },
+    @{ SourceName = "star2a_n.png"; OutputSuffix = "n" },
+    @{ SourceName = "star2a_s.png"; OutputSuffix = "s" },
+    @{ SourceName = "star2a_o.png"; OutputSuffix = "o" }
+)
+
+foreach ($mapSpec in $mapSpecs) {
+    $sourcePath = Join-Path $SourceDir $mapSpec.SourceName
     $source = [System.Drawing.Bitmap]::FromFile($sourcePath)
     if ($source.Width -ne $sourceWidth -or $source.Height -ne $sourceHeight) {
         $source.Dispose()
@@ -64,8 +71,13 @@ foreach ($suffix in @("n", "s", "o")) {
             Copy-Frame $source $walk $sourceFrame $gameDirection $step 4
         }
     }
+    $walkName = if ($mapSpec.OutputSuffix) {
+        "walk_{0}.png" -f $mapSpec.OutputSuffix
+    } else {
+        "walk.png"
+    }
     $walk.Save(
-        (Join-Path $DestDir ("walk_{0}.png" -f $suffix)),
+        (Join-Path $DestDir $walkName),
         [System.Drawing.Imaging.ImageFormat]::Png
     )
     $walk.Dispose()
@@ -74,10 +86,16 @@ foreach ($suffix in @("n", "s", "o")) {
     foreach ($gameDirection in 0..3) {
         $sourceFrame = $standFrames[$gameDirection]
         Copy-Frame $source $idle $sourceFrame $gameDirection 0 4
-        Copy-Frame $source $idle ($sourceFrame + 1) $gameDirection 1 4
+        $idleFrame = $sourceFrame + 1
+        Copy-Frame $source $idle $idleFrame $gameDirection 1 4
+    }
+    $idleName = if ($mapSpec.OutputSuffix) {
+        "idle_{0}.png" -f $mapSpec.OutputSuffix
+    } else {
+        "idle.png"
     }
     $idle.Save(
-        (Join-Path $DestDir ("idle_{0}.png" -f $suffix)),
+        (Join-Path $DestDir $idleName),
         [System.Drawing.Imaging.ImageFormat]::Png
     )
     $idle.Dispose()

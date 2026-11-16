@@ -66,7 +66,7 @@ func _create_pass(
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	camera.near = 1.0
-	camera.far = 5000.0
+	camera.far = 12000.0
 	camera.current = true
 	world.add_child(camera)
 
@@ -99,10 +99,10 @@ func _create_pass(
 		directional.light_angular_distance = 0.9
 		directional.shadow_bias = 0.035
 		directional.shadow_normal_bias = 1.2
-		directional.shadow_blur = 2.2
+		directional.shadow_blur = 3.0
 		directional.directional_shadow_mode = \
 			DirectionalLight3D.SHADOW_ORTHOGONAL
-		directional.directional_shadow_max_distance = 3000.0
+		directional.directional_shadow_max_distance = 12000.0
 		world.add_child(directional)
 
 	var lamps: Array[SpotLight3D] = []
@@ -124,7 +124,7 @@ func _create_pass(
 			lamp.shadow_enabled = true
 			lamp.shadow_bias = 0.025
 			lamp.shadow_normal_bias = 0.8
-			lamp.shadow_blur = 2.0
+			lamp.shadow_blur = 2.6
 			lamp.shadow_opacity = 0.9
 			lamp.visible = false
 			world.add_child(lamp)

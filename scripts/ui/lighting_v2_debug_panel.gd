@@ -16,6 +16,9 @@ var chance_controls: Dictionary = {}
 var multiplier_controls: Dictionary = {}
 var lighting_tuning_controls: Dictionary = {}
 var lighting_tuning_output: TextEdit
+var player_surface_toggles: Dictionary = {}
+var player_smooth_normal_toggle: CheckButton
+var player_shared_atlas_uv_toggle: CheckButton
 var spring_lighting: SpringWorldLighting
 var _previous_text_input_active := false
 var _owns_text_lock := false
@@ -220,6 +223,42 @@ func _add_lighting_tuning_section() -> void:
 		missing.add_theme_font_size_override("font_size", 16)
 		content.add_child(missing)
 		return
+	var player_map_label := Label.new()
+	player_map_label.text = "角色材质 A/B（可任意组合关闭）"
+	player_map_label.modulate = Color(0.82, 0.9, 0.88, 1.0)
+	player_map_label.add_theme_font_size_override("font_size", 16)
+	content.add_child(player_map_label)
+	for definition in [
+		{"key": "normal", "label": "关闭法线（改用中性平面）"},
+		{"key": "specular", "label": "关闭 Specular（高光）"},
+		{"key": "occlusion", "label": "关闭 Occlusion（环境遮蔽）"},
+	]:
+		var map_kind := str(definition["key"])
+		var toggle := CheckButton.new()
+		toggle.text = str(definition["label"])
+		toggle.add_theme_font_size_override("font_size", 16)
+		toggle.button_pressed = spring_lighting.is_player_surface_map_disabled(
+			map_kind)
+		toggle.toggled.connect(
+			_on_player_surface_map_toggled.bind(map_kind))
+		content.add_child(toggle)
+		player_surface_toggles[map_kind] = toggle
+	player_smooth_normal_toggle = CheckButton.new()
+	player_smooth_normal_toggle.text = "使用平滑法线（A/B）"
+	player_smooth_normal_toggle.add_theme_font_size_override("font_size", 16)
+	player_smooth_normal_toggle.button_pressed = \
+		spring_lighting.player_smooth_normal_enabled
+	player_smooth_normal_toggle.toggled.connect(
+		_on_player_smooth_normal_toggled)
+	content.add_child(player_smooth_normal_toggle)
+	player_shared_atlas_uv_toggle = CheckButton.new()
+	player_shared_atlas_uv_toggle.text = "直接使用图集 UV（A/B）"
+	player_shared_atlas_uv_toggle.add_theme_font_size_override("font_size", 16)
+	player_shared_atlas_uv_toggle.button_pressed = \
+		spring_lighting.player_shared_atlas_uv
+	player_shared_atlas_uv_toggle.toggled.connect(
+		_on_player_shared_atlas_uv_toggled)
+	content.add_child(player_shared_atlas_uv_toggle)
 	var definitions := [
 		{
 			"key": "window_head_opacity",
@@ -380,6 +419,23 @@ func _on_lighting_tuning_changed(
 func _refresh_lighting_tuning_controls() -> void:
 	if spring_lighting == null:
 		return
+	for map_kind in player_surface_toggles.keys():
+		var toggle := player_surface_toggles[map_kind] as CheckButton
+		if toggle != null:
+			toggle.set_block_signals(true)
+			toggle.set_pressed_no_signal(
+				spring_lighting.is_player_surface_map_disabled(str(map_kind)))
+			toggle.set_block_signals(false)
+	if player_smooth_normal_toggle != null:
+		player_smooth_normal_toggle.set_block_signals(true)
+		player_smooth_normal_toggle.set_pressed_no_signal(
+			spring_lighting.player_smooth_normal_enabled)
+		player_smooth_normal_toggle.set_block_signals(false)
+	if player_shared_atlas_uv_toggle != null:
+		player_shared_atlas_uv_toggle.set_block_signals(true)
+		player_shared_atlas_uv_toggle.set_pressed_no_signal(
+			spring_lighting.player_shared_atlas_uv)
+		player_shared_atlas_uv_toggle.set_block_signals(false)
 	var tuning := spring_lighting.get_lighting_tuning()
 	for key in lighting_tuning_controls.keys():
 		var control: Dictionary = lighting_tuning_controls[key]
@@ -394,6 +450,49 @@ func _refresh_lighting_tuning_controls() -> void:
 			slider.set_block_signals(false)
 		if value_label != null:
 			value_label.text = _format_lighting_tuning_value(value, format)
+
+
+func _on_player_surface_map_toggled(
+		disabled: bool,
+		map_kind: String) -> void:
+	if spring_lighting == null:
+		return
+	spring_lighting.set_player_surface_map_disabled(map_kind, disabled)
+	_refresh_player_surface_status()
+
+
+func _on_player_smooth_normal_toggled(enabled: bool) -> void:
+	if spring_lighting == null:
+		return
+	spring_lighting.set_player_smooth_normal_enabled(enabled)
+	_refresh_player_surface_status()
+
+
+func _on_player_shared_atlas_uv_toggled(enabled: bool) -> void:
+	if spring_lighting == null:
+		return
+	spring_lighting.set_player_shared_atlas_uv(enabled)
+	_refresh_player_surface_status()
+
+
+func _refresh_player_surface_status() -> void:
+	if spring_lighting == null or status_label == null:
+		return
+	var states := spring_lighting.player_surface_disables_snapshot()
+	var disabled_names: Array[String] = []
+	if bool(states["normal_disabled"]):
+		disabled_names.append("法线")
+	if bool(states["specular_disabled"]):
+		disabled_names.append("Specular")
+	if bool(states["occlusion_disabled"]):
+		disabled_names.append("Occlusion")
+	if bool(states["smooth_normal_enabled"]):
+		disabled_names.append("平滑法线")
+	if not bool(states["shared_atlas_uv"]):
+		disabled_names.append("旧图集 UV")
+	status_label.text = "角色材质 A/B：%s" % (
+		"原材质" if disabled_names.is_empty()
+		else "启用 " + " / ".join(disabled_names))
 
 
 func _on_print_lighting_tuning() -> void:
@@ -416,6 +515,7 @@ func _on_reset_lighting_tuning() -> void:
 	if spring_lighting == null:
 		return
 	spring_lighting._reset_lighting_tuning()
+	spring_lighting.reset_player_surface_map_disables()
 	_refresh_lighting_tuning_controls()
 	if lighting_tuning_output != null:
 		lighting_tuning_output.text = "光照参数已恢复默认。"
@@ -787,6 +887,7 @@ func _on_reset_all() -> void:
 	WorldWeather.clear_force_overrides()
 	if spring_lighting != null:
 		spring_lighting._reset_lighting_tuning()
+		spring_lighting.reset_player_surface_map_disables()
 	_refresh_all()
 
 

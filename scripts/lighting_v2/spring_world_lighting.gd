@@ -42,11 +42,19 @@ var fog_layer: CanvasLayer
 var fog_rect: ColorRect
 var fog_material: ShaderMaterial
 var player_material: ShaderMaterial
+var _player_surface_mode := ""
+var _player_atlas_frame_uv := Vector4(-1.0, -1.0, 0.0, 0.0)
+var player_normal_disabled := false
+var player_specular_disabled := false
+var player_occlusion_disabled := false
+var player_smooth_normal_enabled := false
+var player_shared_atlas_uv := true
 var region_debug_root: Node2D
 
 var neutral_normal: ImageTexture
 var neutral_specular: ImageTexture
 var neutral_occlusion: ImageTexture
+var flat_black: ImageTexture
 var radial_texture: ImageTexture
 var window_texture: ImageTexture
 var lighting_tuning: Dictionary = {}
@@ -101,6 +109,9 @@ func _process(delta: float) -> void:
 		hour,
 		float(state["sun_energy"]))
 	var player_foot := _player_foot_position()
+	var player_shadow_foot := Vector2(
+		roundf(player_foot.x),
+		roundf(player_foot.y))
 
 	camera = get_viewport().get_camera_2d()
 	if camera != null:
@@ -117,9 +128,9 @@ func _process(delta: float) -> void:
 		})
 	rig.set_lamps(shadow_lights)
 	var actor_signature := _sync_actor_proxies()
-	if player_foot != last_player_foot:
-		rig.set_player_foot(player_foot)
-		last_player_foot = player_foot
+	if player_shadow_foot != last_player_foot:
+		rig.set_player_foot(player_shadow_foot)
+		last_player_foot = player_shadow_foot
 	var player: Node2D = world.player_avatar as Node2D
 	rig.set_player_visible(
 		player != null
@@ -130,7 +141,7 @@ func _process(delta: float) -> void:
 	var shadow_key := _shadow_state_key(
 		sun_screen,
 		lamp_state,
-		player_foot) + "|" + actor_signature
+		player_shadow_foot) + "|" + actor_signature
 	if shadow_key != last_shadow_key:
 		rig.refresh_shadow_maps()
 		last_shadow_key = shadow_key
@@ -350,6 +361,19 @@ func _setup_player_material() -> void:
 		0.72)
 	player.surface_material = player_material
 	player.sprite.material = player_material
+	player_material.set_shader_parameter("use_nearest_surface", true)
+	player_material.set_shader_parameter(
+		"apply_character_facing_gate",
+		true)
+	player_material.set_shader_parameter(
+		"character_shadow_transition_px",
+		48.0)
+	player_material.set_shader_parameter(
+		"character_sun_transition",
+		0.08)
+	player_material.set_shader_parameter(
+		"ignore_self_projected_shadow",
+		true)
 	_sync_player_surface()
 
 
@@ -360,21 +384,112 @@ func _sync_player_surface() -> void:
 	var use_walk := bool(player.get("_using_walk_surface"))
 	var prefix := "walk" if use_walk else "idle"
 	var base := "res://art/characters/player/star2a/"
-	player_material.set_shader_parameter(
-		"normal_texture", load(base + prefix + "_n.png"))
-	player_material.set_shader_parameter(
-		"specular_texture", load(base + prefix + "_s.png"))
-	player_material.set_shader_parameter(
-		"occlusion_texture", load(base + prefix + "_o.png"))
+	if _player_surface_mode != prefix:
+		_player_surface_mode = prefix
+		var normal_path := base + prefix + (
+			"_n_smooth.png" if player_smooth_normal_enabled else "_n.png")
+		if not ResourceLoader.exists(normal_path):
+			normal_path = base + prefix + "_n.png"
+		var normal_map: Texture2D = neutral_normal if player_normal_disabled \
+			else load(normal_path) as Texture2D
+		var specular_map: Texture2D = flat_black if player_specular_disabled \
+			else load(base + prefix + "_s.png") as Texture2D
+		var occlusion_map: Texture2D = neutral_occlusion if player_occlusion_disabled \
+			else load(base + prefix + "_o.png") as Texture2D
+		player_material.set_shader_parameter(
+			"normal_texture", normal_map)
+		player_material.set_shader_parameter(
+			"specular_texture", specular_map)
+		player_material.set_shader_parameter(
+			"occlusion_texture", occlusion_map)
+		player_material.set_shader_parameter(
+			"normal_texture_nearest", normal_map)
+		player_material.set_shader_parameter(
+			"specular_texture_nearest", specular_map)
+		player_material.set_shader_parameter(
+			"occlusion_texture_nearest", occlusion_map)
 	var columns := maxi(player.sprite.hframes, 1)
 	var rows := maxi(player.sprite.vframes, 1)
 	var column: int = player.sprite.frame % columns
 	var row := int(player.sprite.frame / columns)
-	player_material.set_shader_parameter("atlas_frame_uv", Vector4(
+	var frame_uv := Vector4(
 		float(column) / float(columns),
 		float(row) / float(rows),
 		1.0 / float(columns),
-		1.0 / float(rows)))
+		1.0 / float(rows))
+	if frame_uv != _player_atlas_frame_uv:
+		_player_atlas_frame_uv = frame_uv
+		player_material.set_shader_parameter("atlas_frame_uv", frame_uv)
+	player_material.set_shader_parameter(
+		"use_shared_atlas_uv",
+		player_shared_atlas_uv)
+	var foot := _player_foot_position()
+	player_material.set_shader_parameter(
+		"character_facing_anchor_world",
+		foot)
+	player_material.set_shader_parameter(
+		"self_shadow_world_rect",
+		_player_surface_world_rect(player.sprite))
+
+
+func set_player_surface_map_disabled(map_kind: String, disabled: bool) -> void:
+	match map_kind:
+		"normal":
+			player_normal_disabled = disabled
+		"specular":
+			player_specular_disabled = disabled
+		"occlusion":
+			player_occlusion_disabled = disabled
+		_:
+			push_warning("[SpringWorldLighting] 未知角色材质开关：%s" % map_kind)
+			return
+	_player_surface_mode = ""
+	_sync_player_surface()
+
+
+func is_player_surface_map_disabled(map_kind: String) -> bool:
+	match map_kind:
+		"normal":
+			return player_normal_disabled
+		"specular":
+			return player_specular_disabled
+		"occlusion":
+			return player_occlusion_disabled
+	return false
+
+
+func set_player_smooth_normal_enabled(enabled: bool) -> void:
+	player_smooth_normal_enabled = enabled
+	_player_surface_mode = ""
+	_sync_player_surface()
+
+
+func set_player_shared_atlas_uv(enabled: bool) -> void:
+	player_shared_atlas_uv = enabled
+	if player_material != null:
+		player_material.set_shader_parameter(
+			"use_shared_atlas_uv",
+			player_shared_atlas_uv)
+
+
+func reset_player_surface_map_disables() -> void:
+	player_normal_disabled = false
+	player_specular_disabled = false
+	player_occlusion_disabled = false
+	player_smooth_normal_enabled = false
+	player_shared_atlas_uv = true
+	_player_surface_mode = ""
+	_sync_player_surface()
+
+
+func player_surface_disables_snapshot() -> Dictionary:
+	return {
+		"normal_disabled": player_normal_disabled,
+		"specular_disabled": player_specular_disabled,
+		"occlusion_disabled": player_occlusion_disabled,
+		"smooth_normal_enabled": player_smooth_normal_enabled,
+		"shared_atlas_uv": player_shared_atlas_uv,
+	}
 
 
 func _setup_building(building: Building) -> void:
@@ -508,9 +623,15 @@ func _make_surface_material(
 		occlusion_amount: float) -> ShaderMaterial:
 	var material := ShaderMaterial.new()
 	material.shader = SURFACE_SHADER
-	material.set_shader_parameter("normal_texture", load(normal_path))
-	material.set_shader_parameter("specular_texture", load(specular_path))
-	material.set_shader_parameter("occlusion_texture", load(occlusion_path))
+	var normal_map: Texture2D = load(normal_path)
+	var specular_map: Texture2D = load(specular_path)
+	var occlusion_map: Texture2D = load(occlusion_path)
+	material.set_shader_parameter("normal_texture", normal_map)
+	material.set_shader_parameter("specular_texture", specular_map)
+	material.set_shader_parameter("occlusion_texture", occlusion_map)
+	material.set_shader_parameter("normal_texture_nearest", normal_map)
+	material.set_shader_parameter("specular_texture_nearest", specular_map)
+	material.set_shader_parameter("occlusion_texture_nearest", occlusion_map)
 	material.set_shader_parameter(
 		"sun_shadow_texture", rig.get_sun_texture())
 	material.set_shader_parameter(
@@ -563,6 +684,9 @@ func _make_surface_material_from_textures(
 	material.set_shader_parameter("normal_texture", normal_texture)
 	material.set_shader_parameter("specular_texture", specular_texture)
 	material.set_shader_parameter("occlusion_texture", occlusion_texture)
+	material.set_shader_parameter("normal_texture_nearest", normal_texture)
+	material.set_shader_parameter("specular_texture_nearest", specular_texture)
+	material.set_shader_parameter("occlusion_texture_nearest", occlusion_texture)
 	material.set_shader_parameter(
 		"sun_shadow_texture", rig.get_sun_texture())
 	material.set_shader_parameter(
@@ -702,6 +826,7 @@ func lighting_tuning_snapshot() -> Dictionary:
 		"captured_at": Time.get_datetime_string_from_system(),
 		"game_day": GameState.day,
 		"game_time": GameClock.time_text(),
+		"player_surface_disables": player_surface_disables_snapshot(),
 		"settings": tuning,
 		"derived": {
 			"window_ground_energy": lamp_local_energy * float(
@@ -1576,8 +1701,10 @@ func _rebuild_proxies() -> void:
 			height_scale,
 			str(building.data.get("lighting_kind", "")) != "street_lamp")
 	if world.player_avatar != null:
-		rig.add_capsule_proxy(_player_foot_position(), 9.0, 62.0)
-	last_player_foot = _player_foot_position()
+		var foot := _player_foot_position()
+		foot = Vector2(roundf(foot.x), roundf(foot.y))
+		rig.add_capsule_proxy(foot, 9.0, 62.0)
+		last_player_foot = foot
 	last_shadow_key = ""
 
 
@@ -1589,6 +1716,29 @@ func _player_foot_position() -> Vector2:
 	if sprite != null:
 		return sprite.to_global(Vector2(0.0, sprite.get_rect().end.y))
 	return player.global_position + Vector2(0.0, 18.0)
+
+
+func _player_surface_world_rect(sprite: Sprite2D) -> Vector4:
+	if sprite == null:
+		return Vector4(0.0, 0.0, 0.0, 0.0)
+	var local_rect := sprite.get_rect()
+	var corners := [
+		sprite.to_global(local_rect.position),
+		sprite.to_global(Vector2(local_rect.end.x, local_rect.position.y)),
+		sprite.to_global(Vector2(local_rect.position.x, local_rect.end.y)),
+		sprite.to_global(local_rect.end),
+	]
+	var minimum: Vector2 = corners[0]
+	var maximum: Vector2 = corners[0]
+	for corner in corners:
+		var point: Vector2 = corner
+		minimum.x = minf(minimum.x, point.x)
+		minimum.y = minf(minimum.y, point.y)
+		maximum.x = maxf(maximum.x, point.x)
+		maximum.y = maxf(maximum.y, point.y)
+	minimum -= Vector2(4.0, 4.0)
+	maximum += Vector2(4.0, 4.0)
+	return Vector4(minimum.x, minimum.y, maximum.x, maximum.y)
 
 
 func _on_building_placed(building: Building) -> void:
@@ -1615,6 +1765,7 @@ func _make_neutral_textures() -> void:
 	neutral_normal = _make_solid_texture(Color(0.5, 0.5, 1.0, 1.0))
 	neutral_specular = _make_solid_texture(Color(0.15, 0.15, 0.15, 1.0))
 	neutral_occlusion = _make_solid_texture(Color.WHITE)
+	flat_black = _make_solid_texture(Color.BLACK)
 	radial_texture = _make_radial_texture(128)
 	window_texture = _make_window_texture(WINDOW_TEXTURE_SIZE)
 

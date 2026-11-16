@@ -440,6 +440,17 @@ func _run_build_checks() -> void:
 	var player_lighting_ok: bool = player != null and player.high_quality \
 		and player.sprite.material is ShaderMaterial \
 		and player.surface_material.get_shader_parameter("normal_texture") != null \
+		and bool(player.surface_material.get_shader_parameter(
+			"apply_character_facing_gate")) \
+		and bool(player.surface_material.get_shader_parameter(
+			"ignore_self_projected_shadow")) \
+		and bool(player.surface_material.get_shader_parameter(
+			"use_nearest_surface")) \
+		and is_equal_approx(
+			float(player.surface_material.get_shader_parameter(
+				"character_shadow_transition_px")),
+			48.0) \
+		and _player_per_frame_normals_ok(player) \
 		and player.get_node_or_null("PlayerLightOccluder") == null \
 		and player.walk_normal_texture.get_size() == Vector2(192, 192) \
 		and player.idle_normal_texture.get_size() == Vector2(192, 96)
@@ -454,8 +465,10 @@ func _run_build_checks() -> void:
 		and spring_lighting.rig != null \
 		and spring_lighting.rig.sun_pass.get("directional") != null \
 		and (spring_lighting.rig.sun_pass["directional"] as DirectionalLight3D).shadow_enabled \
+		and (spring_lighting.rig.sun_pass["directional"] as DirectionalLight3D).shadow_blur >= 3.0 \
+		and (spring_lighting.rig.sun_pass["directional"] as DirectionalLight3D).directional_shadow_max_distance >= 12000.0 \
 		and spring_lighting.rig.get_sun_texture() != null
-	checks.append("玩家新光照：法线材质 %s｜旧2D遮挡已移除 %s｜3D太阳阴影 %s｜阴影脚底原点 %s" % [
+	checks.append("玩家新光照：逐帧法线与整体背光门控 %s｜旧2D遮挡已移除 %s｜3D柔化太阳阴影 %s｜阴影脚底原点 %s" % [
 		str(player_lighting_ok),
 		str(player.get_node_or_null("PlayerLightOccluder") == null),
 		str(sun_lighting_ok), str(foot_origin_ok)])
@@ -610,6 +623,44 @@ func _finish() -> void:
 	var passed: bool = saved and int(report.get("visitors", 0)) > 0 and int(report.get("wages", 0)) > 0
 	print("[smoke] 结果：%s" % ("通过" if passed else "未通过"))
 	get_tree().quit(0 if passed else 1)
+
+
+func _player_per_frame_normals_ok(player) -> bool:
+	if player == null or player.walk_normal_texture == null \
+			or player.idle_normal_texture == null:
+		return false
+	var walk_image: Image = player.walk_normal_texture.get_image()
+	for direction in range(4):
+		var reference: PackedByteArray = walk_image.get_region(Rect2i(
+			direction * 48,
+			0,
+			48,
+			48)).get_data()
+		var has_variation := false
+		for row in range(1, 4):
+			if walk_image.get_region(Rect2i(
+					direction * 48,
+					row * 48,
+					48,
+					48)).get_data() != reference:
+				has_variation = true
+		if not has_variation:
+			return false
+	var idle_image: Image = player.idle_normal_texture.get_image()
+	for direction in range(4):
+		var top: PackedByteArray = idle_image.get_region(Rect2i(
+				direction * 48,
+				0,
+				48,
+				48)).get_data()
+		var blink: PackedByteArray = idle_image.get_region(Rect2i(
+					direction * 48,
+					48,
+					48,
+				48)).get_data()
+		if top == blink:
+			return false
+	return true
 
 
 func _run_day_night_checks() -> void:

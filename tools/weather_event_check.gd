@@ -88,6 +88,84 @@ func _ready() -> void:
 			and tuning_doc.get("derived", {}) is Dictionary
 		checks.append("光照参数打印并写入 .tmp/lighting_tuning.json：%s" % [
 			str(tuning_ok)])
+		var spring_lighting: SpringWorldLighting = main.get_node_or_null(
+			"SpringWorldLighting") as SpringWorldLighting
+		var player: Node2D = main.get_node("World").player_avatar as Node2D
+		if spring_lighting != null and player != null:
+			spring_lighting.set_player_surface_map_disabled("normal", true)
+			spring_lighting.set_player_surface_map_disabled("specular", true)
+			spring_lighting.set_player_surface_map_disabled("occlusion", true)
+			var normal_texture := player.surface_material.get_shader_parameter(
+				"normal_texture") as Texture2D
+			var specular_texture := player.surface_material.get_shader_parameter(
+				"specular_texture") as Texture2D
+			var occlusion_texture := player.surface_material.get_shader_parameter(
+				"occlusion_texture") as Texture2D
+			var maps_disabled_ok := false
+			if normal_texture != null and specular_texture != null \
+					and occlusion_texture != null:
+				var normal_image := normal_texture.get_image()
+				var specular_image := specular_texture.get_image()
+				var occlusion_image := occlusion_texture.get_image()
+				var neutral_normal := normal_image.get_pixel(0, 0)
+				maps_disabled_ok = (
+					absf(neutral_normal.r - 0.5) <= 0.01
+					and absf(neutral_normal.g - 0.5) <= 0.01
+					and neutral_normal.b >= 0.999
+					and specular_image.get_pixel(0, 0).r <= 0.001
+					and occlusion_image.get_pixel(0, 0).r >= 0.999
+				)
+			spring_lighting.reset_player_surface_map_disables()
+			checks.append("F10 角色法线 / Specular / Occlusion 独立 A/B：%s" % [
+				str(maps_disabled_ok)])
+			spring_lighting.set_player_smooth_normal_enabled(true)
+			var smooth_normal_texture := player.surface_material.get_shader_parameter(
+				"normal_texture") as Texture2D
+			var smooth_normal_ok := smooth_normal_texture != null \
+				and smooth_normal_texture.resource_path.ends_with("_n_smooth.png")
+			spring_lighting.reset_player_surface_map_disables()
+			checks.append("F10 角色平滑法线 A/B：%s" % [
+				str(smooth_normal_ok)])
+			spring_lighting.reset_player_surface_map_disables()
+			var shared_atlas_uv_default_ok := bool(
+				player.surface_material.get_shader_parameter(
+					"use_shared_atlas_uv"))
+			spring_lighting.set_player_shared_atlas_uv(false)
+			var shared_atlas_uv_toggle_ok := not bool(
+				player.surface_material.get_shader_parameter(
+					"use_shared_atlas_uv"))
+			spring_lighting.reset_player_surface_map_disables()
+			var shared_atlas_uv_ok := shared_atlas_uv_default_ok \
+				and shared_atlas_uv_toggle_ok
+			checks.append("F10 角色共享图集 UV A/B：%s" % [
+				str(shared_atlas_uv_ok)])
+			var walk_normal_texture := load(
+				"res://art/characters/player/star2a/walk_n.png") as Texture2D
+			var walk_normal_is_per_frame := false
+			if walk_normal_texture != null:
+				var walk_normal_image := walk_normal_texture.get_image()
+				var frame_width := maxi(walk_normal_image.get_width() / 4, 1)
+				var frame_height := maxi(walk_normal_image.get_height() / 4, 1)
+				walk_normal_is_per_frame = true
+				for direction in range(4):
+					var first_frame := walk_normal_image.get_region(Rect2i(
+						direction * frame_width,
+						0,
+						frame_width,
+						frame_height)).get_data()
+					var direction_has_variation := false
+					for step in range(1, 4):
+						var frame_data := walk_normal_image.get_region(Rect2i(
+							direction * frame_width,
+							step * frame_height,
+							frame_width,
+							frame_height)).get_data()
+						if frame_data != first_frame:
+							direction_has_variation = true
+					if not direction_has_variation:
+						walk_normal_is_per_frame = false
+			checks.append("角色法线按每个序列帧导入：%s" % [
+				str(walk_normal_is_per_frame)])
 
 	var spring := main.get_node_or_null("SpringWorldLighting")
 	if spring != null:
