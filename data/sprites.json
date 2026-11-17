@@ -1,8 +1,8 @@
 {
   "ground": {
 	"tiles": {
-	  "grass": { "atlas": "res://art/characters/ground/tiles/grass_color.png", "source": 0, "coords": [0, 0] },
-	  "lawn": { "atlas": "res://art/characters/ground/tiles/grass_color.png", "source": 0, "coords": [0, 0] },
+	  "grass": { "atlas": "res://art/characters/ground/grass_wild/color.png", "source": 0, "coords": [0, 0] },
+	  "lawn": { "atlas": "res://art/characters/ground/grass_trimmed/color.png", "source": 3, "coords": [0, 0] },
 	  "path": { "atlas": "res://art/characters/ground/tiles/stone_color.png", "source": 1, "coords": [0, 0] },
 	  "dense_grass": { "atlas": "res://art/placeholders/tiles/ninja_dense_grass_2x.png", "source": 2, "coords": [0, 0] },
 	  "stone_tile": { "atlas": "res://art/characters/ground/tiles/stone_color.png", "source": 1, "coords": [0, 0] },

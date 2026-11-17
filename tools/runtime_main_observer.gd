@@ -25,8 +25,11 @@ var lighting_debug_mode := -1
 var player_animation_frame := -1
 var player_facing_override := -1
 var place_debug_lamp := false
+var hide_building_labels := false
 var player_shared_atlas_uv := true
 var player_cell_override := Vector2i(-1, -1)
+var use_sun_screen_override := false
+var sun_screen_override := Vector3.ZERO
 var capture_marker: Label
 var schedule := [
 	{"name": "title_flow_0625_sunrise.png", "hour": SUNRISE_HOUR, "fog": false},
@@ -58,6 +61,8 @@ func _ready() -> void:
 	print("[runtime-main] spring_clear.json MD5：%s" % FileAccess.get_md5(CONFIG_PATH))
 	print("[runtime-main] spring_atmosphere.gdshader MD5：%s" %
 		FileAccess.get_md5(ATMOSPHERE_SHADER_PATH))
+	if use_sun_screen_override:
+		print("[runtime-main] 太阳方向覆盖：%s" % sun_screen_override)
 	if hold_mode:
 		schedule = [{
 			"name": "os_hold_%s.png" % _hour_file_token(hold_hour),
@@ -93,6 +98,15 @@ func _process(_delta: float) -> void:
 
 func _prepare() -> void:
 	world = get_tree().get_first_node_in_group("world")
+	if hide_building_labels and world != null:
+		for building in world.get("buildings"):
+			if building != null and is_instance_valid(building) \
+					and building.label != null:
+				building.label.visible = false
+		var player_node: Node = world.get("player_avatar")
+		if player_node != null and is_instance_valid(player_node) \
+				and player_node.label != null:
+			player_node.label.visible = false
 	camera = get_viewport().get_camera_2d()
 	spring = get_parent().get_node_or_null("SpringWorldLighting")
 	var spring_lighting := spring as SpringWorldLighting
@@ -108,6 +122,9 @@ func _prepare() -> void:
 				pass
 		if lighting_debug_mode >= 0:
 			spring_lighting.set_debug_mode(lighting_debug_mode)
+		if use_sun_screen_override:
+			spring_lighting.set_sun_screen_override(
+				sun_screen_override)
 	camera.set_process(false)
 	camera.zoom = Vector2(2.35, 2.35)
 	if focus_kind in [
@@ -157,6 +174,33 @@ func _prepare() -> void:
 		camera.zoom = Vector2(2.6, 2.6)
 		camera.position = lamp.global_position + Vector2(16.0, 12.0) \
 			if lamp != null else world.cell_center(Vector2i(58, 39))
+		return
+	if focus_kind in ["shop_small", "wall_shadow"]:
+		var shop: Building = null
+		for building in world.buildings:
+			if building.id == "shop_small":
+				shop = building
+				break
+		if shop != null:
+			if focus_kind == "wall_shadow":
+				var player := world.get("player_avatar") as Node2D
+				if player != null:
+					if bool(player.get("inside_reception")):
+						player.leave_reception()
+					var test_cell := Vector2i(
+						shop.cell.x + maxi(
+							1,
+							floori(shop.footprint.x * 0.75)),
+						shop.cell.y + shop.footprint.y)
+					if player_cell_override.x >= 0 \
+							and player_cell_override.y >= 0:
+						test_cell = player_cell_override
+					player.detach_to(world.cell_center(test_cell))
+					player.set_process(false)
+			camera.zoom = Vector2(2.6, 2.6)
+			camera.position = shop.global_position + Vector2(
+				shop.footprint.x * 16.0,
+				shop.footprint.y * 24.0)
 		return
 	var lodge: Building = null
 	for building in world.buildings:
@@ -245,6 +289,17 @@ func _parse_capture_args() -> void:
 				3)
 		elif arg == "--debug-place-lamp":
 			place_debug_lamp = true
+		elif arg == "--hide-labels":
+			hide_building_labels = true
+		elif arg.begins_with("--sun-screen="):
+			var sun_parts := arg.trim_prefix("--sun-screen=").split(",")
+			if sun_parts.size() == 3:
+				sun_screen_override = Vector3(
+					float(sun_parts[0]),
+					float(sun_parts[1]),
+					float(sun_parts[2])).normalized()
+				use_sun_screen_override = \
+					sun_screen_override.length_squared() > 0.000001
 		elif arg.begins_with("--player-shared-atlas-uv="):
 			player_shared_atlas_uv = \
 				arg.trim_prefix("--player-shared-atlas-uv=") != "0"
@@ -301,6 +356,9 @@ func _write_hold_ready(viewport_path: String) -> void:
 		"viewport_capture": viewport_path,
 		"config_md5": FileAccess.get_md5(CONFIG_PATH),
 		"atmosphere_shader_md5": FileAccess.get_md5(ATMOSPHERE_SHADER_PATH),
+		"sun_screen_override": (
+			[sun_screen_override.x, sun_screen_override.y, sun_screen_override.z]
+			if use_sun_screen_override else null),
 	}
 	var file := FileAccess.open(ready_path, FileAccess.WRITE)
 	if file != null:
@@ -313,6 +371,20 @@ func _capture_shadow_map() -> void:
 	var spring_lighting := spring as SpringWorldLighting
 	if spring_lighting == null or spring_lighting.rig == null:
 		return
+	for building in world.buildings:
+		if building.id == "shop_small":
+			var materials: Array = spring_lighting.building_materials.get(
+				building,
+				[])
+			if not materials.is_empty():
+				var wall_material := materials[0] as ShaderMaterial
+				print("[runtime-main] 墙面太阳投影 enabled=%s building_mask=%s" % [
+					str(wall_material.get_shader_parameter(
+						"apply_wall_shadow_projection")),
+					str(wall_material.get_shader_parameter(
+						"building_sun_shadow_texture") != null),
+				])
+			break
 	var player_node := world.get("player_avatar") as Node2D
 	if player_node != null and camera != null:
 		var canvas_screen := get_viewport().get_canvas_transform() \
@@ -335,6 +407,13 @@ func _capture_shadow_map() -> void:
 			var shadow_path := "%s/sun_shadow_map.png" % output_dir
 			image.save_png(shadow_path)
 			print("[runtime-main] 太阳阴影图 -> %s" % shadow_path)
+	var building_shadow_texture := spring_lighting.rig.get_building_sun_texture()
+	if building_shadow_texture != null:
+		var building_image := building_shadow_texture.get_image()
+		if building_image != null and not building_image.is_empty():
+			var building_shadow_path := "%s/building_sun_shadow_map.png" % output_dir
+			building_image.save_png(building_shadow_path)
+			print("[runtime-main] 建筑太阳阴影图 -> %s" % building_shadow_path)
 	var player_shadow_texture := spring_lighting.rig.get_player_sun_texture()
 	if player_shadow_texture != null:
 		var player_shadow_image := player_shadow_texture.get_image()

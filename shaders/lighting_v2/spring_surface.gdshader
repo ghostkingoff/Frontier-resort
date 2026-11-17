@@ -9,6 +9,8 @@ uniform sampler2D specular_texture_nearest : filter_nearest, repeat_disable;
 uniform sampler2D occlusion_texture_nearest : filter_nearest, repeat_disable;
 uniform bool use_nearest_surface = false;
 uniform sampler2D sun_shadow_texture : filter_linear, repeat_disable;
+uniform sampler2D building_sun_shadow_texture : filter_linear, repeat_disable;
+uniform sampler2D player_sun_shadow_texture : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_0 : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_1 : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_2 : filter_linear, repeat_disable;
@@ -23,6 +25,11 @@ uniform vec4 self_shadow_world_rect = vec4(
 uniform bool apply_wall_facing_gate = false;
 uniform vec2 wall_facing_normal = vec2(0.0, 1.0);
 uniform float wall_facing_softness : hint_range(0.001, 0.25) = 0.08;
+uniform bool apply_wall_shadow_projection = false;
+uniform vec4 wall_shadow_rect_uv = vec4(0.0, 0.0, 1.0, 1.0);
+uniform bool apply_player_sun_shadow = false;
+uniform float player_wall_shadow_height_px = 44.0;
+uniform float wall_projected_shadow_ambient_strength : hint_range(0.0, 1.0) = 0.32;
 uniform bool apply_character_facing_gate = false;
 uniform vec2 character_facing_anchor_world = vec2(0.0);
 uniform float character_shadow_transition_px : hint_range(0.1, 128.0) = 48.0;
@@ -127,6 +134,70 @@ void fragment() {
 			vec2(0.0),
 			vec2(1.0));
 	}
+	float building_shadow_mask = 0.0;
+	float player_sun_visibility = 1.0;
+	float player_wall_shadow_darkness = 0.0;
+	float player_wall_projection_fade = 1.0;
+	vec2 player_wall_shadow_uv = SCREEN_UV;
+	if (apply_wall_shadow_projection) {
+		vec2 wall_rect_min = wall_shadow_rect_uv.xy;
+		vec2 wall_rect_max = wall_shadow_rect_uv.zw;
+		float wall_bottom = wall_rect_max.y;
+		float wall_height = max(
+			wall_rect_max.y - wall_rect_min.y,
+			0.000001);
+		float wall_vertical_t = clamp(
+			(wall_bottom - SCREEN_UV.y) / wall_height,
+			0.0,
+			1.0);
+		float rise_px = max(
+			(wall_bottom - SCREEN_UV.y) * viewport_size_px.y,
+			0.0);
+		float target_height_px = max(
+			player_wall_shadow_height_px * camera_zoom.y,
+			1.0);
+		float shadow_fraction = rise_px / target_height_px;
+		player_wall_projection_fade = 1.0 - smoothstep(
+			0.85,
+			1.0,
+			shadow_fraction);
+		float horizontal_light = length(sun_screen_direction.xy);
+		float vertical_light = max(sun_screen_direction.z, 0.12);
+		float wall_stretch = max(
+			horizontal_light / vertical_light,
+			0.05);
+		float source_rise_px = rise_px * wall_stretch;
+		float shear_rise_px = rise_px * sqrt(wall_stretch);
+		float wall_shear_slope = clamp(
+			sun_screen_direction.x
+				/ max(abs(sun_screen_direction.y), 0.001),
+			-8.0,
+			8.0);
+		player_wall_shadow_uv = vec2(
+			SCREEN_UV.x - shear_rise_px
+				* wall_shear_slope
+				/ max(viewport_size_px.x, 1.0),
+			wall_bottom - source_rise_px
+				/ max(viewport_size_px.y, 1.0));
+		float building_shadow_luminance = dot(
+			texture(
+				building_sun_shadow_texture,
+				SCREEN_UV).rgb,
+			vec3(0.2126, 0.7152, 0.0722));
+		float building_lit = smoothstep(
+			0.025,
+			0.68,
+			building_shadow_luminance);
+		float building_region_mask = 1.0 - building_lit;
+		float wall_bottom_blend = smoothstep(
+			0.0,
+			0.12,
+			wall_vertical_t);
+		building_shadow_mask = mix(
+			1.0,
+			building_region_mask,
+			wall_bottom_blend);
+	}
 
 	float sun_visibility_luminance = dot(
 		texture(sun_shadow_texture, shadow_uv).rgb,
@@ -151,6 +222,57 @@ void fragment() {
 		0.015,
 		0.72,
 		sun_visibility_luminance);
+	if (apply_player_sun_shadow) {
+		vec3 shadow_luminance_weights = vec3(
+			0.2126,
+			0.7152,
+			0.0722);
+		vec2 player_shadow_texel = 1.0 / vec2(
+			textureSize(player_sun_shadow_texture, 0));
+		float player_sun_luminance = dot(
+				texture(
+					player_sun_shadow_texture,
+					player_wall_shadow_uv).rgb,
+				shadow_luminance_weights) * 0.4
+			+ dot(
+				texture(
+					player_sun_shadow_texture,
+					player_wall_shadow_uv
+						+ vec2(player_shadow_texel.x, 0.0)).rgb,
+				shadow_luminance_weights) * 0.15
+			+ dot(
+				texture(
+					player_sun_shadow_texture,
+					player_wall_shadow_uv
+						- vec2(player_shadow_texel.x, 0.0)).rgb,
+				shadow_luminance_weights) * 0.15
+			+ dot(
+				texture(
+					player_sun_shadow_texture,
+					player_wall_shadow_uv
+						+ vec2(0.0, player_shadow_texel.y)).rgb,
+				shadow_luminance_weights) * 0.15
+			+ dot(
+				texture(
+					player_sun_shadow_texture,
+					player_wall_shadow_uv
+						- vec2(0.0, player_shadow_texel.y)).rgb,
+				shadow_luminance_weights) * 0.15;
+		player_sun_visibility = smoothstep(
+			0.10,
+			0.82,
+			player_sun_luminance);
+		float faded_player_visibility = mix(
+			1.0,
+			player_sun_visibility,
+			player_wall_projection_fade);
+		player_wall_shadow_darkness = (
+			1.0 - faded_player_visibility) * building_shadow_mask;
+		sun_visibility *= mix(
+			1.0,
+			faded_player_visibility,
+			building_shadow_mask);
+	}
 	float wall_facing_visibility = 1.0;
 	if (apply_wall_facing_gate) {
 		float facing = dot(
@@ -279,6 +401,8 @@ void fragment() {
 		+ sun_color * sun_energy * sun_specular
 			* sun_visibility * specular_strength
 		+ local_specular;
+	lit *= 1.0 - wall_projected_shadow_ambient_strength
+		* player_wall_shadow_darkness;
 	if (debug_mode == 1) {
 		COLOR = vec4(base.rgb, alpha_mask);
 	} else if (debug_mode == 2) {

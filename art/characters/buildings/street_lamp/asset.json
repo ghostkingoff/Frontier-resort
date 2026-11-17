@@ -130,8 +130,8 @@
     "light_lighting/wall_s.png": "a8da55a84529cc6399d05ecf96f7781e60c510fac94acf4199e0ed5e9f045ac9"
   },
   "proxy_metadata": {
-    "source_blend": "E:/godot/模拟经营类/art/source/buildings/street_lamp/Light1_3DShadowProxy.blend",
-    "proxy_file": "E:/godot/模拟经营类/art/characters/buildings/street_lamp/shadow_proxy.glb",
+    "source_blend": "art/source/buildings/street_lamp/Light1_3DShadowProxy.blend",
+    "proxy_file": "art/characters/buildings/street_lamp/shadow_proxy.glb",
     "uniform_scale": 58.35270439578866,
     "footprint_px": [
       32.0,

@@ -378,7 +378,7 @@
       "components": []
     }
   ],
-  "proxy_source": "art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v2.blend",
+  "proxy_source": "art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v3.blend",
   "proxy_runtime": "art/characters/buildings/lodge_ordinary/shadow_proxy.glb",
   "lighting_maps": {
     "ground.png": "426dc127d2693981deba0424efcde208e25f01c1ddaca8f3adc1a40f0c5f1ac3",
@@ -397,8 +397,7 @@
   "source_hashes": {
     "PuTongDuJiaWu.aseprite": "102368b87369b770bfacb8ba2cbcdbb0e55581d7a36c013f63e99a308613601b",
     "PuTongDuJiaWu.png": "5b391f152c9c9bf07e65a3aae5e5573ff4069e3a230ccb1ab1a91ed35bfe9613",
-    "PuTongDuJiaWu_3DShadowProxy_v2.blend": "1036358586458e4b95e5e8eb9e0d0b650c36cc97c53b64ea29dcc43099414eaf",
-    "PuTongDuJiaWu_3DShadowProxy_v2.blend1": "b102e3766f13b39f6688420b829a7cb2ca9608be19b29bae6d73adb824ca2ab1",
+    "PuTongDuJiaWu_3DShadowProxy_v3.blend": "0490ca6412e2fdc03ed9f88e8aa33d7c478c7bf220be7936d21ae9be81268ffe",
     "PuTongDuJiaWu_layers_lighting/ground.png": "426dc127d2693981deba0424efcde208e25f01c1ddaca8f3adc1a40f0c5f1ac3",
     "PuTongDuJiaWu_layers_lighting/ground_n.png": "3acf9928cfb872b9324e7fcaac092ef1e06f87645f4c0691094ab9ed2de58b90",
     "PuTongDuJiaWu_layers_lighting/ground_o.png": "5f91d07d9087749a129270036c010ff08187519cf33417afbb3778a0a3f130bd",
@@ -413,27 +412,27 @@
     "PuTongDuJiaWu_layers_lighting/wall_s.png": "d7b2779033992e9802e0e435e58c3d23ecb3605fa67d142b812f2a3dcfb811f6"
   },
   "proxy_metadata": {
-    "source_blend": "E:/godot/模拟经营类/art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v2.blend",
-    "proxy_file": "E:/godot/模拟经营类/art/characters/buildings/lodge_ordinary/shadow_proxy.glb",
-    "uniform_scale": 30.664241330241715,
+    "source_blend": "art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v3.blend",
+    "proxy_file": "art/characters/buildings/lodge_ordinary/shadow_proxy.glb",
+    "uniform_scale": 41.91908251035362,
     "footprint_px": [
-      144.0,
-      96.0
+      192.0,
+      128.0
     ],
     "bounds_min_px": [
-      -70.0461,
-      -49.3774,
+      -95.6279,
+      -64.25,
       0.0
     ],
     "bounds_max_px": [
-      70.0461,
-      49.3774,
-      116.7308
+      95.6279,
+      64.25,
+      107.4176
     ],
     "size_px": [
-      140.0922,
-      98.7547,
-      116.7308
+      191.2558,
+      128.5,
+      107.4176
     ],
     "pivot_px": [
       0.0,

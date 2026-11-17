@@ -1,0 +1,324 @@
+{
+  "asset_id": "shop_general",
+  "source_dir": "art/source/buildings/shop_general",
+  "runtime_dir": "art/characters/buildings/shop_general",
+  "canvas": [
+    256,
+    256
+  ],
+  "layers": [
+    {
+      "index": 0,
+      "name": "layer",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/layer.png",
+      "alpha_bounds": [
+        32,
+        111,
+        192,
+        129
+      ],
+      "components": []
+    },
+    {
+      "index": 1,
+      "name": "interior",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/interior.png",
+      "alpha_bounds": [
+        47,
+        96,
+        161,
+        134
+      ],
+      "components": []
+    },
+    {
+      "index": 2,
+      "name": "portal",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/portal.png",
+      "alpha_bounds": [
+        72,
+        183,
+        113,
+        46
+      ],
+      "components": [
+        {
+          "bounds": [
+            108,
+            183,
+            34,
+            46
+          ],
+          "center": [
+            124.5,
+            205.5
+          ],
+          "color": "#FF9A3C",
+          "pixel_count": 1564
+        },
+        {
+          "bounds": [
+            72,
+            199,
+            25,
+            25
+          ],
+          "center": [
+            84.0,
+            211.0
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 625
+        },
+        {
+          "bounds": [
+            160,
+            199,
+            25,
+            25
+          ],
+          "center": [
+            172.0,
+            211.0
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 625
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "CanWalk",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/CanWalk.png",
+      "alpha_bounds": [
+        66,
+        155,
+        123,
+        71
+      ],
+      "components": []
+    },
+    {
+      "index": 4,
+      "name": "wall",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/wall.png",
+      "alpha_bounds": [
+        42,
+        111,
+        176,
+        119
+      ],
+      "components": []
+    },
+    {
+      "index": 5,
+      "name": "roof",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/roof.png",
+      "alpha_bounds": [
+        38,
+        4,
+        183,
+        161
+      ],
+      "components": []
+    },
+    {
+      "index": 6,
+      "name": "light",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/light.png",
+      "alpha_bounds": [
+        72,
+        129,
+        173,
+        104
+      ],
+      "components": [
+        {
+          "bounds": [
+            89,
+            129,
+            33,
+            23
+          ],
+          "center": [
+            105.0,
+            140.0
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 401
+        },
+        {
+          "bounds": [
+            128,
+            131,
+            38,
+            21
+          ],
+          "center": [
+            146.5,
+            141.0
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 415
+        },
+        {
+          "bounds": [
+            113,
+            178,
+            23,
+            4
+          ],
+          "center": [
+            124.0,
+            179.5
+          ],
+          "color": "#DEE80A",
+          "pixel_count": 23
+        },
+        {
+          "bounds": [
+            72,
+            199,
+            25,
+            25
+          ],
+          "center": [
+            84.0,
+            211.0
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 625
+        },
+        {
+          "bounds": [
+            160,
+            199,
+            25,
+            25
+          ],
+          "center": [
+            172.0,
+            211.0
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 625
+        },
+        {
+          "bounds": [
+            244,
+            232,
+            1,
+            1
+          ],
+          "center": [
+            244.0,
+            232.0
+          ],
+          "color": "#4CA7CC",
+          "pixel_count": 1
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "name": "objiect",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/objiect.png",
+      "alpha_bounds": [
+        9,
+        31,
+        61,
+        10
+      ],
+      "components": []
+    }
+  ],
+  "proxy_source": "art/source/buildings/shop_general/Build1_3DShadowProxy.blend",
+  "proxy_runtime": "art/characters/buildings/shop_general/shadow_proxy.glb",
+  "lighting_maps": {
+    "roof.png": "746c01dbcea179c7aa05e32faab770da167b38116cf5b67d6b054bd922dca306",
+    "roof_n.png": "714ee81c0a26a23ecb033931eacbc590dd58b240c590e582eacbf7d353a1b235",
+    "roof_o.png": "06336c3d0b9060ccd2ed00aa451b4a6da6c4f3c5e46f68acafa9c1a889318c78",
+    "roof_s.png": "c3012aa8be8c42417368cd040a6c189da2b0b1697a09f00e6cf41c5e1de5bd5d",
+    "wall.png": "06db369bcc9fc91a95f461e04844eed1ac0148195cfaa9a01e1666fa52e06d1a",
+    "wall_n.png": "2504b3e8b3c8ef53ec25603401cb79cd3d878caf6a44948ec49df585bec25f0f",
+    "wall_o.png": "92d0513df405fcaac5508933bb2541a6156d04ce580f9ae8c9cb31e312087464",
+    "wall_s.png": "6b3f39c2d997ff53f5e4f5dd20bb3e3bbbd4d074739d1f5834c8f9f3adb23d95"
+  },
+  "source_hashes": {
+    "build1.aseprite": "248fa49c7cc5ea5c62524c12796f0a0bc6c0417beb4508fd2ce6852b1c3e2415",
+    "build1.png": "87bb56d280042b8be012c280e345f75c31c82cee86b356e4d49cf092621e2349",
+    "Build1_3DShadowProxy.blend": "e988527a5980278e39d7e8c0755d64c92bb29e72f48b55f2331f8cbaa57f8bc9",
+    "build1_lighting/roof.png": "746c01dbcea179c7aa05e32faab770da167b38116cf5b67d6b054bd922dca306",
+    "build1_lighting/roof_n.png": "714ee81c0a26a23ecb033931eacbc590dd58b240c590e582eacbf7d353a1b235",
+    "build1_lighting/roof_o.png": "06336c3d0b9060ccd2ed00aa451b4a6da6c4f3c5e46f68acafa9c1a889318c78",
+    "build1_lighting/roof_s.png": "c3012aa8be8c42417368cd040a6c189da2b0b1697a09f00e6cf41c5e1de5bd5d",
+    "build1_lighting/wall.png": "06db369bcc9fc91a95f461e04844eed1ac0148195cfaa9a01e1666fa52e06d1a",
+    "build1_lighting/wall_n.png": "2504b3e8b3c8ef53ec25603401cb79cd3d878caf6a44948ec49df585bec25f0f",
+    "build1_lighting/wall_o.png": "92d0513df405fcaac5508933bb2541a6156d04ce580f9ae8c9cb31e312087464",
+    "build1_lighting/wall_s.png": "6b3f39c2d997ff53f5e4f5dd20bb3e3bbbd4d074739d1f5834c8f9f3adb23d95"
+  },
+  "proxy_metadata": {
+    "source_blend": "art/source/buildings/shop_general/Build1_3DShadowProxy.blend",
+    "proxy_file": "art/characters/buildings/shop_general/shadow_proxy.glb",
+    "uniform_scale": 34.7737843551797,
+    "footprint_px": [
+      192.0,
+      128.0
+    ],
+    "bounds_min_px": [
+      -95.6279,
+      -64.25,
+      0.0
+    ],
+    "bounds_max_px": [
+      95.6279,
+      64.25,
+      129.315
+    ],
+    "size_px": [
+      191.2558,
+      128.5,
+      129.315
+    ],
+    "pivot_px": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "ground_y_px": 0.0,
+    "triangle_count": 16,
+    "mesh_count": 1
+  }
+}

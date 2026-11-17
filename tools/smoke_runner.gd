@@ -374,7 +374,9 @@ func _run_build_checks() -> void:
 	var layered_ok: bool = shop.ground_face != null and shop.ground_face.texture != null \
 		and shop.interior_texture != null and shop.interior_texture.texture != null \
 		and shop.exterior != null and shop.exterior.texture != null \
-		and shop.layer_origin == Vector2i(0, 107)
+		and shop.wall_texture != null and shop.wall_texture.texture != null \
+		and shop.roof_texture != null and shop.roof_texture.texture != null \
+		and shop.layer_origin == Vector2i(32, 112)
 	var walk_mask_ok: bool = shop.interior_walk_cells.size() == 12 \
 		and shop.interior_roam_grid_cells.size() > 0 and shop.can_roam_interior()
 	var walk_entry: Vector2 = shop.interior_entry_point(world.cell_center(shop.door_cell()))
@@ -384,32 +386,41 @@ func _run_build_checks() -> void:
 		if not shop.interior_roam_can_stand(point):
 			route_clear = false
 			break
-	var left_top := Vector2i(-9999, -9999)
-	var right_top := Vector2i(-9999, -9999)
+	var top_y := INF
 	for grid_cell in shop.interior_roam_grid_cells:
 		var local_point: Vector2 = shop.interior_roam_grid_point(grid_cell) - shop.global_position
-		if local_point.y >= 88.0:
-			continue
-		if local_point.x < 80.0:
-			left_top = grid_cell
-		elif local_point.x > 104.0:
-			right_top = grid_cell
-	var u_path_ok := false
-	if left_top.x >= 0 and right_top.x >= 0:
-		var u_path: Array[Vector2i] = shop._interior_roam_grid_path(left_top, right_top)
-		var reaches_bridge := false
-		u_path_ok = u_path.size() > 2
-		for grid_cell in u_path:
+		top_y = minf(top_y, local_point.y)
+	var top_cells: Array[Vector2i] = []
+	for grid_cell in shop.interior_roam_grid_cells:
+		var local_point: Vector2 = shop.interior_roam_grid_point(grid_cell) - shop.global_position
+		if local_point.y <= top_y + 8.0:
+			top_cells.append(grid_cell)
+	top_cells.sort_custom(func(a, b):
+		return shop.interior_roam_grid_point(a).x < shop.interior_roam_grid_point(b).x)
+	var aisle_path_ok := false
+	if top_cells.size() >= 2:
+		var aisle_path: Array[Vector2i] = shop._interior_roam_grid_path(
+			top_cells[0], top_cells[top_cells.size() - 1])
+		aisle_path_ok = aisle_path.size() > 2
+		for grid_cell in aisle_path:
 			var point: Vector2 = shop.interior_roam_grid_point(grid_cell)
 			if not shop.interior_roam_can_stand(point):
-				u_path_ok = false
+				aisle_path_ok = false
 				break
-			if point.y - shop.global_position.y >= 88.0:
-				reaches_bridge = true
-		u_path_ok = u_path_ok and reaches_bridge
-	checks.append("小超市店内导航：粗格 %d（%s）｜细网格 %d 点 ｜漫游路线 %d 点且全在遮罩内 %s ｜绕开中间货架缺口 %s" % [
-		shop.interior_walk_cells.size(), str(walk_mask_ok), shop.interior_roam_grid_cells.size(),
-		roam_route.size(), str(route_clear), str(u_path_ok)])
+	checks.append("小超市分层与店内导航：分层资源 %s｜粗格 %d（%s）｜细网格 %d 点 ｜漫游路线 %d 点且全在遮罩内 %s ｜两侧货架通道连通 %s" % [
+		str(layered_ok), shop.interior_walk_cells.size(), str(walk_mask_ok),
+		shop.interior_roam_grid_cells.size(), roam_route.size(),
+		str(route_clear), str(aisle_path_ok)])
+	var general_layers: Dictionary = DataRegistry.get_building(
+		"shop_general").get("sprite_layers", {})
+	var general_asset_ok := not bool(DataRegistry.get_building(
+		"shop_general").get("hidden", false)) \
+		and ResourceLoader.exists(str(general_layers.get("wall", ""))) \
+		and ResourceLoader.exists(str(general_layers.get("roof", ""))) \
+		and ResourceLoader.exists(str(general_layers.get("ground", ""))) \
+		and ResourceLoader.exists(str(general_layers.get("walk_mask", ""))) \
+		and ResourceLoader.exists(str(general_layers.get("shadow_proxy", "")))
+	checks.append("小商店建筑与 3D 代理资源：%s" % str(general_asset_ok))
 	var roam_probe := Customer.new()
 	world.customers_root.add_child(roam_probe)
 	roam_probe.setup(DataRegistry.customer_types[0], world, world.random_entrance())
@@ -474,7 +485,8 @@ func _run_build_checks() -> void:
 			"shadow_proxy.glb") \
 		and spring_lighting.rig.player_proxies.size() >= 5 \
 		and spring_lighting.rig.player_contact_proxy != null \
-		and spring_lighting.rig.get_player_sun_texture() != null
+		and spring_lighting.rig.get_player_sun_texture() != null \
+		and spring_lighting.rig.get_building_sun_texture() != null
 	checks.append("玩家新光照：逐帧法线与整体背光门控 %s｜旧2D遮挡已移除 %s｜3D柔化太阳阴影 %s｜阴影脚底原点 %s｜角色 3D 代理 %s" % [
 		str(player_lighting_ok),
 		str(player.get_node_or_null("PlayerLightOccluder") == null),
@@ -865,6 +877,7 @@ func _run_day_night_checks() -> void:
 			var glow_material := glow.material as ShaderMaterial if glow != null else null
 			lamp_glow_ok = glow != null and glow.visible \
 				and glow.get_parent() == lamp.roof_root \
+				and glow.z_index >= 2 \
 				and lamp.roof_texture != null \
 				and glow.get_index() < lamp.roof_texture.get_index() \
 				and glow_material != null \
@@ -1051,14 +1064,25 @@ func _set_hour(hour: float) -> void:
 
 
 func _run_ground_checks() -> void:
-	# 1. 荒地不可通行，地砖 / 草坪可以走
+	# 1. 草地不可通行，地砖 / 修剪草坪可以走
 	var wild := Vector2i(5, 20)
 	var road := Vector2i(10, world.road_row)
-	checks.append("通行判定：普通草坪 %s ｜ 主路 %s ｜ 地面类型 %s / %s" % [
+	checks.append("通行判定：草地 %s ｜ 主路 %s ｜ 地面类型 %s / %s" % [
 		str(world.is_walkable(wild)), str(world.is_walkable(road)),
 		world.ground_kind_name(wild), world.ground_kind_name(road)])
 	var dense_grass := Vector2i(5, 20)
 	var stone_tile := Vector2i(6, 20)
+	var trimmed_lawn := Vector2i(7, 20)
+	world.set_ground(trimmed_lawn, World.GROUND_LAWN)
+	var wild_source: int = world.ground.get_cell_source_id(wild)
+	var trimmed_source: int = world.ground_lawn.get_cell_source_id(trimmed_lawn)
+	checks.append("新版草地分层：草地源 %d｜修剪草坪源 %d｜草地层残留 %s｜独立光照材质 %s" % [
+		wild_source,
+		trimmed_source,
+		str(world.ground.get_cell_source_id(trimmed_lawn) >= 0),
+		str(world.ground.material != null and world.ground_lawn.material != null
+			and world.ground.material != world.ground_lawn.material)])
+	world.set_ground(trimmed_lawn, World.GROUND_WILD)
 	world.set_ground(dense_grass, World.GROUND_DENSE_GRASS)
 	world.set_ground(stone_tile, World.GROUND_STONE_TILE)
 	var dense_source: int = world.ground_misc.get_cell_source_id(dense_grass)

@@ -315,12 +315,12 @@ func _ready() -> void:
 				wall_at_1330,
 				wall_at_1400,
 			])
-		var lodge: Building = null
+		var wall_building: Building = null
 		for building in main.get_node("World").buildings:
-			if building.id == "lodge_ordinary":
-				lodge = building
+			if building.id == "shop_small":
+				wall_building = building
 				break
-		var materials: Array = spring.building_materials.get(lodge, [])
+		var materials: Array = spring.building_materials.get(wall_building, [])
 		if materials.size() >= 2:
 			var wall_material := materials[0] as ShaderMaterial
 			var roof_material := materials[1] as ShaderMaterial
@@ -341,6 +341,55 @@ func _ready() -> void:
 				float(wall_material.get_shader_parameter(
 					"wall_facing_softness")),
 			])
+			var wall_rect: Vector4 = wall_material.get_shader_parameter(
+				"wall_shadow_rect_uv")
+			checks.append("墙面启用太阳长度与角度驱动的回正剪切：%s" % [
+				str(
+					bool(wall_material.get_shader_parameter(
+						"apply_wall_shadow_projection"))
+					and not bool(roof_material.get_shader_parameter(
+						"apply_wall_shadow_projection"))
+					and wall_rect.is_finite()
+					and wall_rect.z > wall_rect.x
+					and wall_rect.w > wall_rect.y)
+			])
+			checks.append("墙面判定区使用建筑专属太阳阴影通道：%s" % [
+				str(
+					not spring.rig.building_sun_pass.is_empty()
+					and spring.rig.get_building_sun_texture() != null
+					and wall_material.get_shader_parameter(
+						"building_sun_shadow_texture") \
+						== spring.rig.get_building_sun_texture())
+			])
+			var wall_foot_uv := float(wall_material.get_shader_parameter(
+				"surface_foot_uv_y"))
+			var wall_layers: Dictionary = wall_building.data.get(
+				"sprite_layers", {})
+			var wall_region: Array = wall_layers.get(
+				"wall_region_px", [0.0, 0.0, 1.0, 240.0])
+			var wall_canvas: Array = wall_layers.get(
+				"canvas", [1.0, 256.0])
+			var expected_wall_foot_uv := (
+				float(wall_region[1]) + float(wall_region[3])) \
+				/ maxf(float(wall_canvas[1]), 1.0)
+			checks.append("墙面接入角色太阳阴影并在墙底接缝连续：%s" % [
+				str(
+					bool(wall_material.get_shader_parameter(
+						"apply_player_sun_shadow"))
+					and wall_material.get_shader_parameter(
+						"player_sun_shadow_texture") \
+						== spring.rig.get_player_sun_texture()
+					and is_equal_approx(
+						float(wall_material.get_shader_parameter(
+							"player_wall_shadow_height_px")),
+						44.0)
+					and is_equal_approx(wall_foot_uv, expected_wall_foot_uv))
+			])
+		var lodge: Building = null
+		for building in main.get_node("World").buildings:
+			if building.id == "lodge_ordinary":
+				lodge = building
+				break
 		var world := main.get_node("World")
 		var terrain_material := lodge.ground_terrain.material as ShaderMaterial \
 			if lodge != null and lodge.ground_terrain != null else null
@@ -457,6 +506,16 @@ func _ready() -> void:
 		checks.append("窗户矩形灯头光 + 无阴影路灯局部光：%s（%d 盏）" % [
 			str(window_light_ok),
 			window_light_indices.size(),
+		])
+		var lamp_z_ok := true
+		for building in main.get_node("World").buildings:
+			var lamp_glow := spring.lamp_glows.get(building) as Sprite2D
+			if lamp_glow != null and lamp_glow.z_index < 2:
+				lamp_z_ok = false
+		checks.append("灯头光层级：窗户在角色后方 %s｜路灯头盖住角色 %s" % [
+			str(lodge.window_leak_root != null
+				and lodge.window_leak_root.z_index == 0),
+			str(lamp_z_ok),
 		])
 
 	var failed := 0

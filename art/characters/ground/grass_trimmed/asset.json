@@ -1,0 +1,23 @@
+{
+  "asset_id": "grass_trimmed",
+  "source_dir": "art/source/ground/grass_trimmed",
+  "runtime_dir": "art/characters/ground/grass_trimmed",
+  "canvas_px": [
+    32,
+    32
+  ],
+  "runtime_maps": {
+    "color.png": "d1309be448e83f34d02018762a7fedb31fd0eb9c9e9bb43263b3cde1df79e89c",
+    "normal.png": "6020dcd4dc17d1b997945b14bbd6383eba27ddcb32a52d4ef678fd10e60f32d3",
+    "specular.png": "345236e7023c3fc01507a6be80f9b3e51ef700854b7b09bc7add98447e97a7d8",
+    "occlusion.png": "f3e1f52a40feaa24a5c672f4864de045dcb6c314227ff868a982cad4f454e69a"
+  },
+  "source_hashes": {
+    "glass_trim.aseprite": "9feefbec7f4ba575e3e98ab3272944ac8ccd21284f6534853349d5992b05f733",
+    "glass_trim.png": "a24ae61533f3c75cb25701d28ca799acd156117c5b7d411911f1e402fdd7f883",
+    "grass_trim_lighting/grass_trim.png": "d1309be448e83f34d02018762a7fedb31fd0eb9c9e9bb43263b3cde1df79e89c",
+    "grass_trim_lighting/grass_trim_n.png": "6020dcd4dc17d1b997945b14bbd6383eba27ddcb32a52d4ef678fd10e60f32d3",
+    "grass_trim_lighting/grass_trim_o.png": "f3e1f52a40feaa24a5c672f4864de045dcb6c314227ff868a982cad4f454e69a",
+    "grass_trim_lighting/grass_trim_s.png": "345236e7023c3fc01507a6be80f9b3e51ef700854b7b09bc7add98447e97a7d8"
+  }
+}

@@ -12,7 +12,7 @@ const TILESET_PATH := "res://art/generated/spring_ground_tileset.tres"
 const PLAYER_CHARACTER := preload("res://scripts/actors/player_character.gd")
 const PINE_DIR := "res://art/characters/trees/pine/"
 
-# 地面类型：普通草地 / 荒地（不可通行）、草坪 / 地砖 / 石砖地（可通行）
+# 地面类型：草地 / 荒地（不可通行）、修剪草坪 / 地砖 / 石砖地（可通行）
 const GROUND_WILD := "grass"
 const GROUND_LAWN := "lawn"
 const GROUND_PATH := "path"
@@ -33,6 +33,7 @@ enum ViewMode { ROOF, INTERIOR, GROUND }   # 当前显示层：屋顶 / 屋内 /
 @export var road_row := 72
 
 var ground: TileMapLayer
+var ground_lawn: TileMapLayer
 var ground_path: TileMapLayer
 var ground_misc: TileMapLayer
 var decor: Node2D
@@ -110,6 +111,7 @@ func _create_layers() -> void:
 	if ResourceLoader.exists(TILESET_PATH):
 		shared_tileset = load(TILESET_PATH)
 	ground = _make_ground_layer("GroundGrass", shared_tileset)
+	ground_lawn = _make_ground_layer("GroundLawn", shared_tileset)
 	ground_path = _make_ground_layer("GroundPath", shared_tileset)
 	ground_misc = _make_ground_layer("GroundMisc", shared_tileset)
 
@@ -229,11 +231,13 @@ func _paint_ground_tile(cell: Vector2i) -> void:
 	var kind := str(ground_types.get(cell, GROUND_WILD))
 	var tile_cfg := DataRegistry.ground_tile_config(kind)
 	var coords: Array = tile_cfg.get("coords", [3, 3])
-	for layer in [ground, ground_path, ground_misc]:
+	for layer in [ground, ground_lawn, ground_path, ground_misc]:
 		(layer as TileMapLayer).erase_cell(cell)
 	var target := ground
 	if kind == GROUND_PATH or kind == GROUND_STONE_TILE:
 		target = ground_path
+	elif kind == GROUND_LAWN:
+		target = ground_lawn
 	elif kind == GROUND_DENSE_GRASS or kind == GROUND_WASTELAND:
 		target = ground_misc
 	target.set_cell(cell, int(tile_cfg.get("source", 0)),
@@ -288,7 +292,7 @@ func ground_kind_name(cell: Vector2i) -> String:
 		GROUND_PATH:
 			return "地砖"
 		GROUND_LAWN:
-			return "可行走草坪"
+			return "修剪草坪"
 		GROUND_DENSE_GRASS:
 			return "茂密草地（不可行走）"
 		GROUND_STONE_TILE:
@@ -296,7 +300,7 @@ func ground_kind_name(cell: Vector2i) -> String:
 		GROUND_WASTELAND:
 			return "荒地（不可建造 / 不可行走）"
 		_:
-			return "普通草坪（不可行走）"
+			return "草地"
 
 
 # ---------- 寻路 ----------

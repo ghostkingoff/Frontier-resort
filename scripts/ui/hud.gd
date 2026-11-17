@@ -512,23 +512,17 @@ func _build_menu(root: Control) -> void:
 	list.add_child(stone_button)
 	var lawn_button := _make_button("")
 	lawn_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	lawn_button.text = "铺可行走草坪   %s/格" % GameState.format_money(1)
-	lawn_button.tooltip_text = "整理过的草坪，客人可以行走。"
+	lawn_button.text = "铺设修剪草坪   %s/格" % GameState.format_money(1)
+	lawn_button.tooltip_text = "修剪过的可行走草坪，客人可以行走。"
 	lawn_button.pressed.connect(_on_ground_selected.bind(World.GROUND_LAWN))
 	list.add_child(lawn_button)
-	var dense_grass_button := _make_button("")
-	dense_grass_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	dense_grass_button.text = "铺设茂密草地   %s/格" % GameState.format_money(10)
-	dense_grass_button.tooltip_text = "Ninja Adventure 草地占位素材。视觉上更茂密，客人不会走上去。"
-	dense_grass_button.pressed.connect(_on_ground_selected.bind(World.GROUND_DENSE_GRASS))
-	list.add_child(dense_grass_button)
 	var grass_button := _make_button("")
 	grass_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	grass_button.text = "恢复普通草坪   %s/格" % GameState.format_money(1)
-	grass_button.tooltip_text = "地图默认的草坪，客人不会走上去。可以用来撤掉铺错的地面。"
+	grass_button.text = "恢复草地   %s/格" % GameState.format_money(1)
+	grass_button.tooltip_text = "未修剪的草地，客人不会走上去。可以用来撤掉铺错的地面。"
 	grass_button.pressed.connect(_on_ground_selected.bind(World.GROUND_WILD))
 	list.add_child(grass_button)
-	var walk_hint := _make_label("客人只走地砖、石砖地和可行走草坪，记得把店门口连到主路。不可行走材料可以铺在建筑占地下面。", 19, Color(0.85, 0.85, 0.9))
+	var walk_hint := _make_label("客人只走地砖、石砖地和修剪草坪，记得把店门口连到主路。草地可以铺在建筑占地下面。", 19, Color(0.85, 0.85, 0.9))
 	walk_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	list.add_child(walk_hint)
 
@@ -956,11 +950,9 @@ func _on_ground_selected(kind: String) -> void:
 		build_system.select_ground(kind)
 	var ground_name := "地砖"
 	if kind == World.GROUND_LAWN:
-		ground_name = "可行走草坪"
+		ground_name = "修剪草坪"
 	elif kind == World.GROUND_WILD:
-		ground_name = "普通草坪"
-	elif kind == World.GROUND_DENSE_GRASS:
-		ground_name = "茂密草地"
+		ground_name = "草地"
 	elif kind == World.GROUND_STONE_TILE:
 		ground_name = "石砖地"
 	show_notice("铺设%s：点击或按住左键刷，右键 / ESC 取消" % ground_name)

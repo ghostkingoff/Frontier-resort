@@ -1,0 +1,32 @@
+{
+  "source_blend": "art/source/buildings/shop_small/ChaoShi1_3DShadowProxy_v2.blend",
+  "proxy_file": "art/characters/buildings/shop_small/shadow_proxy.glb",
+  "uniform_scale": 32.0,
+  "footprint_px": [
+    192.0,
+    128.0
+  ],
+  "bounds_min_px": [
+    -96.0,
+    -64.0,
+    0.0
+  ],
+  "bounds_max_px": [
+    96.0,
+    64.0,
+    90.0
+  ],
+  "size_px": [
+    192.0,
+    128.0,
+    90.0
+  ],
+  "pivot_px": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "ground_y_px": 0.0,
+  "triangle_count": 12,
+  "mesh_count": 1
+}

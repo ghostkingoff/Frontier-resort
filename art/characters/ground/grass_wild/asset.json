@@ -1,0 +1,23 @@
+{
+  "asset_id": "grass_wild",
+  "source_dir": "art/source/ground/grass_wild",
+  "runtime_dir": "art/characters/ground/grass_wild",
+  "canvas_px": [
+    32,
+    32
+  ],
+  "runtime_maps": {
+    "color.png": "4995b7cfa14c8dfa5e6e31b16157f6ddd8b28f18f299cab4305046ef0b109613",
+    "normal.png": "ea5d0138018eb0e5ada84a3591bdffde7d5f6f2283259f482fe1dc358154c183",
+    "specular.png": "44256e200adc1b2c1d9630d60e6a2b73895812b4b36bb99696e206ebbe2092c2",
+    "occlusion.png": "2259066c3e6e8fb603c9e17006c0ad60189c686c5f0d1d5ea09ea4e145ad8d03"
+  },
+  "source_hashes": {
+    "glass1.aseprite": "b6db3c7fc95915ec772e0acb193a098201dbae6840f7daf774dcab9de046a69b",
+    "glass1.png": "913d302b26510d65350e138d15d5ecd1209d51c9b1e4383effbca1671553a833",
+    "grass1_lighting/grass1.png": "4995b7cfa14c8dfa5e6e31b16157f6ddd8b28f18f299cab4305046ef0b109613",
+    "grass1_lighting/grass1_n.png": "ea5d0138018eb0e5ada84a3591bdffde7d5f6f2283259f482fe1dc358154c183",
+    "grass1_lighting/grass1_o.png": "2259066c3e6e8fb603c9e17006c0ad60189c686c5f0d1d5ea09ea4e145ad8d03",
+    "grass1_lighting/grass1_s.png": "44256e200adc1b2c1d9630d60e6a2b73895812b4b36bb99696e206ebbe2092c2"
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "asset_id": "pine",
+  "source_dir": "art/source/trees/pine",
+  "runtime_dir": "art/characters/trees/pine",
+  "canvas": [
+    64,
+    128
+  ],
+  "layers": [
+    {
+      "index": 0,
+      "name": "layer",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/trees/pine/layers/layer.png",
+      "alpha_bounds": [
+        0,
+        64,
+        64,
+        64
+      ],
+      "components": []
+    },
+    {
+      "index": 1,
+      "name": "wall",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/trees/pine/layers/wall.png",
+      "alpha_bounds": [
+        2,
+        0,
+        58,
+        102
+      ],
+      "components": []
+    }
+  ],
+  "proxy_source": "art/source/trees/pine/Tree1_3DShadowProxy.blend",
+  "proxy_runtime": "art/characters/trees/pine/shadow_proxy.glb",
+  "surface_maps": {
+    "color.png": "1a980a61390248d0e8fdf3398395debb86d4f60a4139377d185772bce251c94e",
+    "normal.png": "bebc06dbb1dbd448edbb49f4c7d5a981d571a758c8ef7cb876f09a38cfaf73a3",
+    "specular.png": "133c1e896994f1f524204981e9b0af626172123c15e7ed4d017ac08f9bccfb89",
+    "occlusion.png": "7a2f54fa765909225680792ce6f73fffc732ce2a8caca100edd3bf7cd30d7adc"
+  },
+  "source_hashes": {
+    "tree1.aseprite": "c5252c896e4810ac87c2141d5f6336690a7f8fbc9a03a0a796f4448ee91f1444",
+    "tree1.png": "1a980a61390248d0e8fdf3398395debb86d4f60a4139377d185772bce251c94e",
+    "Tree1_3DShadowProxy.blend": "84ee539bdb6eec4a2768df33f068fc88e88b70e5b308a361d78dea9694cec825",
+    "tree1_lighting/wall.png": "48cdba9e7f08dd1b19dfb19f50d6b635bd370aec07792d8ccd7ad3495c60eabb",
+    "tree1_lighting/wall_n.png": "bebc06dbb1dbd448edbb49f4c7d5a981d571a758c8ef7cb876f09a38cfaf73a3",
+    "tree1_lighting/wall_o.png": "7a2f54fa765909225680792ce6f73fffc732ce2a8caca100edd3bf7cd30d7adc",
+    "tree1_lighting/wall_s.png": "133c1e896994f1f524204981e9b0af626172123c15e7ed4d017ac08f9bccfb89"
+  },
+  "proxy_metadata": {
+    "source_blend": "art/source/trees/pine/Tree1_3DShadowProxy.blend",
+    "proxy_file": "art/characters/trees/pine/shadow_proxy.glb",
+    "uniform_scale": 35.23400516058788,
+    "footprint_px": [
+      64.0,
+      64.0
+    ],
+    "bounds_min_px": [
+      -32.0695,
+      -31.9308,
+      0.0
+    ],
+    "bounds_max_px": [
+      32.0695,
+      31.9308,
+      112.3084
+    ],
+    "size_px": [
+      64.139,
+      63.8616,
+      112.3084
+    ],
+    "pivot_px": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "ground_y_px": 0.0,
+    "triangle_count": 1118,
+    "mesh_count": 1
+  }
+}

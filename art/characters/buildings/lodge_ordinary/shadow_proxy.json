@@ -1,25 +1,25 @@
 {
-  "source_blend": "E:/godot/模拟经营类/art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v2.blend",
-  "proxy_file": "E:/godot/模拟经营类/art/characters/buildings/lodge_ordinary/shadow_proxy.glb",
-  "uniform_scale": 30.664241330241715,
+  "source_blend": "art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v3.blend",
+  "proxy_file": "art/characters/buildings/lodge_ordinary/shadow_proxy.glb",
+  "uniform_scale": 41.91908251035362,
   "footprint_px": [
-    144.0,
-    96.0
+    192.0,
+    128.0
   ],
   "bounds_min_px": [
-    -70.0461,
-    -49.3774,
+    -95.6279,
+    -64.25,
     0.0
   ],
   "bounds_max_px": [
-    70.0461,
-    49.3774,
-    116.7308
+    95.6279,
+    64.25,
+    107.4176
   ],
   "size_px": [
-    140.0922,
-    98.7547,
-    116.7308
+    191.2558,
+    128.5,
+    107.4176
   ],
   "pivot_px": [
     0.0,

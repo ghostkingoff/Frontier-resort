@@ -1,6 +1,6 @@
 {
-  "source_blend": "E:/godot/模拟经营类/art/source/buildings/street_lamp/Light1_3DShadowProxy.blend",
-  "proxy_file": "E:/godot/模拟经营类/art/characters/buildings/street_lamp/shadow_proxy.glb",
+  "source_blend": "art/source/buildings/street_lamp/Light1_3DShadowProxy.blend",
+  "proxy_file": "art/characters/buildings/street_lamp/shadow_proxy.glb",
   "uniform_scale": 58.35270439578866,
   "footprint_px": [
     32.0,

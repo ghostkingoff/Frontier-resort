@@ -437,7 +437,7 @@ func _build_visuals() -> void:
 		if str(data.get("lighting_backend", "legacy")) == "next":
 			window_leak_root = Node2D.new()
 			window_leak_root.name = "WindowLeak"
-			window_leak_root.z_index = 1
+			window_leak_root.z_index = 0
 			roof_root.add_child(window_leak_root)
 		roof_root.add_child(roof_texture)
 		exterior = roof_texture

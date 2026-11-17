@@ -1,0 +1,32 @@
+{
+  "source_blend": "art/source/buildings/shop_general/Build1_3DShadowProxy.blend",
+  "proxy_file": "art/characters/buildings/shop_general/shadow_proxy.glb",
+  "uniform_scale": 34.7737843551797,
+  "footprint_px": [
+    192.0,
+    128.0
+  ],
+  "bounds_min_px": [
+    -95.6279,
+    -64.25,
+    0.0
+  ],
+  "bounds_max_px": [
+    95.6279,
+    64.25,
+    129.315
+  ],
+  "size_px": [
+    191.2558,
+    128.5,
+    129.315
+  ],
+  "pivot_px": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "ground_y_px": 0.0,
+  "triangle_count": 16,
+  "mesh_count": 1
+}

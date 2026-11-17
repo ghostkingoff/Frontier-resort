@@ -1,0 +1,80 @@
+{
+  "asset_id": "shop_small",
+  "interior_light_groups": {
+    "default": {
+      "inherit_building_hours": true
+    }
+  },
+  "portals": [
+    {
+      "id": "front_window_1",
+      "type": "window",
+      "marker_center_local": [28.0, 90.5],
+      "width_px": 23.0,
+      "height_px": 34.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.72,
+      "leak_strength": 1.0
+    },
+    {
+      "id": "front_window_2",
+      "type": "window",
+      "marker_center_local": [52.0, 90.5],
+      "width_px": 19.0,
+      "height_px": 34.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.72,
+      "leak_strength": 1.0
+    },
+    {
+      "id": "front_window_3",
+      "type": "window",
+      "marker_center_local": [70.5, 90.5],
+      "width_px": 12.0,
+      "height_px": 34.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.72,
+      "leak_strength": 1.0
+    },
+    {
+      "id": "front_glass_door",
+      "type": "glass_door",
+      "marker_center_local": [95.5, 104.5],
+      "width_px": 32.0,
+      "height_px": 44.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.55,
+      "leak_strength": 0.72
+    },
+    {
+      "id": "front_window_4",
+      "type": "window",
+      "marker_center_local": [120.0, 90.5],
+      "width_px": 13.0,
+      "height_px": 34.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.72,
+      "leak_strength": 1.0
+    },
+    {
+      "id": "front_window_5",
+      "type": "window",
+      "marker_center_local": [139.0, 90.5],
+      "width_px": 19.0,
+      "height_px": 34.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.72,
+      "leak_strength": 1.0
+    },
+    {
+      "id": "front_window_6",
+      "type": "window",
+      "marker_center_local": [162.0, 90.5],
+      "width_px": 21.0,
+      "height_px": 34.0,
+      "interior_light_group": "default",
+      "sun_transmission": 0.72,
+      "leak_strength": 1.0
+    }
+  ]
+}

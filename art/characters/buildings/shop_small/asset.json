@@ -1,0 +1,466 @@
+{
+  "asset_id": "shop_small",
+  "source_dir": "art/source/buildings/shop_small",
+  "runtime_dir": "art/characters/buildings/shop_small",
+  "canvas": [
+    256,
+    256
+  ],
+  "layers": [
+    {
+      "index": 0,
+      "name": "layer",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/layer.png",
+      "alpha_bounds": [
+        32,
+        112,
+        192,
+        128
+      ],
+      "components": []
+    },
+    {
+      "index": 1,
+      "name": "interior",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/interior.png",
+      "alpha_bounds": [
+        35,
+        65,
+        186,
+        174
+      ],
+      "components": []
+    },
+    {
+      "index": 2,
+      "name": "portal",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/portal.png",
+      "alpha_bounds": [
+        49,
+        186,
+        156,
+        53
+      ],
+      "components": [
+        {
+          "bounds": [
+            49,
+            186,
+            23,
+            34
+          ],
+          "center": [
+            60.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 782
+        },
+        {
+          "bounds": [
+            75,
+            186,
+            19,
+            34
+          ],
+          "center": [
+            84.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 646
+        },
+        {
+          "bounds": [
+            97,
+            186,
+            12,
+            34
+          ],
+          "center": [
+            102.5,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 408
+        },
+        {
+          "bounds": [
+            146,
+            186,
+            13,
+            34
+          ],
+          "center": [
+            152.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 442
+        },
+        {
+          "bounds": [
+            162,
+            186,
+            19,
+            34
+          ],
+          "center": [
+            171.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 646
+        },
+        {
+          "bounds": [
+            184,
+            186,
+            21,
+            34
+          ],
+          "center": [
+            194.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 714
+        },
+        {
+          "bounds": [
+            112,
+            195,
+            32,
+            44
+          ],
+          "center": [
+            127.5,
+            216.5
+          ],
+          "color": "#FF9A3C",
+          "pixel_count": 1408
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "canwalk",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/canwalk.png",
+      "alpha_bounds": [
+        44,
+        132,
+        156,
+        104
+      ],
+      "components": []
+    },
+    {
+      "index": 4,
+      "name": "wall",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/wall.png",
+      "alpha_bounds": [
+        32,
+        150,
+        192,
+        90
+      ],
+      "components": []
+    },
+    {
+      "index": 5,
+      "name": "roof",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/roof.png",
+      "alpha_bounds": [
+        32,
+        31,
+        192,
+        120
+      ],
+      "components": []
+    },
+    {
+      "index": 6,
+      "name": "light",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/light.png",
+      "alpha_bounds": [
+        40,
+        186,
+        175,
+        52
+      ],
+      "components": [
+        {
+          "bounds": [
+            49,
+            186,
+            23,
+            34
+          ],
+          "center": [
+            60.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 782
+        },
+        {
+          "bounds": [
+            75,
+            186,
+            19,
+            34
+          ],
+          "center": [
+            84.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 646
+        },
+        {
+          "bounds": [
+            97,
+            186,
+            12,
+            34
+          ],
+          "center": [
+            102.5,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 408
+        },
+        {
+          "bounds": [
+            112,
+            186,
+            31,
+            5
+          ],
+          "center": [
+            127.0,
+            188.0
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 155
+        },
+        {
+          "bounds": [
+            146,
+            186,
+            13,
+            34
+          ],
+          "center": [
+            152.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 442
+        },
+        {
+          "bounds": [
+            162,
+            186,
+            19,
+            34
+          ],
+          "center": [
+            171.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 646
+        },
+        {
+          "bounds": [
+            184,
+            186,
+            21,
+            34
+          ],
+          "center": [
+            194.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 714
+        },
+        {
+          "bounds": [
+            40,
+            188,
+            3,
+            13
+          ],
+          "center": [
+            41.0,
+            194.0
+          ],
+          "color": "#DEE80A",
+          "pixel_count": 39
+        },
+        {
+          "bounds": [
+            212,
+            188,
+            3,
+            12
+          ],
+          "center": [
+            213.0,
+            193.5
+          ],
+          "color": "#DEE80A",
+          "pixel_count": 36
+        },
+        {
+          "bounds": [
+            112,
+            196,
+            15,
+            42
+          ],
+          "center": [
+            119.0,
+            216.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 630
+        },
+        {
+          "bounds": [
+            128,
+            196,
+            15,
+            42
+          ],
+          "center": [
+            135.0,
+            216.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 630
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "name": "图层 1",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/图层_1.png",
+      "alpha_bounds": [
+        95,
+        28,
+        79,
+        24
+      ],
+      "components": []
+    },
+    {
+      "index": 8,
+      "name": "图层 2",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/图层_2.png",
+      "alpha_bounds": [
+        232,
+        169,
+        23,
+        41
+      ],
+      "components": []
+    }
+  ],
+  "proxy_source": "art/source/buildings/shop_small/ChaoShi1_3DShadowProxy_v2.blend",
+  "proxy_runtime": "art/characters/buildings/shop_small/shadow_proxy.glb",
+  "lighting_maps": {
+    "roof.png": "8093f3c9ec98157e496677a9aee256536062357a083ded22a52982692723bbf5",
+    "roof_n.png": "da2a2b559cf28f4c3219d9664a414977257383eca4464f0375d41d933b514496",
+    "roof_o.png": "54bb1cb203c96205f948a1d076b7b8eafa69cea46cbc1c208fcfd01f147599b1",
+    "roof_s.png": "7a28416decab03dabbae748098e2ad97587479303b65e6c528c589efbe84d733",
+    "wall.png": "10d5af86be153f268e553d45c73f7f204f18e6ca999a1a2a1e5bbb540b778f02",
+    "wall_n.png": "59232dbbe317d3e7e241139e4d4c2c37cc89df176925bdb217cd3be11f2ae587",
+    "wall_o.png": "1813e0fa211c4fb44bedc0215dfd9feffca9e38c2125414f6678be5ce73896b0",
+    "wall_s.png": "ef20d8199c14ad42ea8331959e908320dc323b830ef5b0599b7db66ed9c99f3c"
+  },
+  "source_hashes": {
+    "ChaoShi1.aseprite": "49e4a7f1b22d24d4bef1c9ce82656e18ba9911935c9ce75b54844594655c4fc0",
+    "ChaoShi1.png": "ef27f6029a31d350845e6c3c7de975daffa0fd369a56223639a2cea161eac578",
+    "ChaoShi1_3DShadowProxy_v2.blend": "cdee6e8d0e0cadfbe410aea5ff7f9446262a0d1ff9f4505371f2413ee15eed2a",
+    "ChaoShi1_lighting/roof.png": "8093f3c9ec98157e496677a9aee256536062357a083ded22a52982692723bbf5",
+    "ChaoShi1_lighting/roof_n.png": "da2a2b559cf28f4c3219d9664a414977257383eca4464f0375d41d933b514496",
+    "ChaoShi1_lighting/roof_o.png": "54bb1cb203c96205f948a1d076b7b8eafa69cea46cbc1c208fcfd01f147599b1",
+    "ChaoShi1_lighting/roof_s.png": "7a28416decab03dabbae748098e2ad97587479303b65e6c528c589efbe84d733",
+    "ChaoShi1_lighting/wall.png": "10d5af86be153f268e553d45c73f7f204f18e6ca999a1a2a1e5bbb540b778f02",
+    "ChaoShi1_lighting/wall_n.png": "59232dbbe317d3e7e241139e4d4c2c37cc89df176925bdb217cd3be11f2ae587",
+    "ChaoShi1_lighting/wall_o.png": "1813e0fa211c4fb44bedc0215dfd9feffca9e38c2125414f6678be5ce73896b0",
+    "ChaoShi1_lighting/wall_s.png": "ef20d8199c14ad42ea8331959e908320dc323b830ef5b0599b7db66ed9c99f3c"
+  },
+  "proxy_metadata": {
+    "source_blend": "art/source/buildings/shop_small/ChaoShi1_3DShadowProxy_v2.blend",
+    "proxy_file": "art/characters/buildings/shop_small/shadow_proxy.glb",
+    "uniform_scale": 32.0,
+    "footprint_px": [
+      192.0,
+      128.0
+    ],
+    "bounds_min_px": [
+      -96.0,
+      -64.0,
+      0.0
+    ],
+    "bounds_max_px": [
+      96.0,
+      64.0,
+      90.0
+    ],
+    "size_px": [
+      192.0,
+      128.0,
+      90.0
+    ],
+    "pivot_px": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "ground_y_px": 0.0,
+    "triangle_count": 12,
+    "mesh_count": 1
+  }
+}

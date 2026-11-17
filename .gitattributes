@@ -1,2 +1,17 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
+
+# Never apply text conversion or line-based merges to binary game assets.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.aseprite binary
+*.blend binary
+*.glb binary
+*.gltf binary
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
+*.otf binary

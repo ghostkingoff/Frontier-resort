@@ -8,6 +8,7 @@ var viewport_size := Vector2i(1280, 720)
 var world_center := Vector2(640.0, 384.0)
 var receiver_size := Vector2(4096.0, 4096.0)
 var sun_pass: Dictionary = {}
+var building_sun_pass: Dictionary = {}
 var lamp_passes: Array[Dictionary] = []
 var lamp_pass: Dictionary = {}
 var player_sun_pass: Dictionary = {}
@@ -30,7 +31,14 @@ func setup(
 	world_center = target_world_center
 	receiver_size = target_receiver_size
 	sun_pass = _create_pass("SunShadowPass", true, false)
+	building_sun_pass = _create_pass("BuildingSunShadowPass", true, false)
 	player_sun_pass = _create_pass("PlayerSunShadowPass", true, false)
+	var building_sun := building_sun_pass.get("directional") as DirectionalLight3D
+	if building_sun != null:
+		building_sun.light_angular_distance = 0.35
+		building_sun.shadow_bias = 0.025
+		building_sun.shadow_normal_bias = 0.7
+		building_sun.shadow_blur = 2.2
 	var player_sun := player_sun_pass.get("directional") as DirectionalLight3D
 	if player_sun != null:
 		player_sun.light_angular_distance = 0.18
@@ -158,7 +166,8 @@ func add_building_proxy(
 		resource_path: String,
 		center: Vector2,
 		height_scale: float = 1.0,
-		include_in_lamp_pass: bool = true) -> bool:
+		include_in_lamp_pass: bool = true,
+		include_in_building_mask: bool = true) -> bool:
 	if resource_path == "" or not ResourceLoader.exists(resource_path):
 		push_warning("[LightingRig3D] Missing shadow proxy: %s" % resource_path)
 		return false
@@ -166,6 +175,8 @@ func add_building_proxy(
 	if packed == null:
 		return false
 	var passes: Array = [sun_pass]
+	if include_in_building_mask:
+		passes.append(building_sun_pass)
 	if include_in_lamp_pass:
 		passes.append_array(lamp_passes)
 	for pass_data in passes:
@@ -432,7 +443,9 @@ func clear_proxies() -> void:
 	player_proxies.clear()
 	player_contact_proxy = null
 	actor_proxies.clear()
-	for pass_data in _all_passes():
+	var passes: Array = [sun_pass, building_sun_pass]
+	passes.append_array(lamp_passes)
+	for pass_data in passes:
 		var root := pass_data.get("proxy_root") as Node3D
 		if root == null:
 			continue
@@ -444,7 +457,7 @@ func clear_proxies() -> void:
 func set_camera(camera_2d: Camera2D) -> void:
 	if camera_2d == null:
 		return
-	var passes: Array = [sun_pass, player_sun_pass]
+	var passes: Array = [sun_pass, building_sun_pass, player_sun_pass]
 	passes.append_array(lamp_passes)
 	for pass_data in passes:
 		var camera := pass_data["camera"] as Camera3D
@@ -463,7 +476,7 @@ func set_camera(camera_2d: Camera2D) -> void:
 
 func set_sun(to_sun: Vector3) -> void:
 	var light_direction := -to_sun.normalized()
-	for pass_data in [sun_pass, player_sun_pass]:
+	for pass_data in [sun_pass, building_sun_pass, player_sun_pass]:
 		var light := pass_data.get("directional") as DirectionalLight3D
 		if light == null:
 			continue
@@ -525,6 +538,9 @@ func refresh_shadow_maps() -> void:
 	var sun_viewport := sun_pass.get("viewport") as SubViewport
 	if sun_viewport != null:
 		sun_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var building_sun_viewport := building_sun_pass.get("viewport") as SubViewport
+	if building_sun_viewport != null:
+		building_sun_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var player_sun_viewport := player_sun_pass.get("viewport") as SubViewport
 	if player_sun_viewport != null:
 		player_sun_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -536,6 +552,11 @@ func refresh_shadow_maps() -> void:
 
 func get_sun_texture() -> Texture2D:
 	var viewport := sun_pass.get("viewport") as SubViewport
+	return viewport.get_texture() if viewport != null else null
+
+
+func get_building_sun_texture() -> Texture2D:
+	var viewport := building_sun_pass.get("viewport") as SubViewport
 	return viewport.get_texture() if viewport != null else null
 
 

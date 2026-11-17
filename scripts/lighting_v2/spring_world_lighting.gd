@@ -53,6 +53,8 @@ var player_occlusion_disabled := false
 var player_smooth_normal_enabled := false
 var player_shared_atlas_uv := true
 var region_debug_root: Node2D
+var use_sun_screen_override := false
+var sun_screen_override := Vector3.ZERO
 
 var neutral_normal: ImageTexture
 var neutral_specular: ImageTexture
@@ -169,6 +171,19 @@ func set_debug_mode(value: int) -> void:
 	_apply_debug_mode()
 
 
+func set_sun_screen_override(value: Vector3) -> void:
+	use_sun_screen_override = value.length_squared() > 0.000001
+	sun_screen_override = value.normalized() \
+		if use_sun_screen_override else Vector3.ZERO
+	last_shadow_key = ""
+
+
+func clear_sun_screen_override() -> void:
+	use_sun_screen_override = false
+	sun_screen_override = Vector3.ZERO
+	last_shadow_key = ""
+
+
 func _apply_debug_mode() -> void:
 	for material in ground_materials:
 		material.set_shader_parameter("debug_mode", debug_mode)
@@ -220,10 +235,17 @@ func _create_shadow_rig() -> void:
 
 
 func _setup_ground_materials() -> void:
-	var grass := _make_tile_material(
-		"res://art/characters/ground/tiles/grass_normal.png",
-		"res://art/characters/ground/tiles/grass_specular.png",
-		"res://art/characters/ground/tiles/grass_occlusion.png",
+	var grass_wild := _make_tile_material(
+		"res://art/characters/ground/grass_wild/normal.png",
+		"res://art/characters/ground/grass_wild/specular.png",
+		"res://art/characters/ground/grass_wild/occlusion.png",
+		1.10,
+		0.28,
+		0.84)
+	var grass_trimmed := _make_tile_material(
+		"res://art/characters/ground/grass_trimmed/normal.png",
+		"res://art/characters/ground/grass_trimmed/specular.png",
+		"res://art/characters/ground/grass_trimmed/occlusion.png",
 		1.10,
 		0.28,
 		0.84)
@@ -241,7 +263,8 @@ func _setup_ground_materials() -> void:
 		0.4,
 		0.1,
 		0.4)
-	world.ground.material = grass
+	world.ground.material = grass_wild
+	world.ground_lawn.material = grass_trimmed
 	world.ground_path.material = stone
 	world.ground_misc.material = fallback
 
@@ -582,6 +605,9 @@ func _make_building_surface_material(
 	var foot_y := float(layers.get(
 		"wall_foot_y_px",
 		fallback_foot_y))
+	var wall_region: Array = layers.get("wall_region_px", [])
+	if prefix == "wall" and wall_region.size() >= 4:
+		foot_y = float(wall_region[1]) + float(wall_region[3])
 	var material := _make_surface_material(
 		normal_path,
 		specular_path,
@@ -608,6 +634,14 @@ func _make_building_surface_material(
 	material.set_shader_parameter(
 		"wall_facing_softness",
 		clampf(wall_softness, 0.001, 0.25))
+	material.set_shader_parameter("apply_wall_shadow_projection", is_wall)
+	material.set_shader_parameter(
+		"wall_shadow_rect_uv",
+		Vector4(0.0, 0.0, 1.0, 1.0))
+	material.set_shader_parameter("apply_player_sun_shadow", is_wall)
+	material.set_shader_parameter(
+		"player_wall_shadow_height_px",
+		PLAYER_SHADOW_HEIGHT_PX)
 	surface_meta[material] = {
 		"building": building,
 		"is_building_surface": true,
@@ -641,6 +675,11 @@ func _make_surface_material(
 	material.set_shader_parameter("occlusion_texture_nearest", occlusion_map)
 	material.set_shader_parameter(
 		"sun_shadow_texture", rig.get_sun_texture())
+	material.set_shader_parameter(
+		"building_sun_shadow_texture", rig.get_building_sun_texture())
+	material.set_shader_parameter(
+		"player_sun_shadow_texture", rig.get_player_sun_texture())
+	material.set_shader_parameter("apply_player_sun_shadow", false)
 	material.set_shader_parameter(
 		"lamp_shadow_texture_0", rig.get_lamp_texture(0))
 	material.set_shader_parameter(
@@ -697,6 +736,11 @@ func _make_surface_material_from_textures(
 	material.set_shader_parameter(
 		"sun_shadow_texture", rig.get_sun_texture())
 	material.set_shader_parameter(
+		"building_sun_shadow_texture", rig.get_building_sun_texture())
+	material.set_shader_parameter(
+		"player_sun_shadow_texture", rig.get_player_sun_texture())
+	material.set_shader_parameter("apply_player_sun_shadow", false)
+	material.set_shader_parameter(
 		"lamp_shadow_texture_0", rig.get_lamp_texture(0))
 	material.set_shader_parameter(
 		"lamp_shadow_texture_1", rig.get_lamp_texture(1))
@@ -748,7 +792,7 @@ func _ensure_lamp_glow(building: Building) -> void:
 		LAMP_HEAD_BRIGHTNESS)
 	glow.material = glow_material
 	glow.modulate = Color.WHITE
-	glow.z_index = 0
+	glow.z_index = 2
 	var display_parent := building.roof_root \
 		if building.roof_root != null else building.roof_light_root
 	display_parent.add_child(glow)
@@ -1416,10 +1460,45 @@ func _update_wall_shadow_parameters(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(
 		"apply_wall_facing_gate",
 		bool(meta.get("apply_wall_facing_gate", false)))
+	var is_wall := bool(meta.get("is_wall", false))
+	material.set_shader_parameter("apply_wall_shadow_projection", is_wall)
+	if is_wall and building.wall_texture != null:
+		material.set_shader_parameter(
+			"wall_shadow_rect_uv",
+			_wall_shadow_rect_uv(building))
 	if is_building_surface:
 		material.set_shader_parameter(
 			"self_shadow_world_rect",
 			_building_shadow_world_rect(building))
+
+
+func _wall_shadow_rect_uv(building: Building) -> Vector4:
+	var layers: Dictionary = building.data.get("sprite_layers", {})
+	var canvas_array: Array = layers.get("canvas", [256.0, 256.0])
+	var canvas := Vector2(
+		float(canvas_array[0]) if canvas_array.size() > 0 else 256.0,
+		float(canvas_array[1]) if canvas_array.size() > 1 else 256.0)
+	var region_array: Array = layers.get(
+		"wall_region_px",
+		[0.0, 0.0, canvas.x, canvas.y])
+	var region := Rect2(
+		float(region_array[0]) if region_array.size() > 0 else 0.0,
+		float(region_array[1]) if region_array.size() > 1 else 0.0,
+		float(region_array[2]) if region_array.size() > 2 else canvas.x,
+		float(region_array[3]) if region_array.size() > 3 else canvas.y)
+	var canvas_transform := get_viewport().get_canvas_transform()
+	var top_left := canvas_transform * building.wall_texture.to_global(
+		region.position)
+	var bottom_right := canvas_transform * building.wall_texture.to_global(
+		region.end)
+	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
+	var top_left_uv := top_left / viewport_size
+	var bottom_right_uv := bottom_right / viewport_size
+	return Vector4(
+		minf(top_left_uv.x, bottom_right_uv.x),
+		minf(top_left_uv.y, bottom_right_uv.y),
+		maxf(top_left_uv.x, bottom_right_uv.x),
+		maxf(top_left_uv.y, bottom_right_uv.y))
 
 
 func _building_shadow_world_rect(building: Building) -> Vector4:
@@ -1707,6 +1786,7 @@ func _rebuild_proxies() -> void:
 			proxy_path,
 			center,
 			height_scale,
+			str(building.data.get("lighting_kind", "")) != "street_lamp",
 			str(building.data.get("lighting_kind", "")) != "street_lamp")
 	if world.player_avatar != null:
 		var foot := _player_foot_position()
@@ -1818,6 +1898,8 @@ func _make_window_texture(size: int) -> ImageTexture:
 
 
 func _sun_to_screen_direction(at_hour: float) -> Vector3:
+	if use_sun_screen_override:
+		return sun_screen_override
 	var sun_config: Dictionary = config.get("sun", {})
 	var sunrise := float(sun_config.get("sunrise_hour", 6.0 + 25.0 / 60.0))
 	var sunset := float(sun_config.get("sunset_hour", 19.0 + 25.0 / 60.0))

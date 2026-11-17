@@ -14,14 +14,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT / "art" / "source" / "buildings"
 RUNTIME_ROOT = ROOT / "art" / "characters" / "buildings"
+SOURCE_TREE_ROOT = ROOT / "art" / "source" / "trees"
+RUNTIME_TREE_ROOT = ROOT / "art" / "characters" / "trees"
+SOURCE_GROUND_ROOT = ROOT / "art" / "source" / "ground"
+RUNTIME_GROUND_ROOT = ROOT / "art" / "characters" / "ground"
 EXTERNAL_ROOT = Path(r"E:\素材\aseprite\build")
+EXTERNAL_LAYER_ROOT = Path(r"E:\素材\aseprite\layer")
 
 ASSETS = {
     "lodge_ordinary": {
         "source_dir": EXTERNAL_ROOT / "基础度假屋",
         "aseprite": "PuTongDuJiaWu.aseprite",
         "lighting_dir": "PuTongDuJiaWu_layers_lighting",
-        "proxy": "PuTongDuJiaWu_3DShadowProxy_v2.blend",
+        "proxy": "PuTongDuJiaWu_3DShadowProxy_v3.blend",
         "expected_layers": {
             "layer",
             "ground",
@@ -30,6 +35,36 @@ ASSETS = {
             "interior",
             "canwalk",
             "portal",
+            "light",
+        },
+    },
+    "shop_general": {
+        "source_dir": EXTERNAL_ROOT / "小商店",
+        "aseprite": "build1.aseprite",
+        "lighting_dir": "build1_lighting",
+        "proxy": "Build1_3DShadowProxy.blend",
+        "expected_layers": {
+            "layer",
+            "interior",
+            "portal",
+            "CanWalk",
+            "wall",
+            "roof",
+            "light",
+        },
+    },
+    "shop_small": {
+        "source_dir": EXTERNAL_ROOT / "小型超市",
+        "aseprite": "ChaoShi1.aseprite",
+        "lighting_dir": "ChaoShi1_lighting",
+        "proxy": "ChaoShi1_3DShadowProxy_v2.blend",
+        "expected_layers": {
+            "layer",
+            "interior",
+            "portal",
+            "canwalk",
+            "wall",
+            "roof",
             "light",
         },
     },
@@ -44,6 +79,86 @@ ASSETS = {
             "roof",
             "light",
         },
+    },
+}
+
+REQUIRED_LIGHTING_MAPS = {
+    "lodge_ordinary": {
+        "ground.png",
+        "ground_n.png",
+        "ground_s.png",
+        "ground_o.png",
+        "wall.png",
+        "wall_n.png",
+        "wall_s.png",
+        "wall_o.png",
+        "roof.png",
+        "roof_n.png",
+        "roof_s.png",
+        "roof_o.png",
+    },
+    "shop_general": {
+        "wall.png",
+        "wall_n.png",
+        "wall_s.png",
+        "wall_o.png",
+        "roof.png",
+        "roof_n.png",
+        "roof_s.png",
+        "roof_o.png",
+    },
+    "shop_small": {
+        "wall.png",
+        "wall_n.png",
+        "wall_s.png",
+        "wall_o.png",
+        "roof.png",
+        "roof_n.png",
+        "roof_s.png",
+        "roof_o.png",
+    },
+    "street_lamp": {
+        "wall.png",
+        "wall_n.png",
+        "wall_s.png",
+        "wall_o.png",
+        "roof.png",
+        "roof_n.png",
+        "roof_s.png",
+        "roof_o.png",
+    },
+}
+
+TREE_ASSETS = {
+    "pine": {
+        "source_dir": EXTERNAL_ROOT / "松树",
+        "aseprite": "tree1.aseprite",
+        "color_png": "tree1.png",
+        "lighting_dir": "tree1_lighting",
+        "proxy": "Tree1_3DShadowProxy.blend",
+    },
+}
+
+GROUND_ASSETS = {
+    "grass_wild": {
+        "source_dir": EXTERNAL_LAYER_ROOT / "草地",
+        "aseprite": "glass1.aseprite",
+        "color_png": "glass1.png",
+        "lighting_dir": "grass1_lighting",
+        "color_map": "grass1.png",
+        "normal_map": "grass1_n.png",
+        "specular_map": "grass1_s.png",
+        "occlusion_map": "grass1_o.png",
+    },
+    "grass_trimmed": {
+        "source_dir": EXTERNAL_LAYER_ROOT / "修剪草坪",
+        "aseprite": "glass_trim.aseprite",
+        "color_png": "glass_trim.png",
+        "lighting_dir": "grass_trim_lighting",
+        "color_map": "grass_trim.png",
+        "normal_map": "grass_trim_n.png",
+        "specular_map": "grass_trim_s.png",
+        "occlusion_map": "grass_trim_o.png",
     },
 }
 
@@ -297,20 +412,7 @@ def import_asset(asset_id: str, spec: dict) -> dict:
         shutil.rmtree(lighting_target)
     shutil.copytree(lighting_source, lighting_target)
 
-    required_maps = {
-        "ground.png",
-        "ground_n.png",
-        "ground_s.png",
-        "ground_o.png",
-        "wall.png",
-        "wall_n.png",
-        "wall_s.png",
-        "wall_o.png",
-        "roof.png",
-        "roof_n.png",
-        "roof_s.png",
-        "roof_o.png",
-    }
+    required_maps = REQUIRED_LIGHTING_MAPS[asset_id]
     missing_maps = {
         name for name in required_maps if not (lighting_target / name).is_file()
     }
@@ -350,18 +452,125 @@ def import_asset(asset_id: str, spec: dict) -> dict:
     return manifest
 
 
+def import_tree_asset(asset_id: str, spec: dict) -> dict:
+    source_target = SOURCE_TREE_ROOT / asset_id
+    runtime_target = RUNTIME_TREE_ROOT / asset_id
+    if source_target.exists():
+        shutil.rmtree(source_target)
+    shutil.copytree(spec["source_dir"], source_target)
+
+    layer_metadata = extract_aseprite(
+        source_target / spec["aseprite"],
+        runtime_target / "layers",
+    )
+    lighting_source = source_target / spec["lighting_dir"]
+    runtime_target.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_target / spec["color_png"], runtime_target / "color.png")
+    shutil.copy2(lighting_source / "wall_n.png", runtime_target / "normal.png")
+    shutil.copy2(lighting_source / "wall_s.png", runtime_target / "specular.png")
+    shutil.copy2(lighting_source / "wall_o.png", runtime_target / "occlusion.png")
+
+    source_files = [path for path in source_target.rglob("*") if path.is_file()]
+    manifest = {
+        "asset_id": asset_id,
+        "source_dir": str(source_target.relative_to(ROOT)).replace("\\", "/"),
+        "runtime_dir": str(runtime_target.relative_to(ROOT)).replace("\\", "/"),
+        "canvas": layer_metadata["canvas"],
+        "layers": layer_metadata["layers"],
+        "proxy_source": str(
+            (source_target / spec["proxy"]).relative_to(ROOT)
+        ).replace("\\", "/"),
+        "proxy_runtime": str(
+            (runtime_target / "shadow_proxy.glb").relative_to(ROOT)
+        ).replace("\\", "/"),
+        "surface_maps": {
+            name: file_hash(runtime_target / name)
+            for name in [
+                "color.png",
+                "normal.png",
+                "specular.png",
+                "occlusion.png",
+            ]
+        },
+        "source_hashes": {
+            str(path.relative_to(source_target)).replace("\\", "/"): file_hash(path)
+            for path in sorted(source_files)
+        },
+    }
+    proxy_metadata_path = runtime_target / "shadow_proxy.json"
+    if proxy_metadata_path.is_file():
+        manifest["proxy_metadata"] = json.loads(
+            proxy_metadata_path.read_text(encoding="utf-8")
+        )
+    (runtime_target / "asset.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return manifest
+
+
+def import_ground_asset(asset_id: str, spec: dict) -> dict:
+    source_target = SOURCE_GROUND_ROOT / asset_id
+    runtime_target = RUNTIME_GROUND_ROOT / asset_id
+    if source_target.exists():
+        shutil.rmtree(source_target)
+    shutil.copytree(spec["source_dir"], source_target)
+    runtime_target.mkdir(parents=True, exist_ok=True)
+
+    lighting_source = source_target / spec["lighting_dir"]
+    copies = {
+        spec["color_png"]: "color.png",
+        spec["lighting_dir"] + "/" + spec["color_map"]: "color.png",
+        spec["lighting_dir"] + "/" + spec["normal_map"]: "normal.png",
+        spec["lighting_dir"] + "/" + spec["specular_map"]: "specular.png",
+        spec["lighting_dir"] + "/" + spec["occlusion_map"]: "occlusion.png",
+    }
+    for relative_source, runtime_name in copies.items():
+        shutil.copy2(source_target / relative_source, runtime_target / runtime_name)
+
+    source_files = [path for path in source_target.rglob("*") if path.is_file()]
+    manifest = {
+        "asset_id": asset_id,
+        "source_dir": str(source_target.relative_to(ROOT)).replace("\\", "/"),
+        "runtime_dir": str(runtime_target.relative_to(ROOT)).replace("\\", "/"),
+        "canvas_px": [32, 32],
+        "runtime_maps": {
+            name: file_hash(runtime_target / name)
+            for name in [
+                "color.png",
+                "normal.png",
+                "specular.png",
+                "occlusion.png",
+            ]
+        },
+        "source_hashes": {
+            str(path.relative_to(source_target)).replace("\\", "/"): file_hash(path)
+            for path in sorted(source_files)
+        },
+    }
+    (runtime_target / "asset.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return manifest
+
+
 def main() -> None:
     (ROOT / "art" / "source").mkdir(parents=True, exist_ok=True)
     (ROOT / "art" / "source" / ".gdignore").write_text("", encoding="utf-8")
     requested = sys.argv[1:]
-    unknown = set(requested) - set(ASSETS)
+    known = set(ASSETS) | set(TREE_ASSETS) | set(GROUND_ASSETS)
+    unknown = set(requested) - known
     if unknown:
         raise SystemExit(f"unknown asset ids: {sorted(unknown)}")
-    selected = requested or list(ASSETS)
+    selected = requested or list(ASSETS) + list(TREE_ASSETS) + list(GROUND_ASSETS)
     for asset_id in selected:
-        spec = ASSETS[asset_id]
-        manifest = import_asset(asset_id, spec)
-        print(f"[lighting-assets] {asset_id}: {manifest['canvas']}")
+        if asset_id in ASSETS:
+            manifest = import_asset(asset_id, ASSETS[asset_id])
+        elif asset_id in TREE_ASSETS:
+            manifest = import_tree_asset(asset_id, TREE_ASSETS[asset_id])
+        else:
+            manifest = import_ground_asset(asset_id, GROUND_ASSETS[asset_id])
+        canvas = manifest.get("canvas", manifest.get("canvas_px"))
+        print(f"[lighting-assets] {asset_id}: {canvas}")
 
 
 if __name__ == "__main__":

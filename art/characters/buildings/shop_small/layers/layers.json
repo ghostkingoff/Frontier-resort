@@ -1,0 +1,472 @@
+{
+  "source": "E:\\godot\\模拟经营类(1)\\art\\source\\buildings\\shop_small\\ChaoShi1.aseprite",
+  "canvas": [
+    256,
+    256
+  ],
+  "layers": [
+    {
+      "index": 0,
+      "name": "layer",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/layer.png",
+      "alpha_bounds": [
+        32,
+        112,
+        192,
+        128
+      ],
+      "components": []
+    },
+    {
+      "index": 1,
+      "name": "interior",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/interior.png",
+      "alpha_bounds": [
+        35,
+        65,
+        186,
+        174
+      ],
+      "components": []
+    },
+    {
+      "index": 2,
+      "name": "portal",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/portal.png",
+      "alpha_bounds": [
+        49,
+        186,
+        156,
+        53
+      ],
+      "components": [
+        {
+          "bounds": [
+            49,
+            186,
+            23,
+            34
+          ],
+          "center": [
+            60.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 782
+        },
+        {
+          "bounds": [
+            75,
+            186,
+            19,
+            34
+          ],
+          "center": [
+            84.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 646
+        },
+        {
+          "bounds": [
+            97,
+            186,
+            12,
+            34
+          ],
+          "center": [
+            102.5,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 408
+        },
+        {
+          "bounds": [
+            146,
+            186,
+            13,
+            34
+          ],
+          "center": [
+            152.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 442
+        },
+        {
+          "bounds": [
+            162,
+            186,
+            19,
+            34
+          ],
+          "center": [
+            171.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 646
+        },
+        {
+          "bounds": [
+            184,
+            186,
+            21,
+            34
+          ],
+          "center": [
+            194.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 714
+        },
+        {
+          "bounds": [
+            112,
+            195,
+            32,
+            44
+          ],
+          "center": [
+            127.5,
+            216.5
+          ],
+          "color": "#FF9A3C",
+          "pixel_count": 1408
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "canwalk",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/canwalk.png",
+      "alpha_bounds": [
+        44,
+        132,
+        156,
+        104
+      ],
+      "components": []
+    },
+    {
+      "index": 4,
+      "name": "wall",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/wall.png",
+      "alpha_bounds": [
+        32,
+        150,
+        192,
+        90
+      ],
+      "components": []
+    },
+    {
+      "index": 5,
+      "name": "roof",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/roof.png",
+      "alpha_bounds": [
+        32,
+        31,
+        192,
+        120
+      ],
+      "components": []
+    },
+    {
+      "index": 6,
+      "name": "light",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/light.png",
+      "alpha_bounds": [
+        40,
+        186,
+        175,
+        52
+      ],
+      "components": [
+        {
+          "bounds": [
+            49,
+            186,
+            23,
+            34
+          ],
+          "center": [
+            60.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 782
+        },
+        {
+          "bounds": [
+            75,
+            186,
+            19,
+            34
+          ],
+          "center": [
+            84.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 646
+        },
+        {
+          "bounds": [
+            97,
+            186,
+            12,
+            34
+          ],
+          "center": [
+            102.5,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 408
+        },
+        {
+          "bounds": [
+            112,
+            186,
+            31,
+            5
+          ],
+          "center": [
+            127.0,
+            188.0
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 155
+        },
+        {
+          "bounds": [
+            146,
+            186,
+            13,
+            34
+          ],
+          "center": [
+            152.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 442
+        },
+        {
+          "bounds": [
+            162,
+            186,
+            19,
+            34
+          ],
+          "center": [
+            171.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 646
+        },
+        {
+          "bounds": [
+            184,
+            186,
+            21,
+            34
+          ],
+          "center": [
+            194.0,
+            202.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 714
+        },
+        {
+          "bounds": [
+            40,
+            188,
+            3,
+            13
+          ],
+          "center": [
+            41.0,
+            194.0
+          ],
+          "color": "#DEE80A",
+          "pixel_count": 39
+        },
+        {
+          "bounds": [
+            212,
+            188,
+            3,
+            12
+          ],
+          "center": [
+            213.0,
+            193.5
+          ],
+          "color": "#DEE80A",
+          "pixel_count": 36
+        },
+        {
+          "bounds": [
+            112,
+            196,
+            15,
+            42
+          ],
+          "center": [
+            119.0,
+            216.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 630
+        },
+        {
+          "bounds": [
+            128,
+            196,
+            15,
+            42
+          ],
+          "center": [
+            135.0,
+            216.5
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 630
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "name": "图层 1",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/图层_1.png",
+      "alpha_bounds": [
+        95,
+        28,
+        79,
+        24
+      ],
+      "components": []
+    },
+    {
+      "index": 8,
+      "name": "图层 2",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_small/layers/图层_2.png",
+      "alpha_bounds": [
+        232,
+        169,
+        23,
+        41
+      ],
+      "components": []
+    }
+  ],
+  "cels": [
+    {
+      "layer": "layer",
+      "x": 32,
+      "y": 112,
+      "width": 192,
+      "height": 128
+    },
+    {
+      "layer": "interior",
+      "x": 35,
+      "y": 65,
+      "width": 186,
+      "height": 174
+    },
+    {
+      "layer": "portal",
+      "x": 49,
+      "y": 186,
+      "width": 156,
+      "height": 53
+    },
+    {
+      "layer": "canwalk",
+      "x": 44,
+      "y": 132,
+      "width": 156,
+      "height": 104
+    },
+    {
+      "layer": "wall",
+      "x": 32,
+      "y": 150,
+      "width": 192,
+      "height": 90
+    },
+    {
+      "layer": "roof",
+      "x": 32,
+      "y": 31,
+      "width": 192,
+      "height": 120
+    },
+    {
+      "layer": "light",
+      "x": 40,
+      "y": 186,
+      "width": 175,
+      "height": 52
+    },
+    {
+      "layer": "图层 1",
+      "x": 95,
+      "y": 28,
+      "width": 79,
+      "height": 24
+    },
+    {
+      "layer": "图层 2",
+      "x": 232,
+      "y": 169,
+      "width": 23,
+      "height": 41
+    }
+  ]
+}

@@ -1,40 +1,40 @@
 [gd_resource type="TileSet" format=3]
 
-[ext_resource type="Texture2D" path="res://art/characters/ground/tiles/grass_color.png" id="1_grass"]
-[ext_resource type="Texture2D" path="res://art/characters/ground/tiles/stone_color.png" id="2_stone"]
-[ext_resource type="Texture2D" path="res://art/placeholders/tiles/ninja_dense_grass_2x.png" id="3_dense"]
-[ext_resource type="Texture2D" path="res://art/placeholders/tiles/ninja_stone_tile_2x.png" id="4_stone_placeholder"]
-[ext_resource type="Texture2D" path="res://art/placeholders/tiles/ninja_wasteland_2x.png" id="5_wasteland"]
+[ext_resource type="Texture2D" path="res://art/characters/ground/grass_wild/color.png" id="1_7t0ve"]
+[ext_resource type="Texture2D" path="res://art/characters/ground/tiles/stone_color.png" id="2_iatx6"]
+[ext_resource type="Texture2D" path="res://art/placeholders/tiles/ninja_dense_grass_2x.png" id="3_gq4at"]
+[ext_resource type="Texture2D" path="res://art/characters/ground/grass_trimmed/color.png" id="4_ppbxp"]
+[ext_resource type="Texture2D" path="res://art/placeholders/tiles/ninja_wasteland_2x.png" id="5_t64b4"]
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_grass"]
-texture = ExtResource("1_grass")
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_d2ri0"]
+texture = ExtResource("1_7t0ve")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_stone"]
-texture = ExtResource("2_stone")
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_n5ckv"]
+texture = ExtResource("2_iatx6")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_dense"]
-texture = ExtResource("3_dense")
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_s5a4u"]
+texture = ExtResource("3_gq4at")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_stone_placeholder"]
-texture = ExtResource("4_stone_placeholder")
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_6wsv7"]
+texture = ExtResource("4_ppbxp")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_wasteland"]
-texture = ExtResource("5_wasteland")
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_w576w"]
+texture = ExtResource("5_t64b4")
 texture_region_size = Vector2i(32, 32)
 0:0/0 = 0
 
 [resource]
 tile_size = Vector2i(32, 32)
-sources/0 = SubResource("TileSetAtlasSource_grass")
-sources/1 = SubResource("TileSetAtlasSource_stone")
-sources/2 = SubResource("TileSetAtlasSource_dense")
-sources/3 = SubResource("TileSetAtlasSource_stone_placeholder")
-sources/4 = SubResource("TileSetAtlasSource_wasteland")
+sources/0 = SubResource("TileSetAtlasSource_d2ri0")
+sources/1 = SubResource("TileSetAtlasSource_n5ckv")
+sources/2 = SubResource("TileSetAtlasSource_s5a4u")
+sources/3 = SubResource("TileSetAtlasSource_6wsv7")
+sources/4 = SubResource("TileSetAtlasSource_w576w")

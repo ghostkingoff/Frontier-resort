@@ -1,0 +1,323 @@
+{
+  "source": "E:\\godot\\模拟经营类(1)\\art\\source\\buildings\\shop_general\\build1.aseprite",
+  "canvas": [
+    256,
+    256
+  ],
+  "layers": [
+    {
+      "index": 0,
+      "name": "layer",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/layer.png",
+      "alpha_bounds": [
+        32,
+        111,
+        192,
+        129
+      ],
+      "components": []
+    },
+    {
+      "index": 1,
+      "name": "interior",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/interior.png",
+      "alpha_bounds": [
+        47,
+        96,
+        161,
+        134
+      ],
+      "components": []
+    },
+    {
+      "index": 2,
+      "name": "portal",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/portal.png",
+      "alpha_bounds": [
+        72,
+        183,
+        113,
+        46
+      ],
+      "components": [
+        {
+          "bounds": [
+            108,
+            183,
+            34,
+            46
+          ],
+          "center": [
+            124.5,
+            205.5
+          ],
+          "color": "#FF9A3C",
+          "pixel_count": 1564
+        },
+        {
+          "bounds": [
+            72,
+            199,
+            25,
+            25
+          ],
+          "center": [
+            84.0,
+            211.0
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 625
+        },
+        {
+          "bounds": [
+            160,
+            199,
+            25,
+            25
+          ],
+          "center": [
+            172.0,
+            211.0
+          ],
+          "color": "#4FA9FF",
+          "pixel_count": 625
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "CanWalk",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/CanWalk.png",
+      "alpha_bounds": [
+        66,
+        155,
+        123,
+        71
+      ],
+      "components": []
+    },
+    {
+      "index": 4,
+      "name": "wall",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/wall.png",
+      "alpha_bounds": [
+        42,
+        111,
+        176,
+        119
+      ],
+      "components": []
+    },
+    {
+      "index": 5,
+      "name": "roof",
+      "flags": 3,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/roof.png",
+      "alpha_bounds": [
+        38,
+        4,
+        183,
+        161
+      ],
+      "components": []
+    },
+    {
+      "index": 6,
+      "name": "light",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/light.png",
+      "alpha_bounds": [
+        72,
+        129,
+        173,
+        104
+      ],
+      "components": [
+        {
+          "bounds": [
+            89,
+            129,
+            33,
+            23
+          ],
+          "center": [
+            105.0,
+            140.0
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 401
+        },
+        {
+          "bounds": [
+            128,
+            131,
+            38,
+            21
+          ],
+          "center": [
+            146.5,
+            141.0
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 415
+        },
+        {
+          "bounds": [
+            113,
+            178,
+            23,
+            4
+          ],
+          "center": [
+            124.0,
+            179.5
+          ],
+          "color": "#DEE80A",
+          "pixel_count": 23
+        },
+        {
+          "bounds": [
+            72,
+            199,
+            25,
+            25
+          ],
+          "center": [
+            84.0,
+            211.0
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 625
+        },
+        {
+          "bounds": [
+            160,
+            199,
+            25,
+            25
+          ],
+          "center": [
+            172.0,
+            211.0
+          ],
+          "color": "#80D0F1",
+          "pixel_count": 625
+        },
+        {
+          "bounds": [
+            244,
+            232,
+            1,
+            1
+          ],
+          "center": [
+            244.0,
+            232.0
+          ],
+          "color": "#4CA7CC",
+          "pixel_count": 1
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "name": "objiect",
+      "flags": 2,
+      "type": 0,
+      "child_level": 0,
+      "opacity": 255,
+      "runtime_file": "art/characters/buildings/shop_general/layers/objiect.png",
+      "alpha_bounds": [
+        9,
+        31,
+        61,
+        10
+      ],
+      "components": []
+    }
+  ],
+  "cels": [
+    {
+      "layer": "layer",
+      "x": 32,
+      "y": 111,
+      "width": 192,
+      "height": 129
+    },
+    {
+      "layer": "interior",
+      "x": 47,
+      "y": 96,
+      "width": 161,
+      "height": 134
+    },
+    {
+      "layer": "portal",
+      "x": 72,
+      "y": 183,
+      "width": 113,
+      "height": 46
+    },
+    {
+      "layer": "CanWalk",
+      "x": 66,
+      "y": 155,
+      "width": 123,
+      "height": 71
+    },
+    {
+      "layer": "wall",
+      "x": 42,
+      "y": 111,
+      "width": 176,
+      "height": 119
+    },
+    {
+      "layer": "roof",
+      "x": 38,
+      "y": 4,
+      "width": 183,
+      "height": 161
+    },
+    {
+      "layer": "light",
+      "x": 72,
+      "y": 129,
+      "width": 173,
+      "height": 104
+    },
+    {
+      "layer": "objiect",
+      "x": 9,
+      "y": 31,
+      "width": 61,
+      "height": 10
+    }
+  ]
+}
