@@ -19,6 +19,7 @@ var wait_left := 0
 var hold_mode := false
 var hold_hour := 12.0
 var hold_fog := false
+var hold_rain := false
 var hold_animate := false
 var hold_speed := GameClock.Speed.X1
 var hold_game_day := -1
@@ -37,6 +38,7 @@ var capture_marker: Label
 var schedule := [
 	{"name": "title_flow_sunrise.png", "hour": 7.5, "fog": false},
 	{"name": "title_flow_noon.png", "hour": 13.0, "fog": false},
+	{"name": "title_flow_rain_noon.png", "hour": 13.0, "fog": false, "rain": true},
 	{"name": "title_flow_sunset.png", "hour": 19.0, "fog": false},
 	{"name": "title_flow_0100_night.png", "hour": 1.0, "fog": false},
 	{"name": "title_flow_0820_fog.png", "hour": 8.0 + 20.0 / 60.0, "fog": true},
@@ -79,6 +81,7 @@ func _ready() -> void:
 			"name": "os_hold_%s.png" % _hour_file_token(hold_hour),
 			"hour": hold_hour,
 			"fog": hold_fog,
+			"rain": hold_rain,
 			"panel": "--dev-events-panel" in OS.get_cmdline_user_args(),
 		}]
 		_create_capture_marker()
@@ -225,6 +228,8 @@ func _prepare() -> void:
 func _apply_schedule() -> void:
 	var entry: Dictionary = schedule[schedule_index]
 	WorldWeather.set_fog_force(1 if bool(entry["fog"]) else -1)
+	WorldWeather.set_today_rain_force(
+		1 if bool(entry.get("rain", false)) else -1)
 	var hour := float(entry["hour"])
 	var target := hour if hour >= GameClock.DAY_START_HOUR else hour + 24.0
 	GameClock.progress = clampf(
@@ -258,7 +263,7 @@ func _apply_schedule() -> void:
 		"LightingV2DebugPanel") as LightingV2DebugPanel
 	if panel != null:
 		panel.set_panel_visible(bool(entry.get("panel", false)))
-	wait_left = WAIT_FRAMES
+	wait_left = 90 if hold_mode and hold_rain else WAIT_FRAMES
 
 
 func _capture(file_name: String) -> void:
@@ -286,6 +291,10 @@ func _parse_capture_args() -> void:
 				23.999)
 		elif arg.begins_with("--hold-fog="):
 			hold_fog = arg.trim_prefix("--hold-fog=") == "1"
+		elif arg.begins_with("--hold-rain="):
+			hold_rain = arg.trim_prefix("--hold-rain=") == "1"
+		elif arg == "--rain":
+			hold_rain = true
 		elif arg == "--hold-animate":
 			hold_animate = true
 		elif arg.begins_with("--hold-speed="):
@@ -467,6 +476,20 @@ func _capture_shadow_map() -> void:
 			var player_shadow_path := "%s/player_sun_shadow_map.png" % output_dir
 			player_shadow_image.save_png(player_shadow_path)
 			print("[runtime-main] 角色太阳阴影图 -> %s" % player_shadow_path)
+	if hold_rain and spring_lighting.rain_reflection_viewport != null:
+		var reflection_image: Image = \
+			spring_lighting.rain_reflection_viewport.get_texture().get_image()
+		if reflection_image != null and not reflection_image.is_empty():
+			var reflection_path := "%s/rain_reflection_texture.png" % output_dir
+			reflection_image.save_png(reflection_path)
+			print("[runtime-main] 雨天倒影图 -> %s" % reflection_path)
+	if hold_rain and spring_lighting.rain_ripple_viewport != null:
+		var ripple_image: Image = \
+			spring_lighting.rain_ripple_viewport.get_texture().get_image()
+		if ripple_image != null and not ripple_image.is_empty():
+			var ripple_path := "%s/rain_ripple_texture.png" % output_dir
+			ripple_image.save_png(ripple_path)
+			print("[runtime-main] 雨天水波图 -> %s" % ripple_path)
 
 
 func _hour_file_token(hour: float) -> String:

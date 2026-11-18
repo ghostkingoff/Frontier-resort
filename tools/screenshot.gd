@@ -281,9 +281,6 @@ func _process(_delta: float) -> void:
 		var w3: Node2D = main.get_node("World")
 		w3.set_roof_mode(false)
 		GameClock.progress = 0.62      # 约 20:53，灯都亮了
-		for b in w3.buildings:
-			if b.has_method("update_lights"):
-				b.update_lights(GameClock.current_hour())
 		var cam3: Camera2D = main.get_node("Camera")
 		cam3.position = w3.cell_center(Vector2i(58, 39))
 	if frames == 1230:

@@ -25,19 +25,17 @@ func _ready() -> void:
 
 	WorldWeather.clear_force_overrides()
 	WorldWeather.set_yesterday_rain_force(0)
-	DevEvents.clear_chance_override("weather.post_rain_fog")
+	DevEvents.set_chance_override("weather.fog", 1.0)
 	WorldWeather.refresh()
-	checks.append("昨日不下雨时不会起雾：%s" % [
-		str(not WorldWeather.fog_event)])
-	WorldWeather.set_yesterday_rain_force(1)
-	DevEvents.set_chance_override("weather.post_rain_fog", 1.0)
-	WorldWeather.refresh()
-	checks.append("昨日下雨且雨后起雾概率 100%%：%s" % [
+	checks.append("昨日不下雨也可独立起雾：%s" % [
 		str(WorldWeather.fog_event)])
-	DevEvents.set_chance_override("weather.post_rain_fog", 0.0)
+	WorldWeather.set_yesterday_rain_force(1)
+	DevEvents.set_chance_override("weather.fog", 0.0)
 	WorldWeather.refresh()
-	checks.append("昨日下雨但雨后起雾概率 0%%：%s" % [
+	checks.append("昨日下雨也不会强制起雾：%s" % [
 		str(not WorldWeather.fog_event)])
+	DevEvents.clear_chance_override("weather.fog")
+	WorldWeather.clear_force_overrides()
 
 	DevEvents.set_chance_override("visitor.lodge_priority", 0.25)
 	checks.append("通用概率接管生效：%s" % [
@@ -84,6 +82,15 @@ func _ready() -> void:
 			str(panel.lighting_tuning_controls.size() >= 10),
 			panel.lighting_tuning_controls.size(),
 		])
+		var day_control_original := GameState.day
+		panel.day_spin.value = 64.0
+		panel._on_apply_day()
+		var day_control_ok: bool = GameState.day == 64 \
+			and panel.day_spin.value == 64.0 \
+			and SeasonCalendar.format_date(GameState.day) \
+				== "第 1 年 · 秋季 · 第 4 天"
+		panel._apply_game_day(float(day_control_original))
+		checks.append("F10 日期跳转：%s" % [str(day_control_ok)])
 		var preview_day := GameState.day
 		GameState.day = 40
 		GameState.day_changed.emit(GameState.day)
@@ -308,6 +315,200 @@ func _ready() -> void:
 		var sunset_hour := float(seasonal_profile["sunset_hour"])
 		var morning_hour := sunrise_hour + 1.2
 		var evening_hour := sunset_hour - 1.2
+		WorldWeather.set_today_rain_force(1)
+		spring._rain_visual_strength = 0.0
+		spring._update_rain_visual_strength(1.0)
+		var rain_state: Dictionary = spring._rain_adjusted_light_state(
+			spring._sample_light_state(solar_noon_hour))
+		var rain_sun: Vector3 = spring._sun_to_screen_direction(
+			solar_noon_hour)
+		spring._update_rain(
+			solar_noon_hour,
+			0.5,
+			rain_state,
+			rain_sun)
+		spring._update_surface_parameters(
+			rain_state,
+			rain_sun,
+			spring._update_lamp_state(solar_noon_hour),
+			0.0,
+			solar_noon_hour)
+		var rain_ground_ok := true
+		for material in spring.ground_materials:
+			var rain_material := material as ShaderMaterial
+			if rain_material == null \
+					or rain_material.get_shader_parameter(
+						"rain_noise_texture") == null \
+					or rain_material.get_shader_parameter(
+						"water_reflection_texture") == null \
+					or rain_material.get_shader_parameter(
+						"water_ripple_texture") == null \
+					or float(rain_material.get_shader_parameter(
+						"rain_intensity")) < 0.99 \
+					or float(rain_material.get_shader_parameter(
+						"rain_puddle_threshold")) <= 0.0 \
+					or float(rain_material.get_shader_parameter(
+						"rain_puddle_scale_px")) < 300.0:
+				rain_ground_ok = false
+				break
+		var rain_overlay_ok: bool = spring.rain_layer != null \
+			and spring.rain_layer.layer == 3 \
+			and spring.rain_layer.visible \
+			and spring.rain_material.shader != null \
+			and spring.rain_material.shader.resource_path.ends_with(
+				"spring_rain.gdshader") \
+			and float(spring.rain_material.get_shader_parameter(
+				"rain_intensity")) >= 0.99 \
+			and float(spring.rain_material.get_shader_parameter(
+				"rain_density")) <= 0.34 \
+			and spring.rain_particles.amount <= 120
+		var rain_reflection_ok: bool = \
+			spring.rain_reflection_viewport != null \
+			and spring.rain_reflection_proxy_root != null \
+			and spring.rain_reflection_proxy_root.get_child_count() > 0 \
+			and spring.rain_reflection_entries.size() > 0 \
+			and spring.rain_reflection_viewport.render_target_update_mode \
+				== SubViewport.UPDATE_ALWAYS \
+			and spring.rain_reflection_sky_material != null \
+			and spring.rain_ripple_viewport != null \
+			and spring.rain_ripple_viewport.render_target_update_mode \
+				== SubViewport.UPDATE_ALWAYS \
+			and spring.rain_ripple_particles != null \
+			and spring.rain_ripple_particles.emitting
+		var mirrored_clone_found := false
+		for entry in spring.rain_reflection_entries.values():
+			var clone := entry.get("clone") as Sprite2D
+			if clone != null and clone.global_transform.y.y < -0.001:
+				mirrored_clone_found = true
+				break
+		rain_reflection_ok = rain_reflection_ok and mirrored_clone_found
+		var reflection_lamp := Building.new()
+		reflection_lamp.data = DataRegistry.get_building("street_lamp")
+		var lamp_footprint: Array = reflection_lamp.data.get(
+			"footprint",
+			[1, 1])
+		reflection_lamp.footprint = Vector2i(
+			int(lamp_footprint[0]),
+			int(lamp_footprint[1]))
+		var reflection_lodge := Building.new()
+		reflection_lodge.data = DataRegistry.get_building("lodge_ordinary")
+		var lodge_footprint: Array = reflection_lodge.data.get(
+			"footprint",
+			[4, 4])
+		reflection_lodge.footprint = Vector2i(
+			int(lodge_footprint[0]),
+			int(lodge_footprint[1]))
+		var building_pivots_ok := true
+		var lamp_pivot_y := -1.0
+		var lodge_pivot_y := -1.0
+		if building_pivots_ok:
+			var lamp_pivot: Vector2 = \
+				spring._rain_reflection_building_pivot_offset(
+					reflection_lamp)
+			var lodge_pivot: Vector2 = \
+				spring._rain_reflection_building_pivot_offset(
+					reflection_lodge)
+			lamp_pivot_y = lamp_pivot.y
+			lodge_pivot_y = lodge_pivot.y
+			building_pivots_ok = lamp_pivot.y < 24.0 \
+				and lodge_pivot.y > 110.0
+		reflection_lamp.free()
+		reflection_lodge.free()
+		checks.append("粒子雨、倒影与水波视口：%s｜噪波积水：%s｜地面专用：%s" % [
+			str(rain_reflection_ok),
+			str(rain_overlay_ok),
+			str(rain_ground_ok),
+		])
+		checks.append("建筑倒影按各自素材脚点对齐：%s（路灯 %.1f / 度假屋 %.1f）" % [
+			str(building_pivots_ok),
+			lamp_pivot_y,
+			lodge_pivot_y,
+		])
+		var ripple_scale := Vector2(spring.rain_ripple_viewport.size) \
+			/ Vector2(spring.get_viewport().get_visible_rect().size)
+		var expected_ripple_transform := Transform2D(
+			Vector2(ripple_scale.x, 0.0),
+			Vector2(0.0, ripple_scale.y),
+			Vector2.ZERO) \
+			* spring.get_viewport().get_canvas_transform()
+		checks.append("水波随相机世界坐标缩放移动：%s" % [
+			str(spring.rain_ripple_viewport.canvas_transform.is_equal_approx(
+				expected_ripple_transform))])
+		var layout_a: Vector2 = spring._rain_puddle_layout_offset_for_day(15)
+		var layout_b: Vector2 = spring._rain_puddle_layout_offset_for_day(16)
+		checks.append("雨天水坑布局按日期换图：%s" % [
+			str(not layout_a.is_equal_approx(layout_b))])
+		var day_rain_opacity := float(
+			spring.rain_material.get_shader_parameter("rain_opacity"))
+		var day_rain_particle_alpha: float = \
+			spring.rain_particles.modulate.a
+		var rain_reference: Vector2 = \
+			spring.camera.get_screen_center_position()
+		var local_rain_lamp_state := {
+			"lights": [{
+				"position": rain_reference,
+				"height": 44.0,
+				"range": 128.0,
+				"attenuation_range": 128.0,
+				"attenuation_power": 2.0,
+				"attenuation_curve": 0.0,
+				"ground_ellipse_aspect": 1.0,
+				"color": Color("#ffd36a"),
+				"energy": 1.0,
+			}],
+			"shadow_count": 0,
+		}
+		spring._update_rain(
+			solar_noon_hour,
+			0.0,
+			rain_state,
+			rain_sun,
+			local_rain_lamp_state)
+		var local_rain_opacity := float(
+			spring.rain_material.get_shader_parameter("rain_opacity"))
+		var local_rain_particle_alpha: float = \
+			spring.rain_particles.modulate.a
+		checks.append("雨滴受局部灯光提高亮度与透明度：%s（%.3f→%.3f / %.3f→%.3f）" % [
+			str(
+				int(spring.rain_material.get_shader_parameter(
+					"local_light_count")) == 1
+				and local_rain_opacity > day_rain_opacity + 0.01
+				and local_rain_particle_alpha > day_rain_particle_alpha + 0.01),
+			day_rain_opacity,
+			local_rain_opacity,
+			day_rain_particle_alpha,
+			local_rain_particle_alpha,
+		])
+		var night_rain_state: Dictionary = spring._rain_adjusted_light_state(
+			spring._sample_light_state(22.0))
+		spring._update_rain(
+			22.0,
+			0.0,
+			night_rain_state,
+			spring._sun_to_screen_direction(22.0))
+		var night_rain_opacity := float(
+			spring.rain_material.get_shader_parameter("rain_opacity"))
+		checks.append("夜间雨丝自动变暗：%s（%.3f → %.3f）" % [
+			str(night_rain_opacity < day_rain_opacity * 0.55),
+			day_rain_opacity,
+			night_rain_opacity,
+		])
+		WorldWeather.set_today_rain_force(-1)
+		spring._update_rain_visual_strength(1.0)
+		spring._update_rain(
+			solar_noon_hour,
+			0.5,
+			spring._sample_light_state(solar_noon_hour),
+			rain_sun)
+		var rain_shutdown_ok: bool = (
+			not spring.rain_layer.visible
+			and spring.rain_reflection_viewport.render_target_update_mode \
+				== SubViewport.UPDATE_DISABLED
+			and spring.rain_ripple_viewport.render_target_update_mode \
+				== SubViewport.UPDATE_DISABLED
+			and not spring.rain_ripple_particles.emitting)
+		checks.append("关闭降雨后雨层、倒影和水波停止：%s" % [
+			str(rain_shutdown_ok)])
 		WorldWeather.set_fog_force(1)
 		spring._update_fog(7.0, 0.0)
 		checks.append("视觉雾层在满强度时显示：%s" % [
@@ -558,6 +759,22 @@ func _ready() -> void:
 			checks.append("屋顶排除自身地面投影：%s" % [
 				str(bool(roof_material.get_shader_parameter(
 					"ignore_self_projected_shadow")))])
+			var expected_wall_foot_world_y: float = \
+				wall_building.global_position.y \
+				+ spring._rain_reflection_building_pivot_offset(
+					wall_building).y
+			checks.append("路灯对wall按脚线前后受光且roof完全排除：%s" % [
+				str(
+					bool(wall_material.get_shader_parameter(
+						"apply_wall_lamp_front_gate"))
+					and bool(wall_material.get_shader_parameter(
+						"surface_receive_local_lights"))
+					and not bool(roof_material.get_shader_parameter(
+						"surface_receive_local_lights"))
+					and is_equal_approx(
+						float(wall_material.get_shader_parameter(
+							"wall_foot_world_y")),
+						expected_wall_foot_world_y))])
 			checks.append("墙面整面渐变宽度已写入材质：%s（%.3f）" % [
 				str(is_equal_approx(
 					float(wall_material.get_shader_parameter(
@@ -644,6 +861,35 @@ func _ready() -> void:
 					"spring_tile.gdshader")
 				and terrain_material.get_shader_parameter(
 					"normal_texture") != null)])
+		var world_node := main.get_node("World")
+		var grass_material := world_node.ground.material as ShaderMaterial
+		var path_material := world_node.ground_path.material as ShaderMaterial
+		var grass_shadow_ok: bool = grass_material != null \
+			and path_material != null \
+			and float(grass_material.get_shader_parameter(
+				"grass_noise_shadow_strength")) > 0.0 \
+			and is_zero_approx(float(path_material.get_shader_parameter(
+				"grass_noise_shadow_strength"))) \
+			and grass_material.get_shader_parameter(
+				"grass_noise_shadow_texture") != null
+		var grass_seed_a: Dictionary = \
+			spring._grass_noise_shadow_seed_for_day(15)
+		var grass_seed_b: Dictionary = \
+			spring._grass_noise_shadow_seed_for_day(16)
+		var grass_seed_a_offset: Vector2 = grass_seed_a["offset"]
+		var grass_seed_b_offset: Vector2 = grass_seed_b["offset"]
+		var grass_shadow_random_ok: bool = \
+			not grass_seed_a_offset.is_equal_approx(grass_seed_b_offset) \
+			and not is_equal_approx(
+				float(grass_seed_a["rotation"]),
+				float(grass_seed_b["rotation"])) \
+			and not is_equal_approx(
+				float(grass_seed_a["scale_px"]),
+				float(grass_seed_b["scale_px"]))
+		checks.append("草地专用随机噪波阴影：%s｜每日随机化：%s" % [
+			str(grass_shadow_ok),
+			str(grass_shadow_random_ok),
+		])
 		spring._update_window_effects(
 			midnight,
 			spring._sun_to_screen_direction(1.0),
@@ -656,16 +902,22 @@ func _ready() -> void:
 		var lamp_color := Color.from_string(
 			str(lamp_config.get("color", "#ffd36a")),
 			Color("#ffd36a"))
-		var expected_spill_range := 17.5
+		var expected_spill_range := 21.0
 		var expected_spill_energy := float(
-			lamp_config.get("player_energy", 2.6)) * 0.09
+			lamp_config.get("player_energy", 2.6)) * 0.01
 		var expected_spill_height := float(
 			lamp_config.get("height_px", 44.0))
 		var expected_head_energy := float(
-			lamp_config.get("glow_energy", 1.0)) * 0.3
+			lamp_config.get("glow_energy", 1.0)) * 0.15 * 0.5
 		var window_lamp_state: Dictionary = spring._update_lamp_state(
 			1.0,
 			float(midnight["sun_energy"]))
+		spring._update_surface_parameters(
+			midnight,
+			spring._sun_to_screen_direction(1.0),
+			window_lamp_state,
+			0.0,
+			1.0)
 		var shadow_count := int(window_lamp_state.get("shadow_count", 0))
 		var window_light_indices: Array[int] = []
 		var all_lights: Array = window_lamp_state.get("lights", [])
@@ -675,6 +927,30 @@ func _ready() -> void:
 				window_light_indices.append(index)
 		var window_light_ok := window_light_indices.size() >= 2 \
 			and emission_materials.size() >= 2
+		var window_cutoff_flags := PackedFloat32Array()
+		var window_cutoff_ys := PackedFloat32Array()
+		var window_cutoff_fades := PackedFloat32Array()
+		var window_owner_tokens := PackedFloat32Array()
+		var lodge_wall_token := 0.0
+		if lodge != null and lodge.wall_texture != null \
+				and lodge.wall_texture.material is ShaderMaterial:
+			lodge_wall_token = float(
+				(lodge.wall_texture.material as ShaderMaterial)
+					.get_shader_parameter("surface_building_token"))
+		if not spring.ground_materials.is_empty():
+			var ground_material := spring.ground_materials[0] as ShaderMaterial
+			window_cutoff_flags = PackedFloat32Array(
+				ground_material.get_shader_parameter(
+					"local_light_window_flags"))
+			window_cutoff_ys = PackedFloat32Array(
+				ground_material.get_shader_parameter(
+					"local_light_window_cutoff_ys"))
+			window_cutoff_fades = PackedFloat32Array(
+				ground_material.get_shader_parameter(
+					"local_light_window_cutoff_fades"))
+			window_owner_tokens = PackedFloat32Array(
+				ground_material.get_shader_parameter(
+					"local_light_window_owner_tokens"))
 		var window_positions: Array[Vector2] = []
 		for sprite_value in portal_entry.get("emission_sprites", []):
 			var window_sprite := sprite_value as Sprite2D
@@ -715,7 +991,7 @@ func _ready() -> void:
 						expected_spill_range) \
 					and is_equal_approx(
 						float(light_spec["attenuation_range"]),
-						expected_spill_range * 1.75) \
+						expected_spill_range * 2.5) \
 					and is_equal_approx(
 						float(light_spec["attenuation_power"]),
 						4.0) \
@@ -727,10 +1003,72 @@ func _ready() -> void:
 						1.0) \
 					and is_equal_approx(
 						float(light_spec["height"]),
-						expected_spill_height)
+						expected_spill_height) \
+					and light_index < window_cutoff_flags.size() \
+					and is_equal_approx(
+						window_cutoff_flags[light_index],
+						1.0) \
+					and light_index < window_cutoff_ys.size() \
+					and is_equal_approx(
+						window_cutoff_ys[light_index],
+						float(light_spec.get("window_cutoff_y", -1.0))) \
+					and light_index < window_cutoff_fades.size() \
+					and window_cutoff_fades[light_index] > 0.0 \
+					and light_index < window_owner_tokens.size() \
+					and is_equal_approx(
+						window_owner_tokens[light_index],
+						lodge_wall_token)
 		checks.append("窗户矩形灯头光 + 无阴影路灯局部光：%s（%d 盏）" % [
 			str(window_light_ok),
 			window_light_indices.size(),
+		])
+		var original_window_light: Dictionary = spring.get_lighting_tuning()
+		spring.set_lighting_tuning("window_head_brightness", 1.0)
+		spring._update_window_effects(
+			midnight,
+			spring._sun_to_screen_direction(1.0),
+			1.0)
+		var bright_window_energy := float(
+			(emission_materials[0] as ShaderMaterial).get_shader_parameter(
+				"emission_energy"))
+		spring.set_lighting_tuning("window_head_brightness", 0.5)
+		spring._update_window_effects(
+			midnight,
+			spring._sun_to_screen_direction(1.0),
+			1.0)
+		var dim_window_energy := float(
+			(emission_materials[0] as ShaderMaterial).get_shader_parameter(
+				"emission_energy"))
+		spring.set_lighting_tuning("window_head_brightness", 0.5)
+		spring.set_lighting_tuning("window_head_opacity", 0.3)
+		spring._update_window_effects(
+			midnight,
+			spring._sun_to_screen_direction(1.0),
+			1.0)
+		var opaque_window_energy := float(
+			(emission_materials[0] as ShaderMaterial).get_shader_parameter(
+				"emission_energy"))
+		spring.set_lighting_tuning("window_head_opacity", 0.15)
+		spring._update_window_effects(
+			midnight,
+			spring._sun_to_screen_direction(1.0),
+			1.0)
+		var transparent_window_energy := float(
+			(emission_materials[0] as ShaderMaterial).get_shader_parameter(
+				"emission_energy"))
+		spring.lighting_tuning = original_window_light
+		spring._update_window_effects(
+			midnight,
+			spring._sun_to_screen_direction(1.0),
+			1.0)
+		checks.append("F10 窗头亮度 / 透明度滑杆实时生效：%s（%.3f → %.3f / %.3f → %.3f）" % [
+			str(
+				bright_window_energy > dim_window_energy * 1.8
+				and opaque_window_energy > transparent_window_energy * 1.8),
+			bright_window_energy,
+			dim_window_energy,
+			opaque_window_energy,
+			transparent_window_energy,
 		])
 		var lamp_z_ok := true
 		for building in main.get_node("World").buildings:

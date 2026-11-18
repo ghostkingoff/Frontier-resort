@@ -6,19 +6,26 @@
   "exposure_day": 0.78,
   "exposure_night": 0.20,
   "lighting_tuning": {
-    "window_head_opacity": 0.30,
-    "window_head_brightness": 1.0,
-    "window_ground_energy_ratio": 0.09,
-    "window_ground_range_px": 17.5,
-    "window_ground_attenuation_multiplier": 1.75,
+    "window_head_opacity": 0.15,
+    "window_head_brightness": 0.5,
+    "window_ground_energy_ratio": 0.01,
+    "window_ground_range_px": 21.0,
+    "window_ground_attenuation_multiplier": 2.5,
     "window_ground_attenuation_curve": 2.0,
     "lamp_head_opacity": 0.12,
     "lamp_head_brightness": 0.18,
-    "lamp_ground_energy_scale": 1.0,
+    "lamp_ground_energy_scale": 0.99,
     "lamp_ground_range_px": 64.0,
     "lamp_ground_attenuation_multiplier": 2.0,
     "lamp_ground_falloff_power": 4.0,
     "lamp_ground_ellipse_height_ratio": 0.707106781186547
+  },
+  "grass_noise_shadow": {
+    "strength": 0.20,
+    "scale_range_px": [1500.0, 2200.0],
+    "drift_px_per_second": [1.6, 3.2],
+    "threshold": 0.40,
+    "softness": 0.26
   },
   "shadow_strength": 1.0,
   "keyframes": [

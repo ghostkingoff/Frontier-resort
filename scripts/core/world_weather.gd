@@ -1,6 +1,6 @@
 extends Node
 ## Deterministic daily weather state for the spring prototype.
-## Rain is logical-only for now; it drives next-morning fog and future rain VFX.
+## Rain drives all-day visual VFX on the main map.
 
 signal changed
 
@@ -15,7 +15,7 @@ var today_rain := false
 var yesterday_rain := false
 var fog_event := false
 var rain_chance := 0.24
-var post_rain_fog_chance := 0.68
+var fog_chance := 0.18
 
 var _today_rain_force := FORCE_AUTO
 var _yesterday_rain_force := FORCE_AUTO
@@ -25,8 +25,8 @@ var _fog_force := FORCE_AUTO
 func _ready() -> void:
 	config = _read_json(CONFIG_PATH)
 	rain_chance = clampf(float(config.get("rain_chance", 0.24)), 0.0, 1.0)
-	post_rain_fog_chance = clampf(
-		float(config.get("post_rain_fog_chance", 0.68)),
+	fog_chance = clampf(
+		float(config.get("fog_chance", 0.18)),
 		0.0,
 		1.0)
 	GameState.day_changed.connect(_on_day_changed)
@@ -63,9 +63,9 @@ func refresh() -> void:
 
 	var fog_roll := _daily_roll("fog", day)
 	var effective_fog_chance := DevEvents.chance(
-		"weather.post_rain_fog",
-		post_rain_fog_chance)
-	fog_event = yesterday_rain and fog_roll < effective_fog_chance
+		"weather.fog",
+		fog_chance)
+	fog_event = fog_roll < effective_fog_chance
 	fog_event = _resolve_forced(_fog_force, fog_event)
 	changed.emit()
 
@@ -138,7 +138,7 @@ func snapshot() -> Dictionary:
 		"fog_event": fog_event,
 		"fog_strength": fog_strength(GameClock.hour_of_day()),
 		"rain_chance": rain_chance,
-		"post_rain_fog_chance": post_rain_fog_chance,
+		"fog_chance": fog_chance,
 		"today_rain_force": _today_rain_force,
 		"yesterday_rain_force": _yesterday_rain_force,
 		"fog_force": _fog_force,

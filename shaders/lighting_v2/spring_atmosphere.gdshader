@@ -8,6 +8,9 @@ uniform float saturation : hint_range(0.0, 1.5) = 0.98;
 uniform float chroma_preserve_mix : hint_range(0.0, 1.0) = 0.50;
 uniform float bloom_threshold : hint_range(0.0, 4.0) = 0.82;
 uniform float bloom_strength : hint_range(0.0, 1.0) = 0.20;
+uniform float rain_intensity : hint_range(0.0, 1.0) = 0.0;
+uniform vec3 rain_grade_color : source_color = vec3(0.72, 0.82, 0.86);
+uniform float rain_brightness : hint_range(0.4, 1.2) = 0.88;
 
 vec3 shoulder_tonemap(vec3 color) {
 	vec3 knee = vec3(0.78);
@@ -42,6 +45,18 @@ void fragment() {
 	scene += bloom * bloom_strength;
 
 	scene = shoulder_tonemap(scene);
+	float rain_luminance = dot(
+		scene,
+		vec3(0.2126, 0.7152, 0.0722));
+	scene = mix(
+		scene,
+		vec3(rain_luminance),
+		rain_intensity * 0.14);
+	scene *= mix(
+		vec3(1.0),
+		rain_grade_color,
+		rain_intensity * 0.36);
+	scene *= mix(1.0, rain_brightness, rain_intensity);
 	float luminance = dot(scene, vec3(0.2126, 0.7152, 0.0722));
 	float display_luminance = pow(
 		clamp(luminance, 0.0, 1.0),

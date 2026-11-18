@@ -16,6 +16,7 @@ var started := false
 var start_usec := 0
 var fog_mode := false
 var morning_mode := false
+var rain_mode := false
 
 
 func _ready() -> void:
@@ -29,6 +30,8 @@ func _ready() -> void:
 			fog_mode = true
 		elif arg == "--morning":
 			morning_mode = true
+		elif arg == "--rain":
+			rain_mode = true
 	render_viewport = SubViewport.new()
 	render_viewport.name = "PerfViewport"
 	render_viewport.size = Vector2i(1920, 1080)
@@ -42,6 +45,7 @@ func _ready() -> void:
 	camera = main.get_node("Camera")
 	camera.set_process(false)
 	camera.zoom = Vector2(0.82, 0.82)
+	WorldWeather.set_today_rain_force(1 if rain_mode else -1)
 	if fog_mode:
 		WorldWeather.set_fog_force(1)
 		_set_hour(7.0)
@@ -154,7 +158,10 @@ func _finish() -> void:
 		sorted.size() - 1)]
 	var fps := float(sorted.size()) / maxf(elapsed, 0.001)
 	print("[lighting-v2-perf] %s ｜ 1920x1080 ｜ 帧 %d ｜ 平均 %.2f ms ｜ P95 %.2f ms ｜ P99 %.2f ms ｜ 平均 %.1f FPS" % [
-		"噪声深度雾" if fog_mode else ("晴朗清晨" if morning_mode else "无雾"),
+		"%s%s" % [
+			"全天降雨" if rain_mode else ("晴朗清晨" if morning_mode else "无雾"),
+			" + 噪声深度雾" if fog_mode else "",
+		],
 		sorted.size(),
 		average * 1000.0,
 		p95 * 1000.0,

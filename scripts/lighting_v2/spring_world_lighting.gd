@@ -10,6 +10,10 @@ const ATMOSPHERE_SHADER := preload(
 	"res://shaders/lighting_v2/spring_atmosphere.gdshader")
 const FOG_SHADER := preload(
 	"res://shaders/lighting_v2/spring_fog.gdshader")
+const RAIN_SHADER := preload(
+	"res://shaders/lighting_v2/spring_rain.gdshader")
+const RAIN_SKY_REFLECTION_SHADER := preload(
+	"res://shaders/lighting_v2/rain_sky_reflection.gdshader")
 const SEASON_LIGHT_PROFILE_SCRIPT := preload(
 	"res://scripts/lighting_v2/season_light_profile.gd")
 const LAMP_HEAD_GLOW_SHADER := preload(
@@ -29,9 +33,14 @@ const MAX_LOCAL_LIGHTS := 32
 const PLAYER_SHADOW_PROXY_PATH := \
 	"res://art/characters/player/star2a/shadow_proxy.glb"
 const PLAYER_SHADOW_HEIGHT_PX := 44.0
-const WINDOW_HEAD_OPACITY := 0.3
+const WINDOW_HEAD_OPACITY := 0.15
+const WINDOW_HEAD_BRIGHTNESS := 0.5
 const LAMP_HEAD_OPACITY := 0.12
 const LAMP_HEAD_BRIGHTNESS := 0.18
+const WINDOW_GROUND_FOOT_FADE_PX := 10.0
+const WALL_LAMP_FOOT_FADE_PX := 8.0
+const LAMP_PROXY_LAYER_START := 1
+const LIGHT_LAYER_ALL_MASK := (1 << 20) - 1
 
 var world: Node2D
 var camera: Camera2D
@@ -48,6 +57,19 @@ var post_material: ShaderMaterial
 var fog_layer: CanvasLayer
 var fog_rect: ColorRect
 var fog_material: ShaderMaterial
+var rain_layer: CanvasLayer
+var rain_rect: ColorRect
+var rain_material: ShaderMaterial
+var rain_particles: CPUParticles2D
+var rain_reflection_viewport: SubViewport
+var rain_reflection_sky_rect: ColorRect
+var rain_reflection_sky_material: ShaderMaterial
+var rain_reflection_proxy_root: Node2D
+var rain_reflection_entries: Dictionary = {}
+var _rain_reflection_refresh_elapsed := 0.0
+var rain_ripple_viewport: SubViewport
+var rain_ripple_particles: CPUParticles2D
+var rain_ripple_texture: ImageTexture
 var player_material: ShaderMaterial
 var _player_surface_mode := ""
 var _player_atlas_frame_uv := Vector4(-1.0, -1.0, 0.0, 0.0)
@@ -73,8 +95,20 @@ var last_player_foot := Vector2(-INF, -INF)
 var debug_mode := 0
 var zone_shadow_history: Dictionary = {}
 var global_shadow_history: Array[Building] = []
+var street_lamp_occlusion_layers: Dictionary = {}
 var _fog_time := 0.0
 var _cloud_shadow_time := 0.0
+var _rain_time := 0.0
+var _rain_visual_strength := 0.0
+var _rain_effects_were_active := false
+var _rain_puddle_layout_day := -1
+var _rain_puddle_layout_offset := Vector2.ZERO
+var _grass_noise_shadow_day := -1
+var _grass_noise_shadow_time := 0.0
+var _grass_noise_shadow_offset := Vector2.ZERO
+var _grass_noise_shadow_rotation := 0.0
+var _grass_noise_shadow_scale_px := 1800.0
+var _grass_noise_shadow_drift := Vector2(1.2, 0.4)
 
 
 func _ready() -> void:
@@ -95,12 +129,14 @@ func _ready() -> void:
 	_create_shadow_rig()
 	_setup_ground_materials()
 	_create_fog_layer()
+	_create_rain_layer()
 	_create_atmosphere()
 	_create_region_debug_grid()
 	_setup_pines()
 	_setup_player_material()
 	for building in world.buildings:
 		_setup_building(building)
+	_configure_rain_reflection_layers()
 	world.building_placed.connect(_on_building_placed)
 	world.building_removed.connect(_on_building_removed)
 	_rebuild_proxies()
@@ -111,15 +147,19 @@ func _process(delta: float) -> void:
 	if world == null or rig == null:
 		return
 	var hour := GameClock.hour_of_day()
-	var state := _sample_light_state(hour)
+	_update_rain_visual_strength(delta)
+	_refresh_rain_puddle_layout()
+	_refresh_grass_noise_shadow_seed()
+	var state := _rain_adjusted_light_state(_sample_light_state(hour))
 	var sun_screen := _sun_to_screen_direction(hour)
 	var sun_3d := Vector3(
 		sun_screen.x,
 		sun_screen.z,
 		sun_screen.y).normalized()
-	rig.set_sun_shadow_softness(float(state.get(
-		"shadow_softness",
-		0.5)))
+	rig.set_sun_shadow_softness(lerpf(
+		float(state.get("shadow_softness", 0.5)),
+		1.0,
+		_rain_visual_strength * 0.35))
 	var lamp_state := _update_lamp_state(
 		hour,
 		float(state["sun_energy"]))
@@ -140,6 +180,9 @@ func _process(delta: float) -> void:
 			"height": float(light["shadow_height"]),
 			"range": float(light["shadow_range"]),
 			"active": true,
+			"cull_mask": int(light.get(
+				"lamp_proxy_cull_mask",
+				LIGHT_LAYER_ALL_MASK)),
 		})
 	rig.set_lamps(shadow_lights)
 	var actor_signature := _sync_actor_proxies()
@@ -167,17 +210,18 @@ func _process(delta: float) -> void:
 	_update_surface_parameters(state, sun_screen, lamp_state, delta, hour)
 	_update_window_effects(state, sun_screen, hour)
 	_update_fog(hour, delta, state, sun_screen)
+	_update_rain(hour, delta, state, sun_screen, lamp_state)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_F1:
-		set_debug_mode((debug_mode + 1) % 12)
+		set_debug_mode((debug_mode + 1) % 15)
 		get_viewport().set_input_as_handled()
 
 
 func set_debug_mode(value: int) -> void:
-	debug_mode = clampi(value, 0, 11)
+	debug_mode = clampi(value, 0, 14)
 	_apply_debug_mode()
 
 
@@ -273,6 +317,17 @@ func _setup_ground_materials() -> void:
 		0.4,
 		0.1,
 		0.4)
+	var grass_shadow_strength := float(config.get(
+		"grass_noise_shadow",
+		{}).get("strength", 0.20))
+	grass_wild.set_shader_parameter(
+		"grass_noise_shadow_strength",
+		grass_shadow_strength)
+	grass_trimmed.set_shader_parameter(
+		"grass_noise_shadow_strength",
+		grass_shadow_strength)
+	stone.set_shader_parameter("grass_noise_shadow_strength", 0.0)
+	fallback.set_shader_parameter("grass_noise_shadow_strength", 0.0)
 	world.ground.material = grass_wild
 	world.ground_lawn.material = grass_trimmed
 	world.ground_path.material = stone
@@ -309,6 +364,8 @@ func _make_tile_material_from_textures(
 	material.set_shader_parameter("occlusion_texture", occlusion_texture)
 	material.set_shader_parameter(
 		"sun_shadow_texture", rig.get_sun_texture())
+	material.set_shader_parameter(
+		"detail_sun_shadow_texture", rig.get_detail_sun_texture())
 	material.set_shader_parameter(
 		"player_sun_shadow_texture", rig.get_player_sun_texture())
 	material.set_shader_parameter(
@@ -361,6 +418,386 @@ func _create_fog_layer() -> void:
 		load("res://art/generated/lighting_v2/fog_depth.png"))
 	fog_rect.material = fog_material
 	fog_layer.add_child(fog_rect)
+
+
+func _create_rain_layer() -> void:
+	rain_layer = CanvasLayer.new()
+	rain_layer.name = "SpringRain"
+	rain_layer.layer = 3
+	rain_layer.visible = false
+	add_child(rain_layer)
+	rain_rect = ColorRect.new()
+	rain_rect.name = "WorldRain"
+	rain_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	rain_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rain_material = ShaderMaterial.new()
+	rain_material.shader = RAIN_SHADER
+	rain_rect.material = rain_material
+	rain_layer.add_child(rain_rect)
+	_create_rain_particle_emitter()
+	_create_rain_reflection_viewport()
+	_create_rain_ripple_viewport()
+
+
+func _create_rain_particle_emitter() -> void:
+	rain_particles = CPUParticles2D.new()
+	rain_particles.name = "RainParticles"
+	rain_particles.texture = _make_rain_drop_texture()
+	rain_particles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rain_particles.amount = maxi(
+		int(WorldWeather.config.get("rain_particle_amount", 120)),
+		32)
+	rain_particles.lifetime = 1.05
+	rain_particles.preprocess = 1.2
+	rain_particles.randomness = 0.42
+	rain_particles.local_coords = false
+	rain_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	rain_particles.emission_rect_extents = Vector2(1100.0, 640.0)
+	rain_particles.direction = Vector2(0.12, 1.0).normalized()
+	rain_particles.spread = 3.0
+	rain_particles.gravity = Vector2(72.0, 420.0)
+	rain_particles.initial_velocity_min = 520.0
+	rain_particles.initial_velocity_max = 820.0
+	rain_particles.angle_min = -7.0
+	rain_particles.angle_max = -3.0
+	rain_particles.scale_amount_min = 0.72
+	rain_particles.scale_amount_max = 1.18
+	rain_particles.color = Color(0.78, 0.88, 0.90, 0.72)
+	rain_particles.emitting = false
+	rain_layer.add_child(rain_particles)
+
+
+func _create_rain_reflection_viewport() -> void:
+	rain_reflection_viewport = SubViewport.new()
+	rain_reflection_viewport.name = "RainReflectionViewport"
+	rain_reflection_viewport.size = Vector2i(960, 540)
+	rain_reflection_viewport.transparent_bg = false
+	rain_reflection_viewport.disable_3d = true
+	rain_reflection_viewport.gui_disable_input = true
+	rain_reflection_viewport.render_target_clear_mode = \
+		SubViewport.CLEAR_MODE_ALWAYS
+	rain_reflection_viewport.render_target_update_mode = \
+		SubViewport.UPDATE_DISABLED
+	add_child(rain_reflection_viewport)
+
+	rain_reflection_proxy_root = Node2D.new()
+	rain_reflection_proxy_root.name = "ReflectedSceneProxies"
+	rain_reflection_viewport.add_child(rain_reflection_proxy_root)
+
+	var sky_layer := CanvasLayer.new()
+	sky_layer.name = "ReflectedSky"
+	sky_layer.layer = -100
+	rain_reflection_viewport.add_child(sky_layer)
+	rain_reflection_sky_rect = ColorRect.new()
+	rain_reflection_sky_rect.name = "ReflectedSkySurface"
+	rain_reflection_sky_rect.set_anchors_and_offsets_preset(
+		Control.PRESET_FULL_RECT)
+	rain_reflection_sky_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rain_reflection_sky_rect.visibility_layer = 1 << 2
+	rain_reflection_sky_material = ShaderMaterial.new()
+	rain_reflection_sky_material.shader = RAIN_SKY_REFLECTION_SHADER
+	rain_reflection_sky_rect.material = rain_reflection_sky_material
+	sky_layer.add_child(rain_reflection_sky_rect)
+
+
+func _create_rain_ripple_viewport() -> void:
+	rain_ripple_viewport = SubViewport.new()
+	rain_ripple_viewport.name = "RainRippleViewport"
+	rain_ripple_viewport.size = Vector2i(512, 288)
+	rain_ripple_viewport.transparent_bg = true
+	rain_ripple_viewport.disable_3d = true
+	rain_ripple_viewport.gui_disable_input = true
+	rain_ripple_viewport.render_target_clear_mode = \
+		SubViewport.CLEAR_MODE_ALWAYS
+	rain_ripple_viewport.render_target_update_mode = \
+		SubViewport.UPDATE_DISABLED
+	add_child(rain_ripple_viewport)
+
+	rain_ripple_texture = _make_rain_ring_texture()
+	rain_ripple_particles = CPUParticles2D.new()
+	rain_ripple_particles.name = "RippleParticles"
+	rain_ripple_particles.position = Vector2(256.0, 144.0)
+	rain_ripple_particles.texture = rain_ripple_texture
+	rain_ripple_particles.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	rain_ripple_particles.amount = maxi(
+		int(WorldWeather.config.get(
+			"rain_ripple_particle_amount",
+			58)),
+		12)
+	rain_ripple_particles.lifetime = 1.35
+	rain_ripple_particles.preprocess = 2.0
+	rain_ripple_particles.randomness = 0.62
+	rain_ripple_particles.local_coords = false
+	rain_ripple_particles.emission_shape = \
+		CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	rain_ripple_particles.emission_rect_extents = Vector2(256.0, 144.0)
+	rain_ripple_particles.direction = Vector2.ZERO
+	rain_ripple_particles.spread = 0.0
+	rain_ripple_particles.gravity = Vector2.ZERO
+	rain_ripple_particles.initial_velocity_min = 0.0
+	rain_ripple_particles.initial_velocity_max = 0.0
+	rain_ripple_particles.angular_velocity_min = 0.0
+	rain_ripple_particles.angular_velocity_max = 0.0
+	rain_ripple_particles.scale_amount_min = 0.07
+	rain_ripple_particles.scale_amount_max = 0.18
+	var scale_curve := Curve.new()
+	scale_curve.add_point(Vector2(0.0, 0.16))
+	scale_curve.add_point(Vector2(1.0, 1.0))
+	rain_ripple_particles.scale_curve_x = scale_curve
+	rain_ripple_particles.scale_curve_y = scale_curve
+	var color_ramp := Gradient.new()
+	color_ramp.set_color(0, Color(1.0, 1.0, 1.0, 0.82))
+	color_ramp.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
+	rain_ripple_particles.color_ramp = color_ramp
+	rain_ripple_particles.emitting = false
+	rain_ripple_viewport.add_child(rain_ripple_particles)
+
+
+func _make_rain_drop_texture() -> ImageTexture:
+	var image := Image.create(7, 34, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0.0, 0.0, 0.0, 0.0))
+	for y in range(1, 33):
+		var taper := 1.0 - absf(float(y) - 17.0) / 19.0
+		var width := 1 if taper < 0.38 else 2
+		var half_width := int(width / 2.0)
+		var offset := int(round(float(y) * 0.055))
+		for x in range(width):
+			var alpha := clampf(taper, 0.10, 0.88)
+			image.set_pixel(
+				clampi(3 + offset + x - half_width, 0, 6),
+				y,
+				Color(0.78, 0.88, 0.91, alpha))
+	return ImageTexture.create_from_image(image)
+
+
+func _make_rain_ring_texture() -> ImageTexture:
+	var size := 64
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0.0, 0.0, 0.0, 0.0))
+	var center := Vector2(float(size - 1) * 0.5, float(size - 1) * 0.5)
+	for y in range(size):
+		for x in range(size):
+			var delta := Vector2(float(x), float(y)) - center
+			delta.y /= 0.48
+			var distance := delta.length() / (float(size) * 0.34)
+			var ring_delta := (distance - 0.58) / 0.072
+			var alpha := exp(-ring_delta * ring_delta) * 0.88
+			if alpha > 0.001:
+				image.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+	return ImageTexture.create_from_image(image)
+
+
+func _configure_rain_reflection_layers() -> void:
+	for layer in [
+		world.ground,
+		world.ground_lawn,
+		world.ground_path,
+		world.ground_misc,
+	]:
+		if layer is CanvasItem:
+			(layer as CanvasItem).visibility_layer = 1 << 1
+	for building in world.buildings:
+		_configure_rain_reflection_building(building)
+
+
+func _configure_rain_reflection_building(building: Building) -> void:
+	if building == null or not is_instance_valid(building):
+		return
+	if building.ground_face is CanvasItem:
+		(building.ground_face as CanvasItem).visibility_layer = 1 << 1
+	if building.ground_terrain is CanvasItem:
+		(building.ground_terrain as CanvasItem).visibility_layer = 1 << 1
+	if building.label is CanvasItem:
+		(building.label as CanvasItem).visibility_layer = 1 << 1
+
+
+func _refresh_rain_reflection_sources() -> void:
+	if rain_reflection_proxy_root == null or world == null:
+		return
+	var pivot_map: Dictionary = {}
+	for building in world.buildings:
+		if building == null or not is_instance_valid(building):
+			continue
+		var pivot_offset := _rain_reflection_building_pivot_offset(building)
+		for root in [building.roof_root, building.roof_light_root]:
+			if root is Node2D:
+				pivot_map[root] = {
+					"owner": building,
+					"offset": pivot_offset,
+					"generic": false,
+					"dynamic": false,
+				}
+	for pine in get_tree().get_nodes_in_group("lighting_pines"):
+		if pine is Node2D:
+			var pine_sprite := pine.get_node_or_null("PineSurface") as Sprite2D
+			pivot_map[pine] = {
+				"owner": pine,
+				"offset": _reflection_sprite_bottom_offset(
+					pine as Node2D,
+					pine_sprite),
+				"generic": false,
+				"dynamic": false,
+			}
+	for actor in get_tree().get_nodes_in_group("actors"):
+		if actor is Node2D:
+			var actor_sprite := actor.get("sprite") as Sprite2D
+			pivot_map[actor] = {
+				"owner": actor,
+				"offset": _reflection_sprite_bottom_offset(
+					actor as Node2D,
+					actor_sprite),
+				"generic": false,
+				"dynamic": true,
+			}
+	var desired: Dictionary = {}
+	for candidate in world.find_children("*", "Sprite2D", true, false):
+		var source := candidate as Sprite2D
+		if source == null or source.texture == null \
+				or not source.is_visible_in_tree() \
+				or _rain_reflection_excludes(source):
+			continue
+		var pivot_data := _rain_reflection_pivot_data(source, pivot_map)
+		if pivot_data.is_empty():
+			continue
+		desired[source] = pivot_data
+	for source in desired:
+		var entry: Dictionary = rain_reflection_entries.get(source, {})
+		if entry.is_empty():
+			var clone := Sprite2D.new()
+			clone.name = "RainReflectionSprite"
+			clone.top_level = false
+			rain_reflection_proxy_root.add_child(clone)
+			entry = {
+				"source": source,
+				"clone": clone,
+			}
+			rain_reflection_entries[source] = entry
+		var pivot_data: Dictionary = desired[source]
+		entry["pivot_owner"] = pivot_data["owner"]
+		entry["pivot_offset"] = pivot_data["offset"]
+		entry["generic_pivot"] = bool(pivot_data["generic"])
+		entry["dynamic"] = bool(pivot_data["dynamic"])
+	for source in rain_reflection_entries.keys():
+		if desired.has(source):
+			continue
+		var entry: Dictionary = rain_reflection_entries[source]
+		var clone := entry.get("clone") as Sprite2D
+		if clone != null and is_instance_valid(clone):
+			clone.queue_free()
+		rain_reflection_entries.erase(source)
+
+
+func _rain_reflection_building_pivot_offset(building: Building) -> Vector2:
+	var pivot_offset := Vector2(
+		float(building.footprint.x) * 16.0,
+		float(building.footprint.y) * 32.0)
+	var layer_cfg: Dictionary = building.data.get("sprite_layers", {})
+	if layer_cfg.is_empty():
+		return pivot_offset
+	var origin_array: Array = layer_cfg.get("origin", [0, 0])
+	var origin_y := float(
+		origin_array[1]) if origin_array.size() > 1 else 0.0
+	var wall_foot_y := float(layer_cfg.get(
+		"wall_foot_y_px",
+		origin_y + float(building.footprint.y) * 32.0))
+	var wall_region: Array = layer_cfg.get("wall_region_px", [])
+	if wall_region.size() >= 4:
+		wall_foot_y = float(wall_region[1]) + float(wall_region[3])
+	pivot_offset.y = wall_foot_y - origin_y
+	return pivot_offset
+
+
+func _reflection_sprite_bottom_offset(
+		owner: Node2D,
+		sprite: Sprite2D) -> Vector2:
+	if owner == null or sprite == null or not is_instance_valid(sprite):
+		return Vector2.ZERO
+	var local_rect := sprite.get_rect()
+	var bottom_center := Vector2(
+		local_rect.get_center().x,
+		local_rect.end.y)
+	var bottom_world := sprite.to_global(bottom_center)
+	return Vector2(0.0, bottom_world.y - owner.global_position.y)
+
+
+func _rain_reflection_excludes(source: Sprite2D) -> bool:
+	var node: Node = source
+	while node != null and node != world:
+		if node == world.map_layer_root or node == world.ground_sort:
+			return true
+		node = node.get_parent()
+	return false
+
+
+func _rain_reflection_pivot_data(
+		source: Sprite2D,
+		pivot_map: Dictionary) -> Dictionary:
+	var node: Node = source
+	while node != null and node != world:
+		if pivot_map.has(node):
+			return pivot_map[node]
+		node = node.get_parent()
+	if node == world.map_layer_root or node == world.ground_sort:
+		return {}
+	return {
+		"owner": null,
+		"offset": Vector2.ZERO,
+		"generic": true,
+		"dynamic": false,
+	}
+
+
+func _sync_rain_reflection_proxies(full_sync: bool = false) -> void:
+	for source in rain_reflection_entries.keys():
+		if source == null or not is_instance_valid(source):
+			var stale: Dictionary = rain_reflection_entries[source]
+			var stale_clone := stale.get("clone") as Sprite2D
+			if stale_clone != null and is_instance_valid(stale_clone):
+				stale_clone.queue_free()
+			rain_reflection_entries.erase(source)
+			continue
+		var sprite := source as Sprite2D
+		var entry: Dictionary = rain_reflection_entries[source]
+		var clone := entry.get("clone") as Sprite2D
+		if sprite == null or clone == null or not is_instance_valid(clone):
+			continue
+		if not full_sync and not bool(entry.get("dynamic", false)):
+			continue
+		clone.texture = sprite.texture
+		clone.hframes = sprite.hframes
+		clone.vframes = sprite.vframes
+		clone.frame = sprite.frame
+		clone.region_enabled = sprite.region_enabled
+		clone.region_rect = sprite.region_rect
+		clone.centered = sprite.centered
+		clone.offset = sprite.offset
+		clone.flip_h = sprite.flip_h
+		clone.flip_v = sprite.flip_v
+		clone.texture_filter = sprite.texture_filter
+		clone.texture_repeat = sprite.texture_repeat
+		clone.modulate = sprite.modulate
+		clone.self_modulate = sprite.self_modulate
+		clone.material = sprite.material
+		clone.visible = sprite.is_visible_in_tree()
+		clone.z_index = sprite.z_index
+		clone.z_as_relative = sprite.z_as_relative
+		var pivot: Vector2
+		if bool(entry.get("generic_pivot", false)):
+			var local_rect := sprite.get_rect()
+			pivot = sprite.to_global(Vector2(
+				local_rect.get_center().x,
+				local_rect.end.y))
+		else:
+			var pivot_owner := entry.get("pivot_owner") as Node2D
+			if pivot_owner == null or not is_instance_valid(pivot_owner):
+				continue
+			pivot = pivot_owner.global_position \
+				+ (entry.get("pivot_offset", Vector2.ZERO) as Vector2)
+		var mirror := Transform2D(
+			Vector2(1.0, 0.0),
+			Vector2(0.0, -1.0),
+			Vector2(0.0, pivot.y * 2.0))
+		clone.global_transform = mirror * sprite.global_transform
 
 
 func _setup_pines() -> void:
@@ -645,6 +1082,23 @@ func _make_building_surface_material(
 		"wall_facing_softness",
 		clampf(wall_softness, 0.001, 0.25))
 	material.set_shader_parameter("apply_wall_shadow_projection", is_wall)
+	var wall_foot_world_y := building.global_position.y \
+		+ _rain_reflection_building_pivot_offset(building).y
+	material.set_shader_parameter(
+		"wall_foot_world_y",
+		wall_foot_world_y)
+	material.set_shader_parameter(
+		"wall_lamp_foot_fade_px",
+		WALL_LAMP_FOOT_FADE_PX)
+	material.set_shader_parameter(
+		"apply_wall_lamp_front_gate",
+		is_wall)
+	material.set_shader_parameter(
+		"surface_receive_local_lights",
+		prefix != "roof")
+	material.set_shader_parameter(
+		"surface_building_token",
+		float(building.get_instance_id()))
 	material.set_shader_parameter(
 		"wall_shadow_rect_uv",
 		Vector4(0.0, 0.0, 1.0, 1.0))
@@ -657,6 +1111,7 @@ func _make_building_surface_material(
 		"is_building_surface": true,
 		"is_wall": is_wall,
 		"apply_wall_facing_gate": apply_gate,
+		"surface_kind": prefix,
 	}
 	return material
 
@@ -685,6 +1140,8 @@ func _make_surface_material(
 	material.set_shader_parameter("occlusion_texture_nearest", occlusion_map)
 	material.set_shader_parameter(
 		"sun_shadow_texture", rig.get_sun_texture())
+	material.set_shader_parameter(
+		"detail_sun_shadow_texture", rig.get_detail_sun_texture())
 	material.set_shader_parameter(
 		"building_sun_shadow_texture", rig.get_building_sun_texture())
 	material.set_shader_parameter(
@@ -745,6 +1202,8 @@ func _make_surface_material_from_textures(
 	material.set_shader_parameter("occlusion_texture_nearest", occlusion_texture)
 	material.set_shader_parameter(
 		"sun_shadow_texture", rig.get_sun_texture())
+	material.set_shader_parameter(
+		"detail_sun_shadow_texture", rig.get_detail_sun_texture())
 	material.set_shader_parameter(
 		"building_sun_shadow_texture", rig.get_building_sun_texture())
 	material.set_shader_parameter(
@@ -824,16 +1283,18 @@ func _window_lamp_light_style() -> Dictionary:
 			* float(lighting_tuning.get(
 				"window_head_opacity",
 				WINDOW_HEAD_OPACITY))
-			* float(lighting_tuning.get("window_head_brightness", 1.0)),
+			* float(lighting_tuning.get(
+				"window_head_brightness",
+				WINDOW_HEAD_BRIGHTNESS)),
 		"spill_range_px": maxf(
 			float(lighting_tuning.get(
 				"window_ground_range_px",
-				17.5)),
+				21.0)),
 			1.0),
 		"spill_energy": float(lamp_config.get("player_energy", 2.6))
 			* float(lighting_tuning.get(
 				"window_ground_energy_ratio",
-				0.09)),
+				0.01)),
 		"spill_height_px": float(lamp_config.get("height_px", 44.0)),
 	}
 
@@ -844,14 +1305,14 @@ func _reset_lighting_tuning() -> void:
 	var lamp_range := maxf(float(lamp_config.get("range_px", 64.0)), 1.0)
 	var defaults := {
 		"window_head_opacity": WINDOW_HEAD_OPACITY,
-		"window_head_brightness": 1.0,
-		"window_ground_energy_ratio": 0.09,
-		"window_ground_range_px": 17.5,
-		"window_ground_attenuation_multiplier": 1.75,
+		"window_head_brightness": WINDOW_HEAD_BRIGHTNESS,
+		"window_ground_energy_ratio": 0.01,
+		"window_ground_range_px": 21.0,
+		"window_ground_attenuation_multiplier": 2.5,
 		"window_ground_attenuation_curve": 2.0,
 		"lamp_head_opacity": LAMP_HEAD_OPACITY,
 		"lamp_head_brightness": LAMP_HEAD_BRIGHTNESS,
-		"lamp_ground_energy_scale": 1.0,
+		"lamp_ground_energy_scale": 0.99,
 		"lamp_ground_range_px": lamp_range,
 		"lamp_ground_attenuation_multiplier": 2.0,
 		"lamp_ground_falloff_power": 4.0,
@@ -937,6 +1398,8 @@ func _collect_window_light_candidates(
 			if leak_strength <= 0.001:
 				continue
 			var position := window_sprite.global_position
+			var wall_foot_y := building.global_position.y \
+				+ _rain_reflection_building_pivot_offset(building).y
 			var camera_distance := reference.distance_to(position)
 			result.append({
 				"building": building,
@@ -958,6 +1421,9 @@ func _collect_window_light_candidates(
 				"color": light_color,
 				"energy": night_factor * leak_strength * light_energy,
 				"window_light": true,
+				"window_owner_token": float(building.get_instance_id()),
+				"window_cutoff_y": wall_foot_y,
+				"window_cutoff_fade_px": WINDOW_GROUND_FOOT_FADE_PX,
 			})
 	return result
 
@@ -1070,6 +1536,8 @@ func _update_window_effects(
 		hour: float) -> void:
 	var sun_energy := float(state["sun_energy"])
 	var night_factor := 1.0 - smoothstep(0.03, 0.35, sun_energy)
+	var window_light_energy := float(
+		_window_lamp_light_style()["head_energy"])
 	var ray := Vector2(-sun_screen.x, -sun_screen.y)
 	if ray.length_squared() > 0.0001:
 		ray = ray.normalized()
@@ -1083,7 +1551,6 @@ func _update_window_effects(
 		var sprites: Array = entry.get("emission_sprites", [])
 		var materials: Array = entry.get("emission_materials", [])
 		var emission_portals: Array = entry.get("emission_portals", [])
-		var window_light_energy := float(entry.get("window_light_energy", 0.8))
 		for index in range(mini(sprites.size(), materials.size())):
 			var sprite := sprites[index] as Sprite2D
 			var material := materials[index] as ShaderMaterial
@@ -1193,6 +1660,12 @@ func _update_lamp_state(hour: float, sun_energy: float = -1.0) -> Dictionary:
 			"lamp_ground_range_px",
 			light_range)), 1.0)
 		var camera_distance := sqrt(reference.distance_squared_to(center))
+		var lamp_proxy_layer := int(street_lamp_occlusion_layers.get(
+			building,
+			0))
+		var lamp_cull_mask := LIGHT_LAYER_ALL_MASK
+		if lamp_proxy_layer != 0:
+			lamp_cull_mask &= ~lamp_proxy_layer
 		candidates.append({
 			"building": building,
 			"distance": camera_distance,
@@ -1227,6 +1700,7 @@ func _update_lamp_state(hour: float, sun_energy: float = -1.0) -> Dictionary:
 			"shadow_range": float(lamp_config.get(
 				"shadow_range_px",
 				default_lamp.get("shadow_range_px", 360.0))),
+			"lamp_proxy_cull_mask": lamp_cull_mask,
 		})
 	var local_candidates := candidates.duplicate()
 	local_candidates.append_array(_collect_window_light_candidates(
@@ -1433,6 +1907,7 @@ func _update_surface_parameters(
 		delta: float,
 		hour: float) -> void:
 	_cloud_shadow_time += _fog_time_delta(delta)
+	_grass_noise_shadow_time += _fog_time_delta(delta)
 	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
 	for material in ground_materials:
 		_set_material_parameters(
@@ -1442,6 +1917,7 @@ func _update_surface_parameters(
 			lamp_state,
 			viewport_size,
 			hour)
+		_set_rain_material_parameters(material)
 	for material in surface_materials:
 		_set_material_parameters(
 			material,
@@ -1607,6 +2083,31 @@ func _set_material_parameters(
 		"lamp_shadow_strength",
 		float(lamp_state["shadow_strength"]))
 	_set_cloud_shadow_parameters(material, state, hour)
+	var grass_shadow: Dictionary = config.get("grass_noise_shadow", {})
+	material.set_shader_parameter(
+		"grass_noise_shadow_texture",
+		CLOUD_SHADOW_TEXTURE)
+	material.set_shader_parameter(
+		"grass_noise_shadow_time",
+		_grass_noise_shadow_time)
+	material.set_shader_parameter(
+		"grass_noise_shadow_offset_px",
+		_grass_noise_shadow_offset)
+	material.set_shader_parameter(
+		"grass_noise_shadow_rotation",
+		_grass_noise_shadow_rotation)
+	material.set_shader_parameter(
+		"grass_noise_shadow_scale_px",
+		_grass_noise_shadow_scale_px)
+	material.set_shader_parameter(
+		"grass_noise_shadow_drift_px",
+		_grass_noise_shadow_drift)
+	material.set_shader_parameter(
+		"grass_noise_shadow_threshold",
+		float(grass_shadow.get("threshold", 0.40)))
+	material.set_shader_parameter(
+		"grass_noise_shadow_softness",
+		float(grass_shadow.get("softness", 0.28)))
 	material.set_shader_parameter("debug_mode", debug_mode)
 
 
@@ -1667,6 +2168,10 @@ func _set_local_light_arrays(
 	var falloff_powers: Array[float] = []
 	var ground_ellipse_aspects: Array[float] = []
 	var attenuation_curves: Array[float] = []
+	var window_cutoff_ys: Array[float] = []
+	var window_cutoff_fades: Array[float] = []
+	var window_flags: Array[float] = []
+	var window_owner_tokens: Array[float] = []
 	for index in range(32):
 		if index < lights.size():
 			var light: Dictionary = lights[index]
@@ -1693,12 +2198,28 @@ func _set_local_light_arrays(
 			attenuation_curves.append(float(light.get(
 				"attenuation_curve",
 				0.0)))
+			window_cutoff_ys.append(float(light.get(
+				"window_cutoff_y",
+				0.0)))
+			window_cutoff_fades.append(float(light.get(
+				"window_cutoff_fade_px",
+				1.0)))
+			window_flags.append(1.0 if bool(light.get(
+				"window_light",
+				false)) else 0.0)
+			window_owner_tokens.append(float(light.get(
+				"window_owner_token",
+				0.0)))
 		else:
 			positions.append(Vector4.ZERO)
 			colors.append(Vector4.ZERO)
 			falloff_powers.append(2.0)
 			ground_ellipse_aspects.append(1.0)
 			attenuation_curves.append(0.0)
+			window_cutoff_ys.append(0.0)
+			window_cutoff_fades.append(1.0)
+			window_flags.append(0.0)
+			window_owner_tokens.append(0.0)
 	material.set_shader_parameter(
 		"local_light_count",
 		mini(lights.size(), MAX_LOCAL_LIGHTS))
@@ -1720,6 +2241,18 @@ func _set_local_light_arrays(
 	material.set_shader_parameter(
 		"local_light_attenuation_curves",
 		PackedFloat32Array(attenuation_curves))
+	material.set_shader_parameter(
+		"local_light_window_cutoff_ys",
+		PackedFloat32Array(window_cutoff_ys))
+	material.set_shader_parameter(
+		"local_light_window_cutoff_fades",
+		PackedFloat32Array(window_cutoff_fades))
+	material.set_shader_parameter(
+		"local_light_window_flags",
+		PackedFloat32Array(window_flags))
+	material.set_shader_parameter(
+		"local_light_window_owner_tokens",
+		PackedFloat32Array(window_owner_tokens))
 
 
 func _update_fog(
@@ -1853,6 +2386,418 @@ func _fog_time_delta(delta: float) -> float:
 	return delta * GameClock.time_scale()
 
 
+func _update_rain_visual_strength(delta: float) -> void:
+	var target := 1.0 if WorldWeather.today_rain else 0.0
+	var speed := 2.4 if target > _rain_visual_strength else 4.0
+	_rain_visual_strength = move_toward(
+		_rain_visual_strength,
+		target,
+		maxf(delta, 0.0) * speed)
+
+
+func _refresh_rain_puddle_layout() -> void:
+	var rain_day := WorldWeather.day
+	if rain_day == _rain_puddle_layout_day:
+		return
+	_rain_puddle_layout_day = rain_day
+	_rain_puddle_layout_offset = _rain_puddle_layout_offset_for_day(rain_day)
+
+
+func _rain_puddle_layout_offset_for_day(day: int) -> Vector2:
+	var rng := RandomNumberGenerator.new()
+	var seed_value := 2166136261
+	var key := "rain-layout:%d" % day
+	for index in range(key.length()):
+		seed_value = seed_value ^ key.unicode_at(index)
+		seed_value = int((seed_value * 16777619) & 0x7fffffff)
+	rng.seed = seed_value
+	return Vector2(
+		rng.randf_range(-8192.0, 8192.0),
+		rng.randf_range(-8192.0, 8192.0))
+
+
+func _refresh_grass_noise_shadow_seed() -> void:
+	var day := GameState.day
+	if day == _grass_noise_shadow_day:
+		return
+	_grass_noise_shadow_day = day
+	var seed_data := _grass_noise_shadow_seed_for_day(day)
+	_grass_noise_shadow_offset = seed_data["offset"]
+	_grass_noise_shadow_rotation = float(seed_data["rotation"])
+	_grass_noise_shadow_scale_px = float(seed_data["scale_px"])
+	_grass_noise_shadow_drift = seed_data["drift"]
+
+
+func _grass_noise_shadow_seed_for_day(day: int) -> Dictionary:
+	var settings: Dictionary = config.get("grass_noise_shadow", {})
+	var scale_range: Array = settings.get(
+		"scale_range_px",
+		[1500.0, 2100.0])
+	var drift_range: Array = settings.get(
+		"drift_px_per_second",
+		[1.6, 3.2])
+	var rng := RandomNumberGenerator.new()
+	var seed_value := 2166136261
+	var key := "grass-noise-shadow:%d" % day
+	for index in range(key.length()):
+		seed_value = seed_value ^ key.unicode_at(index)
+		seed_value = int((seed_value * 16777619) & 0x7fffffff)
+	rng.seed = seed_value
+	var drift_speed := rng.randf_range(
+		float(drift_range[0]) if drift_range.size() > 0 else 1.6,
+		float(drift_range[1]) if drift_range.size() > 1 else 3.2)
+	var drift_angle := rng.randf_range(0.0, TAU)
+	return {
+		"offset": Vector2(
+			rng.randf_range(-8192.0, 8192.0),
+			rng.randf_range(-8192.0, 8192.0)),
+		"rotation": rng.randf_range(0.0, TAU),
+		"scale_px": rng.randf_range(
+			float(scale_range[0]) if scale_range.size() > 0 else 1500.0,
+			float(scale_range[1]) if scale_range.size() > 1 else 2100.0),
+		"drift": Vector2.from_angle(drift_angle) * drift_speed,
+	}
+
+
+func _rain_adjusted_light_state(source: Dictionary) -> Dictionary:
+	if _rain_visual_strength <= 0.0001 or source.is_empty():
+		return source
+	var weather_config: Dictionary = WorldWeather.config
+	var rain := clampf(_rain_visual_strength, 0.0, 1.0)
+	var state := source.duplicate()
+	state["sun_energy"] = float(source.get("sun_energy", 0.0)) * lerpf(
+		1.0,
+		float(weather_config.get("rain_sun_energy_factor", 0.56)),
+		rain)
+	state["sky_energy"] = float(source.get("sky_energy", 0.0)) * lerpf(
+		1.0,
+		float(weather_config.get("rain_sky_energy_factor", 0.76)),
+		rain)
+	state["exposure"] = float(source.get("exposure", 1.0)) * lerpf(
+		1.0,
+		float(weather_config.get("rain_exposure_factor", 0.89)),
+		rain)
+	state["sun_color"] = (source.get(
+		"sun_color",
+		Color.WHITE) as Color).lerp(
+			Color.from_string(
+				str(weather_config.get("rain_sun_color", "#d3d9d5")),
+				Color(0.83, 0.85, 0.84)),
+			rain * 0.62)
+	state["sky_color"] = (source.get(
+		"sky_color",
+		Color.WHITE) as Color).lerp(
+			Color.from_string(
+				str(weather_config.get("rain_sky_color", "#83969a")),
+				Color(0.51, 0.59, 0.60)),
+			rain * 0.54)
+	return state
+
+
+func _update_rain(
+		_hour: float,
+		delta: float,
+		state: Dictionary,
+		sun_screen: Vector3,
+		lamp_state: Dictionary = {}) -> void:
+	_rain_time += _fog_time_delta(delta)
+	if rain_layer == null or rain_material == null:
+		return
+	rain_layer.visible = _rain_visual_strength > 0.001
+	if post_material != null:
+		post_material.set_shader_parameter(
+			"rain_intensity",
+			_rain_visual_strength)
+		post_material.set_shader_parameter(
+			"rain_brightness",
+			float(WorldWeather.config.get(
+				"rain_post_brightness",
+				0.88)))
+		post_material.set_shader_parameter(
+			"rain_grade_color",
+			Color.from_string(
+				str(WorldWeather.config.get(
+					"rain_post_color",
+					"#b8cecf")),
+				Color(0.72, 0.81, 0.81)))
+	if not rain_layer.visible:
+		if rain_particles != null:
+			rain_particles.emitting = false
+		_update_rain_reflection_and_ripples(
+			state,
+			sun_screen,
+			Vector2(get_viewport().get_visible_rect().size),
+			delta)
+		return
+	var camera_origin: Vector2 = camera.get_screen_center_position() \
+		if camera != null else Vector2.ZERO
+	var zoom: Vector2 = camera.zoom if camera != null else Vector2.ONE
+	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
+	var weather_config: Dictionary = WorldWeather.config
+	var sun_energy := float(state.get("sun_energy", 0.0))
+	var sky_energy := float(state.get("sky_energy", 0.0))
+	var night_factor := 1.0 - smoothstep(0.02, 0.36, sun_energy)
+	var rain_visibility := clampf(
+		0.22 + sun_energy * 0.90 + sky_energy * 0.55,
+		0.22,
+		1.0)
+	var rain_color := Color.from_string(
+		str(weather_config.get("rain_color", "#b9ccd2")),
+		Color(0.72, 0.80, 0.82)).lerp(
+			state.get("sun_color", Color.WHITE) as Color,
+			clampf(sun_energy * 0.18, 0.0, 0.18))
+	rain_color = rain_color.lerp(
+		Color.from_string(
+			str(weather_config.get("rain_night_color", "#52656c")),
+			Color(0.32, 0.40, 0.42)),
+		night_factor * 0.82).darkened(night_factor * 0.18)
+	var local_rain_light := _rain_local_light_sample(
+		lamp_state,
+		camera_origin)
+	var local_rain_boost := clampf(
+		float(local_rain_light.get("strength", 0.0)),
+		0.0,
+		1.0)
+	if local_rain_boost > 0.001:
+		var local_light_color: Color = local_rain_light.get(
+			"color",
+			Color.WHITE)
+		rain_color = rain_color.lerp(
+			local_light_color.lerp(Color.WHITE, 0.28),
+			local_rain_boost * 0.62).lightened(
+				local_rain_boost * 0.22)
+		rain_visibility = clampf(
+			rain_visibility + local_rain_boost * 0.55,
+			0.0,
+			1.0)
+	_set_local_light_arrays(
+		rain_material,
+		lamp_state.get("lights", []),
+		int(lamp_state.get("shadow_count", 0)))
+	rain_material.set_shader_parameter("camera_origin_px", camera_origin)
+	rain_material.set_shader_parameter("camera_zoom", zoom)
+	rain_material.set_shader_parameter("viewport_size_px", viewport_size)
+	rain_material.set_shader_parameter("rain_time_seconds", _rain_time)
+	rain_material.set_shader_parameter(
+		"rain_intensity",
+		_rain_visual_strength)
+	rain_material.set_shader_parameter(
+		"rain_density",
+		float(weather_config.get("rain_density", 0.72)))
+	rain_material.set_shader_parameter(
+		"rain_slant",
+		float(weather_config.get("rain_slant", 0.10)))
+	rain_material.set_shader_parameter("rain_color", rain_color)
+	rain_material.set_shader_parameter(
+		"rain_opacity",
+		float(weather_config.get("rain_opacity", 0.42)) * rain_visibility)
+	rain_material.set_shader_parameter(
+		"rain_mist",
+		float(weather_config.get("rain_mist", 0.08)))
+	if rain_particles != null:
+		rain_particles.position = viewport_size * 0.5
+		rain_particles.emission_rect_extents = viewport_size * 0.58
+		var animation_speed := 0.0
+		if not GameClock.paused \
+				and GameClock.phase == GameClock.Phase.RUNNING:
+			animation_speed = clampf(GameClock.time_scale(), 0.35, 4.0)
+		rain_particles.speed_scale = animation_speed
+		rain_particles.emitting = animation_speed > 0.0
+		rain_particles.modulate = Color(
+			rain_color.r,
+			rain_color.g,
+			rain_color.b,
+			rain_visibility)
+	_update_rain_reflection_and_ripples(
+		state,
+		sun_screen,
+		viewport_size,
+		delta)
+
+
+func _rain_local_light_sample(
+		lamp_state: Dictionary,
+		world_position: Vector2) -> Dictionary:
+	var total := Color(0.0, 0.0, 0.0, 0.0)
+	var strongest := 0.0
+	for light in lamp_state.get("lights", []):
+		var position: Vector2 = light.get("position", Vector2.ZERO)
+		var light_range := maxf(float(light.get("range", 1.0)), 1.0)
+		var energy := float(light.get("energy", 0.0))
+		if energy <= 0.001:
+			continue
+		var radial := pow(
+			clampf(1.0 - world_position.distance_to(position) \
+				/ light_range, 0.0, 1.0),
+			maxf(float(light.get("attenuation_power", 2.0)), 0.1))
+		var strength := clampf(energy * radial * 0.42, 0.0, 1.0)
+		var light_color: Color = light.get("color", Color.WHITE)
+		total += Color(
+			light_color.r * strength,
+			light_color.g * strength,
+			light_color.b * strength,
+			0.0)
+		strongest = maxf(strongest, strength)
+	return {
+		"color": Color(
+			clampf(total.r, 0.0, 1.0),
+			clampf(total.g, 0.0, 1.0),
+			clampf(total.b, 0.0, 1.0),
+			1.0),
+		"strength": strongest,
+	}
+
+
+func _update_rain_reflection_and_ripples(
+		state: Dictionary,
+		sun_screen: Vector3,
+		viewport_size: Vector2,
+		delta: float) -> void:
+	if rain_reflection_viewport == null \
+			or rain_ripple_viewport == null:
+		return
+	var active := _rain_visual_strength > 0.001
+	var starting := active and not _rain_effects_were_active
+	_rain_effects_were_active = active
+	rain_reflection_viewport.render_target_update_mode = \
+		SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+	rain_ripple_viewport.render_target_update_mode = \
+		SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+	if rain_ripple_particles != null:
+		if starting:
+			rain_ripple_particles.restart(true)
+			if rain_particles != null:
+				rain_particles.restart(true)
+		rain_ripple_particles.emitting = active \
+			and not GameClock.paused \
+			and GameClock.phase == GameClock.Phase.RUNNING
+		if not GameClock.paused \
+				and GameClock.phase == GameClock.Phase.RUNNING:
+			rain_ripple_particles.speed_scale = clampf(
+				GameClock.time_scale(),
+				0.35,
+				4.0)
+		else:
+			rain_ripple_particles.speed_scale = 0.0
+	if not active:
+		return
+	_rain_reflection_refresh_elapsed += maxf(delta, 0.0)
+	if starting or _rain_reflection_refresh_elapsed >= 0.25:
+		_rain_reflection_refresh_elapsed = 0.0
+		_refresh_rain_reflection_sources()
+		_sync_rain_reflection_proxies(true)
+	else:
+		_sync_rain_reflection_proxies(false)
+	var reflection_scale := clampf(
+		float(WorldWeather.config.get("rain_reflection_scale", 0.5)),
+		0.25,
+		1.0)
+	var reflection_size := Vector2i(
+		maxi(int(round(viewport_size.x * reflection_scale)), 320),
+		maxi(int(round(viewport_size.y * reflection_scale)), 180))
+	if rain_reflection_viewport.size != reflection_size:
+		rain_reflection_viewport.size = reflection_size
+	var ripple_size := Vector2i(
+		maxi(int(round(viewport_size.x * 0.35)), 256),
+		maxi(int(round(viewport_size.y * 0.35)), 144))
+	if rain_ripple_viewport.size != ripple_size:
+		rain_ripple_viewport.size = ripple_size
+	var camera_origin: Vector2 = camera.get_screen_center_position() \
+		if camera != null else Vector2.ZERO
+	var camera_zoom: Vector2 = camera.zoom if camera != null else Vector2.ONE
+	var ripple_scale := Vector2(ripple_size) / viewport_size
+	rain_ripple_viewport.canvas_transform = Transform2D(
+		Vector2(ripple_scale.x, 0.0),
+		Vector2(0.0, ripple_scale.y),
+		Vector2.ZERO) * get_viewport().get_canvas_transform()
+	if rain_ripple_particles != null:
+		rain_ripple_particles.position = camera_origin
+		rain_ripple_particles.emission_rect_extents = \
+			viewport_size / Vector2(
+				maxf(camera_zoom.x, 0.1),
+				maxf(camera_zoom.y, 0.1)) * 0.62
+	var reflection_viewport_scale := Vector2(reflection_size) / viewport_size
+	var reflection_scale_transform := Transform2D(
+		Vector2(reflection_viewport_scale.x, 0.0),
+		Vector2(0.0, reflection_viewport_scale.y),
+		Vector2.ZERO)
+	rain_reflection_viewport.canvas_transform = \
+		reflection_scale_transform * get_viewport().get_canvas_transform()
+	if rain_reflection_sky_material != null:
+		var sky_color: Color = state.get("sky_color", Color.WHITE)
+		var sun_color: Color = state.get("sun_color", Color.WHITE)
+		rain_reflection_sky_material.set_shader_parameter(
+			"sky_top_color",
+			Color(
+				sky_color.r * 0.10,
+				sky_color.g * 0.10,
+				sky_color.b * 0.10,
+				1.0))
+		rain_reflection_sky_material.set_shader_parameter(
+			"sky_horizon_color",
+			Color(
+				sky_color.lerp(sun_color, 0.08).r * 0.18,
+				sky_color.lerp(sun_color, 0.08).g * 0.18,
+				sky_color.lerp(sun_color, 0.08).b * 0.18,
+				1.0))
+		rain_reflection_sky_material.set_shader_parameter(
+			"sun_color",
+			sun_color)
+		rain_reflection_sky_material.set_shader_parameter(
+			"sun_screen_direction",
+			sun_screen)
+		rain_reflection_sky_material.set_shader_parameter(
+			"sun_energy",
+			float(state.get("sun_energy", 0.0)))
+		rain_reflection_sky_material.set_shader_parameter(
+			"rain_intensity",
+			_rain_visual_strength)
+		rain_reflection_sky_material.set_shader_parameter(
+			"cloud_time",
+			_cloud_shadow_time)
+
+
+func _set_rain_material_parameters(material: ShaderMaterial) -> void:
+	var weather_config: Dictionary = WorldWeather.config
+	material.set_shader_parameter("rain_noise_texture", CLOUD_SHADOW_TEXTURE)
+	material.set_shader_parameter(
+		"water_reflection_texture",
+		rain_reflection_viewport.get_texture())
+	material.set_shader_parameter(
+		"water_ripple_texture",
+		rain_ripple_viewport.get_texture())
+	if rain_ripple_viewport != null:
+		material.set_shader_parameter(
+			"water_ripple_texel_size",
+			Vector2.ONE / Vector2(rain_ripple_viewport.size))
+	material.set_shader_parameter("rain_intensity", _rain_visual_strength)
+	material.set_shader_parameter("rain_time_seconds", _rain_time)
+	material.set_shader_parameter(
+		"rain_puddle_threshold",
+		float(weather_config.get("rain_puddle_threshold", 0.48)))
+	material.set_shader_parameter(
+		"rain_puddle_deep_threshold",
+		float(weather_config.get("rain_puddle_deep_threshold", 0.56)))
+	material.set_shader_parameter(
+		"rain_puddle_scale_px",
+		float(weather_config.get("rain_puddle_scale_px", 1680.0)))
+	material.set_shader_parameter(
+		"rain_puddle_y_compression",
+		float(weather_config.get("rain_puddle_y_compression", 1.38)))
+	material.set_shader_parameter(
+		"rain_puddle_offset_px",
+		_rain_puddle_layout_offset)
+	material.set_shader_parameter(
+		"rain_ripple_strength",
+		float(weather_config.get("rain_ripple_strength", 0.72)))
+	material.set_shader_parameter(
+		"rain_reflection_strength",
+		float(weather_config.get("rain_reflection_strength", 0.78)))
+	material.set_shader_parameter(
+		"rain_ripple_uv_strength",
+		float(weather_config.get("rain_ripple_uv_strength", 0.018)))
+
+
 func _shadow_state_key(
 		sun_screen: Vector3,
 		lamp_state: Dictionary,
@@ -1913,6 +2858,22 @@ func _rebuild_proxies() -> void:
 	if rig == null or world == null:
 		return
 	rig.clear_proxies()
+	street_lamp_occlusion_layers.clear()
+	var next_lamp_layer_index := LAMP_PROXY_LAYER_START
+	for building in world.buildings:
+		if building == null or not is_instance_valid(building):
+			continue
+		if str(building.data.get("lighting_kind", "")) != "street_lamp":
+			continue
+		var layers: Dictionary = building.data.get("sprite_layers", {})
+		var proxy_path := str(layers.get("shadow_proxy", ""))
+		if proxy_path == "" or not ResourceLoader.exists(proxy_path):
+			continue
+		if next_lamp_layer_index >= 20:
+			break
+		street_lamp_occlusion_layers[building] = \
+			1 << next_lamp_layer_index
+		next_lamp_layer_index += 1
 	for node in get_tree().get_nodes_in_group("lighting_pines"):
 		var pine := node as Node2D
 		if pine != null and is_instance_valid(pine):
@@ -1927,8 +2888,10 @@ func _rebuild_proxies() -> void:
 		var center: Vector2 = building.global_position + Vector2(
 			building.footprint.x * 32.0 * 0.5,
 			building.footprint.y * 32.0 * 0.5)
+		var is_street_lamp := \
+			str(building.data.get("lighting_kind", "")) == "street_lamp"
 		var height_scale := 1.0
-		if str(building.data.get("lighting_kind", "")) == "street_lamp":
+		if is_street_lamp:
 			var lamp_config: Dictionary = building.data.get(
 				"street_lamp_lighting", {})
 			height_scale = float(lamp_config.get(
@@ -1938,8 +2901,14 @@ func _rebuild_proxies() -> void:
 			proxy_path,
 			center,
 			height_scale,
-			str(building.data.get("lighting_kind", "")) != "street_lamp",
-			str(building.data.get("lighting_kind", "")) != "street_lamp")
+			not is_street_lamp,
+			not is_street_lamp,
+			1,
+			int(street_lamp_occlusion_layers.get(building, 1)))
+		if is_street_lamp:
+			rig.add_street_lamp_pole_proxy(
+				center,
+				int(street_lamp_occlusion_layers.get(building, 1)))
 	if world.player_avatar != null:
 		var foot := _player_foot_position()
 		foot = Vector2(roundf(foot.x), roundf(foot.y))
@@ -1989,6 +2958,7 @@ func _on_building_placed(building: Building) -> void:
 	zone_shadow_history.clear()
 	global_shadow_history.clear()
 	_setup_building(building)
+	_configure_rain_reflection_building(building)
 	_rebuild_proxies()
 
 

@@ -21,6 +21,7 @@ var content: VBoxContainer
 var scroll: ScrollContainer
 var status_label: Label
 var weather_status_label: Label
+var day_spin: SpinBox
 var force_controls: Dictionary = {}
 var chance_controls: Dictionary = {}
 var multiplier_controls: Dictionary = {}
@@ -146,9 +147,11 @@ func _build_panel() -> void:
 	content.add_child(status_label)
 	content.add_child(HSeparator.new())
 
-	_add_lighting_tuning_section()
+	_add_day_section()
 	content.add_child(HSeparator.new())
 	_add_weather_section()
+	content.add_child(HSeparator.new())
+	_add_lighting_tuning_section()
 	content.add_child(HSeparator.new())
 	_add_chance_section()
 	content.add_child(HSeparator.new())
@@ -157,10 +160,43 @@ func _build_panel() -> void:
 	_add_action_buttons()
 
 
+func _add_day_section() -> void:
+	_add_section_title("日期跳转")
+	var hint := Label.new()
+	hint.text = "临时切换到任意绝对天数，用于检查四季光照和天气组合。"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.modulate = Color(0.78, 0.86, 0.84, 1.0)
+	hint.add_theme_font_size_override("font_size", 15)
+	content.add_child(hint)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	content.add_child(row)
+	var previous_button := Button.new()
+	previous_button.text = "前一天"
+	previous_button.pressed.connect(_on_day_step.bind(-1))
+	row.add_child(previous_button)
+	day_spin = SpinBox.new()
+	day_spin.min_value = 1.0
+	day_spin.max_value = 999999.0
+	day_spin.step = 1.0
+	day_spin.allow_greater = false
+	day_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	day_spin.value = GameState.day
+	row.add_child(day_spin)
+	var next_button := Button.new()
+	next_button.text = "后一天"
+	next_button.pressed.connect(_on_day_step.bind(1))
+	row.add_child(next_button)
+	var apply_button := Button.new()
+	apply_button.text = "应用日期"
+	apply_button.pressed.connect(_on_apply_day)
+	row.add_child(apply_button)
+
+
 func _add_weather_section() -> void:
-	_add_section_title("天气与雾")
+	_add_section_title("天气与能见度")
 	var rollback_hint := Label.new()
-	rollback_hint.text = "新版噪声深度雾已接入；06:00–06:30 淡入，08:30–09:00 淡出。"
+	rollback_hint.text = "降雨全天连续；降雨与清晨雾独立判定。雾在 06:00–06:30 淡入，08:30–09:00 淡出。"
 	rollback_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rollback_hint.modulate = Color(0.95, 0.78, 0.55, 1.0)
 	rollback_hint.add_theme_font_size_override("font_size", 15)
@@ -170,7 +206,7 @@ func _add_weather_section() -> void:
 	weather_status_label.add_theme_font_size_override("font_size", 17)
 	content.add_child(weather_status_label)
 	_add_force_control("today_rain", "当前日降雨")
-	_add_force_control("yesterday_rain", "昨日降雨（雾的前置）")
+	_add_force_control("yesterday_rain", "昨日降雨（独立记录）")
 	_add_force_control("fog", "当前日清晨雾逻辑")
 	var time_label := Label.new()
 	time_label.text = "淡入淡出预览（点击后自动播放时间）"
@@ -771,11 +807,36 @@ func _on_weather_changed() -> void:
 	_refresh_dynamic_labels()
 
 
+func _on_day_step(delta: int) -> void:
+	_apply_game_day(day_spin.value + float(delta))
+
+
+func _on_apply_day() -> void:
+	_apply_game_day(day_spin.value)
+
+
+func _apply_game_day(value: float) -> void:
+	var target := maxi(int(round(value)), 1)
+	day_spin.set_value_no_signal(float(target))
+	if target == GameState.day:
+		_refresh_all()
+		return
+	GameState.day = target
+	GameState.day_changed.emit(target)
+	_refresh_all()
+
+
 func _refresh_all() -> void:
+	_refresh_day_control()
 	_refresh_force_controls()
 	_refresh_multiplier_controls()
 	_refresh_lighting_tuning_controls()
 	_refresh_dynamic_labels()
+
+
+func _refresh_day_control() -> void:
+	if day_spin != null and roundi(day_spin.value) != GameState.day:
+		day_spin.set_value_no_signal(float(GameState.day))
 
 
 func _refresh_force_controls() -> void:
@@ -820,8 +881,8 @@ func _refresh_dynamic_labels() -> void:
 	var lighting_text := ""
 	var spring := get_parent().get_node_or_null("SpringWorldLighting")
 	if spring != null:
-		var state: Dictionary = spring._sample_light_state(
-			GameClock.hour_of_day())
+		var state: Dictionary = spring._rain_adjusted_light_state(
+			spring._sample_light_state(GameClock.hour_of_day()))
 		var sun_color: Color = state["sun_color"]
 		lighting_text = " ｜ 太阳 #%s · %.0f%% ｜ 天空 %.0f%%" % [
 			sun_color.to_html(false),
@@ -935,13 +996,15 @@ func _refresh_weather_status() -> void:
 	var strength := WorldWeather.fog_strength(hour)
 	weather_status_label.text = (
 		"当前日降雨：%s ｜ 昨日降雨：%s\n"
-		+ "清晨雾逻辑事件：%s ｜ 视觉雾强度 %.0f%%\n"
+		+ "清晨雾事件（独立）：%s ｜ 视觉雾强度 %.0f%%\n"
+		+ "雨天视觉：%s\n"
 		+ "06:00–06:30 淡入，08:30–09:00 淡出"
 	) % [
 		"是" if WorldWeather.today_rain else "否",
 		"是" if WorldWeather.yesterday_rain else "否",
 		"是" if WorldWeather.fog_event else "否",
 		strength * 100.0,
+		"全天降雨" if WorldWeather.today_rain else "无雨",
 	]
 
 

@@ -13,11 +13,11 @@ const CHANCE_DEFINITIONS := [
 		"hint": "当天是否下雨。改动后会立即重算当前日天气。",
 	},
 	{
-		"id": "weather.post_rain_fog",
+		"id": "weather.fog",
 		"group": "天气",
-		"label": "雨后次日清晨雾逻辑",
-		"default": 0.68,
-		"hint": "只有昨日下雨时才会进入这次判定；视觉雾使用噪声深度遮罩。",
+		"label": "每日清晨雾",
+		"default": 0.18,
+		"hint": "与降雨独立判定；视觉雾使用噪声深度遮罩。",
 	},
 	{
 		"id": "visitor.star_arrival",

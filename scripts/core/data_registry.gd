@@ -13,7 +13,6 @@ const ILLNESS_PATH := "res://data/illnesses.json"
 const ATTRIBUTES_PATH := "res://data/attributes.json"
 const EXPLORATION_PATH := "res://data/exploration.json"
 const EVENTS_PATH := "res://data/exploration_events.json"
-const LIGHTING_PATH := "res://data/lighting.json"
 const TERRAINS_PATH := "res://data/terrains.json"
 
 var categories: Dictionary = {}
@@ -37,8 +36,6 @@ var consumable_order: Array = []
 var exploration_settings: Dictionary = {}
 var exploration_events: Array = []
 var events_by_zone: Dictionary = {}
-var lighting_keyframes: Array = []
-var lighting_ambient_multiplier := 1.0
 var terrains: Dictionary = {}
 var terrain_order: Array = []
 
@@ -50,7 +47,6 @@ func _ready() -> void:
 	_load_illnesses()
 	_load_attributes()
 	_load_exploration()
-	_load_lighting()
 	_load_terrains()
 
 
@@ -165,20 +161,6 @@ func get_consumable(id: String) -> Dictionary:
 
 func events_for_zone(zone: String) -> Array:
 	return events_by_zone.get(zone, [])
-
-
-func _load_lighting() -> void:
-	var raw := _read_json(LIGHTING_PATH)
-	lighting_keyframes.clear()
-	lighting_ambient_multiplier = clampf(
-		float(raw.get("ambient_multiplier", 1.0)), 0.0, 2.0)
-	for k in raw.get("keyframes", []):
-		lighting_keyframes.append({
-			"hour": float(k.get("hour", 0.0)),
-			"color": Color.from_string(str(k.get("color", "#ffffff")), Color.WHITE),
-		})
-	lighting_keyframes.sort_custom(func(a, b): return float(a["hour"]) < float(b["hour"]))
-	print("[DataRegistry] 光照关键帧 %d 个" % lighting_keyframes.size())
 
 
 func _load_terrains() -> void:

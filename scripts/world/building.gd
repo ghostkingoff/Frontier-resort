@@ -2,12 +2,9 @@ extends Node2D
 class_name Building
 
 const JANITOR := preload("res://scripts/customers/janitor.gd")
-const StreetLampLightRuntime := preload("res://scripts/world/lighting/street_lamp_light.gd")
-const LIGHT_ON_EARLIEST := 18.0    # 18:00 起陆续开灯
-const LIGHT_ON_LATEST := 18.75     # 18:45 全部亮起
+const DEFAULT_LIGHT_ON_HOUR := 18.75
 const LIGHT_LAYER_INTERIOR := 4
-const LIGHT_LAYER_GROUND_LAMP := 32
-# 熄灯时间不再写死：常规店在打烊后 0~0.5 小时里陆续关，跨夜店跟自己的打烊时间（见 update_lights）
+# 熄灯时间不再写死：常规店在打烊后陆续关，跨夜店跟自己的打烊时间（见 lamp_energy_at）
 ## 单栋建筑：外观、屋顶开关、同时招待人数、员工、升级、展厅展示位、诊所治疗。
 
 
@@ -75,15 +72,9 @@ var cured_count: int = 0
 var failed_count: int = 0
 var understaffed_notice := false
 
-# 光照后端由适配层持有。以下只读属性是第一阶段给旧冒烟测试和旧工具用的
-# 兼容面，建筑玩法代码不引用任何具体灯光或着色器类型。
-var local_lighting
-var night_light:
-	get:
-		return local_lighting.point_light if local_lighting != null else null
 var light_on_hour: float:
 	get:
-		return float(data.get("light_on_hour", LIGHT_ON_LATEST))
+		return float(data.get("light_on_hour", DEFAULT_LIGHT_ON_HOUR))
 var light_off_hour: float:
 	get:
 		return float(data.get("light_off_hour", close_hour()))
@@ -101,20 +92,10 @@ func setup(building_data: Dictionary, at_cell: Vector2i, world_ref: Node2D) -> v
 	z_index = int(position.y)
 	invested = int(data.get("cost", 0))
 	_build_visuals()
-	_build_lights()
 	apply_view_mode(int(world.view_mode))
 	_refresh_label()
 	set_process(is_clinic() or service() == "cleaning")   # 医院推进治疗，保洁间维持保洁工人
 
-
-func _build_lights() -> void:
-	if str(data.get("lighting_kind", "")) != "street_lamp":
-		return
-	if str(ProjectSettings.get_setting("lighting/system", "legacy")) == "v2":
-		return
-	local_lighting = StreetLampLightRuntime.new()
-	local_lighting.setup(self, world)
-	_relayer()
 
 func is_rotatable() -> bool:
 	return bool(data.get("rotatable", false))
@@ -142,7 +123,6 @@ func rotate_clockwise() -> void:
 		return
 	rot_step = (rot_step + 1) % 4
 	_apply_rotation()
-	_refresh_light_position()
 
 
 func dir_rects() -> Array:
@@ -178,20 +158,7 @@ func _apply_rotation() -> void:
 	vis.rotation = float(rot_step) * PI / 2.0
 
 
-func light_offset_cells() -> Vector2i:
-	# 灯光相对建筑中心的偏移（格）。不可旋转的建筑恒为 0。
-	return rotation_dir() if is_rotatable() else Vector2i.ZERO
-
-
-func _refresh_light_position() -> void:
-	if local_lighting != null:
-		local_lighting.refresh_positions()
-
-
 func _exit_tree() -> void:
-	if local_lighting != null:
-		local_lighting.release()
-		local_lighting = null
 	for layer_node in [ground_face, ground_terrain, interior, roof_root, roof_light_root]:
 		if layer_node != null and is_instance_valid(layer_node):
 			layer_node.queue_free()
@@ -207,11 +174,6 @@ func _relayer() -> void:
 		roof_light_root.z_index = 1
 	if label != null:
 		label.z_index = 2
-
-
-func update_lights(hour: float) -> void:
-	if local_lighting != null:
-		local_lighting.update(hour)
 
 
 func lamp_energy_at(hour: float) -> float:
@@ -1478,8 +1440,6 @@ func apply_view_mode(mode: int) -> void:
 		roof_root.visible = show_roof_layer
 	if interior:
 		interior.visible = show_interior_layer
-	if local_lighting != null:
-		local_lighting.apply_view_state(show_interior_layer, true)
 
 
 func apply_roof_mode(show_roof: bool) -> void:
@@ -1530,7 +1490,6 @@ func apply_save(d: Dictionary) -> void:
 		displayed.append({"item_id": str(entry.get("item_id", "")), "count": int(entry.get("count", 1))})
 	rot_step = int(d.get("rot", 0)) % 4
 	_apply_rotation()
-	_refresh_light_position()
 	_refresh_label()
 
 

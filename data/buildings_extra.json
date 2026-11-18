@@ -115,7 +115,7 @@
       "street_lamp_lighting": {
         "head_local": [15.5, -25.5],
         "height_px": 44.0,
-        "shadow_proxy_height_scale": 0.54,
+        "shadow_proxy_height_scale": 1.0,
         "point_height_px": 18.0,
         "range_px": 64.0,
         "point_energy": 0.80,

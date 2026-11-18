@@ -442,8 +442,10 @@ func _run_build_checks() -> void:
 	checks.append("小超市游客实测：160 次细步移动全在遮罩内 %s ｜确实发生移动 %s ｜屋内/屋外光照遮罩 %s / %s" % [
 		str(strict_roam_ok), str(roam_moved), str(indoor_light_mask_ok), str(outdoor_light_mask_ok)])
 
-	var legacy_lighting_removed: bool = shop.local_lighting == null \
-		and shop.night_light == null
+	var legacy_lighting_removed: bool = \
+		str(ProjectSettings.get_setting("lighting/system", "")) == "v2" \
+		and get_node_or_null("../NextLightingSystem") == null \
+		and get_node_or_null("../Daylight") == null
 	checks.append("旧建筑光照：通用 PointLight2D、窗晕和扇形遮罩已移除 %s" % [
 		str(legacy_lighting_removed)])
 
@@ -828,6 +830,11 @@ func _run_day_night_checks() -> void:
 	if lamp:
 		var lamp_surface_ok: bool = lamp.wall_texture != null \
 			and lamp.roof_texture != null \
+			and is_equal_approx(
+				float(lamp.data.get("street_lamp_lighting", {}).get(
+					"shadow_proxy_height_scale",
+					0.0)),
+				1.0) \
 			and lamp.wall_texture.material is ShaderMaterial \
 			and lamp.roof_texture.material is ShaderMaterial \
 			and (lamp.wall_texture.material as ShaderMaterial).get_shader_parameter(
@@ -842,14 +849,74 @@ func _run_day_night_checks() -> void:
 		for probe_hour in [17.0, 18.2, 23.0, 7.5, 8.2]:
 			lamp_energies.append("%.2f" % lamp.lamp_energy_at(probe_hour))
 		var real_lamp_shadow_ok := false
+		var lamp_occlusion_ok := false
 		var lamp_glow_ok := false
 		var lamp_ground_shape_ok := false
+		var lamp_detail_shadow_ok := false
+		var lamp_self_local_occluder_absent := false
 		if spring_lighting != null:
 			_set_hour(23.0)
 			var fp: Array = lamp_data.get("footprint", [1, 1])
 			var lamp_center: Vector2 = lamp.global_position + Vector2(
 				float(fp[0]) * World.CELL * 0.5,
 				float(fp[1]) * World.CELL * 0.5)
+			var lamp_sun_proxy_layer_ok := false
+			var sun_proxy_root := spring_lighting.rig.sun_pass.get(
+				"proxy_root") as Node3D
+			if sun_proxy_root != null:
+				for proxy in sun_proxy_root.get_children():
+					var proxy_node := proxy as Node3D
+					if proxy_node == null \
+							or not proxy_node.position.is_equal_approx(
+								Vector3(lamp_center.x, 0.0, lamp_center.y)):
+						continue
+					for geometry in proxy_node.find_children(
+							"*",
+							"GeometryInstance3D",
+							true,
+							false):
+						if ((geometry as GeometryInstance3D).layers & 1) != 0:
+							lamp_sun_proxy_layer_ok = true
+							break
+					if lamp_sun_proxy_layer_ok:
+						break
+			var detail_proxy_root := spring_lighting.rig.detail_sun_pass.get(
+				"proxy_root") as Node3D
+			var detail_proxy_present := false
+			if detail_proxy_root != null:
+				for proxy in detail_proxy_root.get_children():
+					var detail_proxy := proxy as Node3D
+					if detail_proxy != null \
+							and detail_proxy.position.is_equal_approx(
+								Vector3(
+									lamp_center.x,
+									0.0,
+									lamp_center.y)):
+						detail_proxy_present = true
+						break
+			var detail_texture_bound := false
+			if not spring_lighting.ground_materials.is_empty():
+				detail_texture_bound = \
+					spring_lighting.ground_materials[0].get_shader_parameter(
+						"detail_sun_shadow_texture") != null
+			lamp_detail_shadow_ok = detail_proxy_present \
+				and detail_texture_bound
+			var local_proxy_root := spring_lighting.rig.lamp_pass.get(
+				"proxy_root") as Node3D
+			var self_local_proxy_present := false
+			if local_proxy_root != null:
+				for proxy in local_proxy_root.get_children():
+					var local_proxy := proxy as Node3D
+					if local_proxy != null \
+							and local_proxy.position.is_equal_approx(
+								Vector3(
+									lamp_center.x,
+									0.0,
+									lamp_center.y)):
+						self_local_proxy_present = true
+						break
+			lamp_self_local_occluder_absent = \
+				not self_local_proxy_present
 			var saved_camera_position: Vector2 = spring_lighting.camera.global_position
 			spring_lighting.camera.global_position = lamp_center
 			spring_lighting._process(0.0)
@@ -857,8 +924,26 @@ func _run_day_night_checks() -> void:
 			var spot := spring_lighting.rig.lamp_pass.get("lamp") as SpotLight3D
 			real_lamp_shadow_ok = bool(active_lamp["active"]) \
 				and spot != null and spot.shadow_enabled \
-				and spot.light_energy > 0.0
+				and spot.light_energy > 0.0 \
+				and lamp_sun_proxy_layer_ok
 			var active_lights: Array = active_lamp.get("lights", [])
+			var lamp_proxy_layer := int(
+				spring_lighting.street_lamp_occlusion_layers.get(lamp, 0))
+			for light_spec in active_lights:
+				if light_spec.get("building") != lamp:
+					continue
+				var cull_mask := int(light_spec.get(
+					"lamp_proxy_cull_mask",
+					0))
+				lamp_occlusion_ok = lamp_proxy_layer != 0 \
+					and (cull_mask & lamp_proxy_layer) == 0 \
+					and (cull_mask & 1) != 0
+				break
+			real_lamp_shadow_ok = real_lamp_shadow_ok \
+				and lamp_detail_shadow_ok \
+				and spot != null \
+				and lamp_proxy_layer != 0 \
+				and (spot.shadow_caster_mask & lamp_proxy_layer) == 0
 			var ground_aspects := PackedFloat32Array()
 			if not spring_lighting.ground_materials.is_empty():
 				ground_aspects = PackedFloat32Array(
@@ -893,162 +978,15 @@ func _run_day_night_checks() -> void:
 					float(glow_material.get_shader_parameter("brightness")),
 					0.18)
 			spring_lighting.camera.global_position = saved_camera_position
-		checks.append("路灯 v2：正式分层材质 %s｜18:00-次日08:00 %s｜能量 %s｜真实 Spot 阴影 %s｜灯头光 12%% 透明度/18%% 亮度且由灯头覆盖 %s｜45°椭圆地块光 %s｜旧 PointLight2D 已关闭 %s" % [
+		checks.append("路灯 v2：正式分层材质 %s｜18:00-次日08:00 %s｜能量 %s｜真实 Spot 阴影 %s｜仅排除自身代理遮挡 %s｜灯头光 12%% 透明度/18%% 亮度且由灯头覆盖 %s｜45°椭圆地块光 %s｜旧 PointLight2D 已关闭 %s" % [
 			str(lamp_surface_ok), str(lamp_schedule_ok), " / ".join(lamp_energies),
-			str(real_lamp_shadow_ok), str(lamp_glow_ok),
+			str(real_lamp_shadow_ok), str(lamp_occlusion_ok), str(lamp_glow_ok),
 			str(lamp_ground_shape_ok),
-			str(lamp.night_light == null)])
-	if false:
-		var lamp_energy: Array = []
-		for probe_hour in [17.0, 18.2, 23.0, 7.5, 8.2]:
-			lamp.update_lights(probe_hour)
-			lamp_energy.append("%.2f" % lamp.night_light.energy)
-		var fp: Array = lamp_data.get("footprint", [0, 0])
-		checks.append("路灯：%d×%d ｜ %d g ｜ 解锁 %d ｜ 灯光 17 点 %s ｜ 18:12 %s ｜ 23 点 %s ｜ 07:30 %s ｜ 08:12 %s（应为 0 / 亮 / 亮 / 亮 / 0）" % [
-			int(fp[0]), int(fp[1]), int(lamp_data.get("cost", 0)), int(lamp_data.get("unlock_fame", 0)),
-			lamp_energy[0], lamp_energy[1], lamp_energy[2], lamp_energy[3], lamp_energy[4]])
-		var next_lighting := world.get_parent().get_node_or_null("NextLightingSystem")
-		var lamp_spot: SpotLight3D = null
-		if next_lighting and next_lighting.sun_shadow_3d:
-			next_lighting.sun_shadow_3d.update_lamp_lights(21.0)
-			lamp_spot = next_lighting.sun_shadow_3d.get_lamp_light(lamp)
-		if next_lighting:
-			next_lighting.apply_street_lamp_config()
-			lamp.update_lights(21.0)
-		var lamp_asset_ok: bool = lamp.wall_texture != null \
-			and lamp.roof_texture != null \
-			and lamp.layer_origin == Vector2i(16, 32) \
-			and lamp_data.get("sprite_layers", {}).has("shadow_proxy") \
-			and lamp.wall_texture.material is ShaderMaterial \
-			and lamp.roof_texture.material is ShaderMaterial \
-			and (lamp.wall_texture.material as ShaderMaterial).get_shader_parameter(
-				"normal_texture") != null \
-			and (lamp.roof_texture.material as ShaderMaterial).get_shader_parameter(
-				"normal_texture") != null
-		var lamp_schedule_ok: bool = is_equal_approx(lamp.light_on_hour, 18.0) \
-			and is_equal_approx(lamp.light_off_hour, 8.0) \
-			and is_equal_approx(lamp.open_hour(), 18.0) \
-			and is_equal_approx(lamp.close_hour(), 8.0)
-		var footprint: Array = lamp.data.get("footprint", [1, 1])
-		var base_center: Vector2 = lamp.global_position + Vector2(
-			float(footprint[0]) * Building.CELL * 0.5,
-			float(footprint[1]) * Building.CELL * 0.5)
-		var lamp_point_ok: bool = lamp.night_light.texture != null \
-			and lamp.night_light.texture.get_size() == Vector2(256.0, 256.0) \
-			and not lamp.night_light.shadow_enabled \
-			and lamp.night_light.range_item_cull_mask == Building.LIGHT_LAYER_GROUND_LAMP \
-			and (world.ground.light_mask & Building.LIGHT_LAYER_GROUND_LAMP) != 0 \
-			and lamp.night_light.global_position.is_equal_approx(base_center) \
-			and lamp.night_light.scale.is_equal_approx(Vector2(1.45, 0.85)) \
-			and lamp.night_light.energy > 0.0
-		var player = world.player_avatar
-		var player_normal_light_ok := false
-		if next_lighting != null and player != null \
-				and player.surface_material != null:
-			var saved_position: Vector2 = player.global_position
-			player.global_position = lamp.night_light.global_position
-			next_lighting._update_player_local_light(21.0)
-			player_normal_light_ok = float(player.surface_material.get_shader_parameter(
-				"local_light_energy")) > 0.0
-			player.global_position = saved_position
-			next_lighting._update_player_local_light(GameClock.hour_of_day())
-		var lamp_shadow_ok: bool = lamp_spot != null and lamp_spot.shadow_enabled \
-			and is_zero_approx(lamp_spot.light_energy) \
-			and not lamp_spot.visible \
-			and lamp_spot.light_projector != null
-		var ground_shadow_ok := false
-		if next_lighting != null and player != null and player.sprite != null:
-			var lamp_runtime: StreetLampLight = lamp.local_lighting
-			var foot_offset: Vector2 = next_lighting.sun_shadow_3d.player_foot_world_position(
-				player) - player.global_position
-			player.detach_to(base_center - foot_offset)
-			lamp.update_lights(21.0)
-			var contact_scale: Vector2 = lamp_runtime.actor_shadow.scale
-			var contact_visible: bool = lamp_runtime.actor_shadow.visible \
-				and is_zero_approx(lamp_runtime.actor_shadow.rotation)
-			player.detach_to(base_center \
-				+ Vector2(lamp_runtime.pool_radius_px.x * 0.55, 0.0) - foot_offset)
-			lamp.update_lights(21.0)
-			var offset_shadow: Sprite2D = lamp_runtime.actor_shadow
-			var outward_ok: bool = offset_shadow.visible \
-				and offset_shadow.global_position.x > base_center.x \
-				and is_equal_approx(offset_shadow.rotation, -PI * 0.5)
-			var farther_longer_ok: bool = offset_shadow.scale.y > contact_scale.y
-			var proxy_width: float = next_lighting.sun_shadow_3d.player_shadow.get_aabb().size.x
-			var width_ok: bool = is_equal_approx(
-				contact_scale.x * offset_shadow.texture.get_width(), proxy_width)
-			player.reset_to_reception()
-			lamp.update_lights(GameClock.hour_of_day())
-			ground_shadow_ok = lamp_runtime.shadow_root != null \
-				and lamp_runtime.shadow_root.get_parent() == world.map_layer_root \
-				and contact_visible and outward_ok and farther_longer_ok and width_ok
-		var brightness_falloff_ok: bool = next_lighting != null \
-			and is_equal_approx(
-				float(next_lighting.street_lamp_config.get("brightness", -1.0)),
-				5.0) \
-			and is_equal_approx(
-				float(next_lighting.street_lamp_config.get("falloff_power", -1.0)),
-				0.8)
-		checks.append("路灯新光照：分层素材/代理 %s｜底座椭圆点光 %s｜亮度/衰减接口 %s｜18:00-次日08:00 %s｜玩家不受覆盖 %s｜玩家法线受光 %s｜地面动态影 %s｜旧3D光影关闭 %s" % [
-			str(lamp_asset_ok), str(lamp_point_ok), str(brightness_falloff_ok),
-			str(lamp_schedule_ok), str(lamp_point_ok),
-			str(player_normal_light_ok), str(ground_shadow_ok), str(lamp_shadow_ok)])
-
-		# 旋转只改变灯具外观，底座椭圆光池和 3D 灯光方向保持不变。
-		var dirs: Array = []
-		var light_direction_fixed := true
-		var point_light_fixed := true
-		var initial_light_transform := Transform3D.IDENTITY
-		var initial_point_transform: Transform3D = lamp.night_light.global_transform
-		if next_lighting and next_lighting.sun_shadow_3d:
-			next_lighting.sun_shadow_3d.update_lamp_lights(21.0)
-			lamp_spot = next_lighting.sun_shadow_3d.get_lamp_light(lamp)
-			if lamp_spot != null:
-				initial_light_transform = lamp_spot.global_transform
-			else:
-				light_direction_fixed = false
-		else:
-			light_direction_fixed = false
-		for _i in range(4):
-			lamp.rotate_clockwise()
-			dirs.append(str(Vector2(lamp.rotation_dir()).normalized()))
-			if not lamp.night_light.global_transform.is_equal_approx(
-					initial_point_transform):
-				point_light_fixed = false
-			if next_lighting and next_lighting.sun_shadow_3d:
-				next_lighting.sun_shadow_3d.update_lamp_lights(21.0)
-				lamp_spot = next_lighting.sun_shadow_3d.get_lamp_light(lamp)
-				if lamp_spot == null \
-						or not lamp_spot.global_transform.is_equal_approx(
-							initial_light_transform):
-					light_direction_fixed = false
-		checks.append("路灯旋转：3D方向固定 %s｜椭圆光池固定 %s｜贴图保持竖直 %s｜四向 %s" % [
-			str(light_direction_fixed), str(point_light_fixed),
-			str(is_zero_approx(lamp.exterior.rotation)),
-			" → ".join(dirs)])
-		# 朝向要能进存档（停在「左」，避免和默认朝向 0 撞巧）
-		lamp.rotate_clockwise()
-		var snapshot: Dictionary = lamp.save_data()
-		var saved_rot := int(snapshot.get("rot", -1))
-		lamp.rot_step = 0
-		lamp.apply_save(snapshot)
-		checks.append("路灯朝向存档：写入 %d ｜ 读档恢复 %d ｜ 朝向文本 %s" % [
-			saved_rot, lamp.rot_step, lamp.rotation_text()])
-		# 拆除 / 清场时灯光要一起回收（灯挂在 World 根下，不在建筑子节点里）
-		var probe_lamp := Building.new()
-		world.buildings_root.add_child(probe_lamp)
-		probe_lamp.setup(DataRegistry.get_building("street_lamp"), Vector2i(2, 2), world)
-		var probe_light: PointLight2D = probe_lamp.night_light
-		probe_lamp.free()
-		checks.append("灯光回收：建筑释放后灯已回收 %s" % str(
-			not is_instance_valid(probe_light) or probe_light.is_queued_for_deletion()))
-		if next_lighting and next_lighting.sun_shadow_3d and is_instance_valid(lamp):
-			var had_spot: bool = next_lighting.sun_shadow_3d.lamp_lights.has(lamp)
-			world.remove_building(lamp)
-			var spot_removed: bool = not next_lighting.sun_shadow_3d.lamp_lights.has(lamp)
-			checks.append("路灯移除：3D 聚光灯同步清理 %s（移除前存在 %s）" % [
-				str(spot_removed), str(had_spot)])
-	else:
+			str(ProjectSettings.get_setting("lighting/system", "") == "v2")])
+		checks.append("路灯细节阴影：独立太阳通道 %s｜自身不进入本地遮光 %s" % [
+			str(lamp_detail_shadow_ok),
+			str(lamp_self_local_occluder_absent),
+		])
 		checks.append("路灯：v2 接管完成，旧版灯光检查已停用")
 
 	GameClock.start_new_day()
@@ -1777,10 +1715,10 @@ func _run_demolish_checks() -> void:
 				window_light_count += 1
 				windows_are_unshadowed = windows_are_unshadowed \
 					and light_index >= shadow_count \
-					and is_equal_approx(float(light_spec["range"]), 17.5) \
+					and is_equal_approx(float(light_spec["range"]), 21.0) \
 					and is_equal_approx(
 						float(light_spec["attenuation_range"]),
-						30.625) \
+						52.5) \
 					and is_equal_approx(
 						float(light_spec["attenuation_power"]),
 						4.0) \
@@ -1802,110 +1740,6 @@ func _run_demolish_checks() -> void:
 				"portal_energy")) > 0.0
 		_set_hour(saved_hour)
 		next_system._process(0.0)
-	if false:
-		var sun_7: Dictionary = next_system._sun_state(7.0)
-		var sun_10: Dictionary = next_system._sun_state(10.0)
-		var sun_13: Dictionary = next_system._sun_state(13.0)
-		var sun_16: Dictionary = next_system._sun_state(16.0)
-		var sun_19: Dictionary = next_system._sun_state(19.0)
-		var shadow_8: float = next_system._shadow_fade(8.0)
-		var shadow_10: float = next_system._shadow_fade(10.0)
-		var shadow_16: float = next_system._shadow_fade(16.0)
-		var shadow_18: float = next_system._shadow_fade(18.0)
-		var shadow_19: float = next_system._shadow_fade(19.0)
-		schedule_ok = is_zero_approx(float(sun_7["energy"])) \
-			and is_equal_approx(float(sun_10["energy"]), float(sun_13["energy"])) \
-			and is_equal_approx(float(sun_10["energy"]), float(sun_16["energy"])) \
-			and is_zero_approx(float(sun_19["energy"])) \
-			and is_zero_approx(shadow_8) \
-			and is_equal_approx(shadow_10, 1.0) \
-			and is_equal_approx(shadow_16, 1.0) \
-			and is_zero_approx(shadow_18) \
-			and is_zero_approx(shadow_19) \
-			and is_equal_approx(Building.LIGHT_ON_EARLIEST, 18.0) \
-			and is_equal_approx(Building.LIGHT_ON_LATEST, 18.75) \
-			and is_equal_approx(float(next_system.leak_config.get("on_start_hour", -1.0)), 18.0) \
-			and is_equal_approx(float(next_system.leak_config.get("on_end_hour", -1.0)), 18.75) \
-			and is_equal_approx(float(next_system.leak_config.get("off_start_hour", -1.0)), 24.0) \
-			and is_equal_approx(float(next_system.leak_config.get("off_end_hour", -1.0)), 24.5)
-		if next_lodge != null:
-			var next_entry: Dictionary = next_system.building_entries.get(next_lodge, {})
-			var wall_material: ShaderMaterial = next_entry.get("wall_material")
-			var roof_material: ShaderMaterial = next_entry.get("roof_material")
-			if wall_material and roof_material:
-				wall_shadow_ok = is_equal_approx(
-						float(wall_material.get_shader_parameter("receive_projected_shadow")),
-						1.0) \
-					and is_equal_approx(
-						float(roof_material.get_shader_parameter("receive_projected_shadow")),
-						0.0) \
-					and is_equal_approx(
-						float(wall_material.get_shader_parameter("wall_foot_y_px")),
-						217.0) \
-					and is_equal_approx(
-						float(wall_material.get_shader_parameter("canvas_height_px")),
-						256.0) \
-					and is_equal_approx(
-						float(wall_material.get_shader_parameter("projected_shadow_strength")),
-						0.79) \
-					and is_equal_approx(
-						float(wall_material.get_shader_parameter(
-							"wall_shadow_fade_start_ratio")),
-						1.5) \
-					and is_equal_approx(
-						float(wall_material.get_shader_parameter(
-							"wall_shadow_fade_end_ratio")),
-						2.5) \
-					and wall_material.get_shader_parameter(
-						"projected_shadow_texture") != null
-			var leak_sprites: Array = next_entry.get("leak_sprites", [])
-			if not leak_sprites.is_empty():
-				var leak_sprite: Sprite2D = leak_sprites[0]["sprite"]
-				var rendered_size := Vector2(
-					leak_sprite.texture.get_width() * leak_sprite.scale.x,
-					leak_sprite.texture.get_height() * leak_sprite.scale.y)
-				leak_shape_ok = rendered_size.is_equal_approx(Vector2(19.0, 19.0))
-				leak_edge_ok = is_equal_approx(
-					float(leak_sprite.material.get_shader_parameter("edge_strength")),
-					1.4)
-	if false and next_system != null and next_lodge != null:
-		var proxy: Node3D = next_system.sun_shadow_3d.building_proxies.get(next_lodge)
-		var footprint_array: Array = next_lodge.data.get("footprint", [0, 0])
-		var center: Vector2 = next_lodge.global_position + Vector2(
-			float(footprint_array[0]) * World.CELL * 0.5,
-			float(footprint_array[1]) * World.CELL * 0.5)
-		var proxy_doc: Variant = JSON.parse_string(FileAccess.get_file_as_string(
-			"res://art/characters/buildings/lodge_ordinary/shadow_proxy.json"))
-		var proxy_size: Array = proxy_doc.get("size_px", []) \
-			if proxy_doc is Dictionary else []
-		lodge_proxy_ok = proxy != null \
-			and proxy.position.is_equal_approx(Vector3(center.x, 0.0, center.y)) \
-			and proxy.scale.is_equal_approx(Vector3.ONE) \
-			and proxy_size.size() == 3 \
-			and absf(float(proxy_size[0]) - 143.44) <= 5.0 \
-			and absf(float(proxy_size[1]) - 96.38) <= 5.0
-	var daylight_ambient = null
-	if false:
-		exposure_schedule_ok = is_equal_approx(
-				float(next_system.config.get("scene_exposure_day", -1.0)),
-				1.0) \
-			and is_equal_approx(
-				float(next_system.config.get("scene_exposure_night", -1.0)),
-				0.60)
-	if daylight_ambient != null:
-		var frames: Array = DataRegistry.lighting_keyframes
-		var night_a: Color = daylight_ambient._sample(frames, 6.9)
-		var night_b: Color = daylight_ambient._sample(frames, 19.0)
-		var day_a: Color = daylight_ambient._sample(frames, 10.0)
-		var day_b: Color = daylight_ambient._sample(frames, 13.0)
-		var day_c: Color = daylight_ambient._sample(frames, 16.0)
-		var night_expected := Color.from_string("#4b5a83", Color.WHITE)
-		var day_expected := Color.from_string("#707291", Color.WHITE)
-		ambient_schedule_ok = night_a.is_equal_approx(night_b) \
-			and day_a.is_equal_approx(day_b) \
-			and day_b.is_equal_approx(day_c) \
-			and night_a.is_equal_approx(night_expected) \
-			and day_a.is_equal_approx(day_expected)
 	checks.append("v2 光影：昼夜太阳曲线 %s｜天空环境曲线 %s｜曝光 %s｜墙面投影标记 %s｜建筑阴影代理 %s｜夜间窗户自发光 %s｜窗户矩形外溢 %s｜白天室内窗光 %s" % [
 		str(schedule_ok), str(ambient_schedule_ok),
 		str(exposure_schedule_ok), str(wall_shadow_ok),

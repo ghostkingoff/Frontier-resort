@@ -11,6 +11,7 @@ uniform sampler2D specular_texture_nearest : filter_nearest, repeat_disable;
 uniform sampler2D occlusion_texture_nearest : filter_nearest, repeat_disable;
 uniform bool use_nearest_surface = false;
 uniform sampler2D sun_shadow_texture : filter_linear, repeat_disable;
+uniform sampler2D detail_sun_shadow_texture : filter_linear, repeat_disable;
 uniform sampler2D building_sun_shadow_texture : filter_linear, repeat_disable;
 uniform sampler2D player_sun_shadow_texture : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_0 : filter_linear, repeat_disable;
@@ -52,9 +53,16 @@ uniform float interior_light_energy : hint_range(0.0, 3.0) = 0.0;
 
 uniform int local_light_count = 0;
 uniform int shadowed_light_count = 0;
+uniform bool surface_receive_local_lights = true;
+uniform bool apply_wall_lamp_front_gate = false;
+uniform float wall_foot_world_y = 0.0;
+uniform float wall_lamp_foot_fade_px : hint_range(0.1, 32.0) = 8.0;
+uniform float surface_building_token = 0.0;
 uniform vec4 local_light_positions[32];
 uniform vec4 local_light_colors[32];
 uniform float local_light_falloff_powers[32];
+uniform float local_light_window_flags[32];
+uniform float local_light_window_owner_tokens[32];
 uniform float lamp_shadow_strength : hint_range(0.0, 1.0) = 0.85;
 
 uniform vec2 camera_zoom = vec2(1.0);
@@ -224,6 +232,14 @@ void fragment() {
 		0.015,
 		0.72,
 		sun_visibility_luminance);
+	float detail_sun_luminance = dot(
+		texture(detail_sun_shadow_texture, SCREEN_UV).rgb,
+		vec3(0.2126, 0.7152, 0.0722));
+	float detail_sun_visibility = smoothstep(
+		0.08,
+		0.72,
+		detail_sun_luminance);
+	sun_visibility *= detail_sun_visibility;
 	if (apply_player_sun_shadow) {
 		vec3 shadow_luminance_weights = vec3(
 			0.2126,
@@ -312,7 +328,8 @@ void fragment() {
 	vec4 lamp_page_2 = texture(lamp_shadow_texture_2, SCREEN_UV);
 	vec4 lamp_page_3 = texture(lamp_shadow_texture_3, SCREEN_UV);
 	for (int light_index = 0; light_index < 32; light_index++) {
-		if (light_index >= local_light_count) {
+		if (!surface_receive_local_lights
+				|| light_index >= local_light_count) {
 			break;
 		}
 		vec4 light_position = local_light_positions[light_index];
@@ -368,6 +385,22 @@ void fragment() {
 					self_world_mask);
 			}
 		}
+		float window_light_flag = local_light_window_flags[light_index];
+		if (window_light_flag > 0.5) {
+			float same_building = 1.0 - step(
+				0.5,
+				abs(
+					local_light_window_owner_tokens[light_index]
+					- surface_building_token));
+			light_visibility *= same_building;
+		}
+		if (apply_wall_lamp_front_gate && window_light_flag < 0.5) {
+			float lamp_below_wall_foot = smoothstep(
+				wall_foot_world_y - wall_lamp_foot_fade_px,
+				wall_foot_world_y + wall_lamp_foot_fade_px,
+				light_world.y);
+			light_visibility *= lamp_below_wall_foot;
+		}
 		if (apply_character_facing_gate) {
 			float foot_below_light = max(
 				character_facing_anchor_world.y - light_world.y,
@@ -407,6 +440,8 @@ void fragment() {
 		+ sun_color * sun_energy * sun_specular
 			* sun_visibility * specular_strength
 		+ local_specular;
+	lit *= 1.0 - 0.22 * (1.0 - detail_sun_visibility)
+		* smoothstep(0.015, 0.22, sun_energy);
 	lit *= 1.0 - wall_projected_shadow_ambient_strength
 		* player_wall_shadow_darkness;
 	if (debug_mode == 1) {

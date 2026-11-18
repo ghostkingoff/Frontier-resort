@@ -8,6 +8,7 @@ var viewport_size := Vector2i(1280, 720)
 var world_center := Vector2(640.0, 384.0)
 var receiver_size := Vector2(4096.0, 4096.0)
 var sun_pass: Dictionary = {}
+var detail_sun_pass: Dictionary = {}
 var building_sun_pass: Dictionary = {}
 var lamp_passes: Array[Dictionary] = []
 var lamp_pass: Dictionary = {}
@@ -31,8 +32,15 @@ func setup(
 	world_center = target_world_center
 	receiver_size = target_receiver_size
 	sun_pass = _create_pass("SunShadowPass", true, false)
+	detail_sun_pass = _create_pass("DetailSunShadowPass", true, false)
 	building_sun_pass = _create_pass("BuildingSunShadowPass", true, false)
 	player_sun_pass = _create_pass("PlayerSunShadowPass", true, false)
+	var detail_sun := detail_sun_pass.get("directional") as DirectionalLight3D
+	if detail_sun != null:
+		detail_sun.light_angular_distance = 0.04
+		detail_sun.shadow_bias = 0.008
+		detail_sun.shadow_normal_bias = 0.1
+		detail_sun.shadow_blur = 0.55
 	var building_sun := building_sun_pass.get("directional") as DirectionalLight3D
 	if building_sun != null:
 		building_sun.light_angular_distance = 0.35
@@ -116,6 +124,8 @@ func _create_pass(
 		directional.name = "SunVisibility"
 		directional.light_color = Color.WHITE
 		directional.light_energy = 1.0
+		directional.light_cull_mask = 0xFFFFFFFF
+		directional.shadow_caster_mask = 0xFFFFFFFF
 		directional.shadow_enabled = true
 		directional.light_angular_distance = 0.9
 		directional.shadow_bias = 0.035
@@ -167,27 +177,85 @@ func add_building_proxy(
 		center: Vector2,
 		height_scale: float = 1.0,
 		include_in_lamp_pass: bool = true,
-		include_in_building_mask: bool = true) -> bool:
+		include_in_building_mask: bool = true,
+		proxy_layers: int = 1,
+		lamp_proxy_layers: int = 1) -> bool:
 	if resource_path == "" or not ResourceLoader.exists(resource_path):
 		push_warning("[LightingRig3D] Missing shadow proxy: %s" % resource_path)
 		return false
 	var packed := load(resource_path) as PackedScene
 	if packed == null:
 		return false
-	var passes: Array = [sun_pass]
+	var pass_layers: Array = [{
+		"pass": sun_pass,
+		"layers": proxy_layers,
+	}]
 	if include_in_building_mask:
-		passes.append(building_sun_pass)
+		pass_layers.append({
+			"pass": building_sun_pass,
+			"layers": proxy_layers,
+		})
 	if include_in_lamp_pass:
-		passes.append_array(lamp_passes)
-	for pass_data in passes:
+		for pass_data in lamp_passes:
+			pass_layers.append({
+				"pass": pass_data,
+				"layers": lamp_proxy_layers,
+			})
+	for pass_entry in pass_layers:
+		var pass_data: Dictionary = pass_entry["pass"]
 		var proxy := packed.instantiate() as Node3D
 		if proxy == null:
 			continue
 		proxy.position = Vector3(center.x, 0.0, center.y)
 		proxy.scale.y *= height_scale
 		_set_shadow_only(proxy)
+		_set_instance_layers(proxy, int(pass_entry["layers"]))
 		(pass_data["proxy_root"] as Node3D).add_child(proxy)
 	return true
+
+
+func add_street_lamp_pole_proxy(
+		center: Vector2,
+		_lamp_proxy_layers: int) -> void:
+	var pass_layers: Array = [
+		{
+			"pass": sun_pass,
+			"layers": 1,
+		},
+		{
+			"pass": detail_sun_pass,
+			"layers": 1,
+		},
+	]
+	for pass_entry in pass_layers:
+		var proxy := Node3D.new()
+		proxy.name = "StreetLampShadowProxy"
+		proxy.position = Vector3(center.x, 0.0, center.y)
+		var shadow_material := StandardMaterial3D.new()
+		shadow_material.albedo_color = Color.WHITE
+		shadow_material.shading_mode = \
+			BaseMaterial3D.SHADING_MODE_UNSHADED
+		shadow_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+		var pole_instance := MeshInstance3D.new()
+		pole_instance.name = "Pole"
+		var pole := BoxMesh.new()
+		pole.size = Vector3(10.0, 52.0, 9.0)
+		pole_instance.mesh = pole
+		pole_instance.position = Vector3(0.0, 26.0, 0.0)
+		pole_instance.material_override = shadow_material
+		proxy.add_child(pole_instance)
+		var head_instance := MeshInstance3D.new()
+		head_instance.name = "Head"
+		var head := BoxMesh.new()
+		head.size = Vector3(18.0, 6.0, 10.0)
+		head_instance.mesh = head
+		head_instance.position = Vector3(0.0, 50.0, 0.0)
+		head_instance.material_override = shadow_material
+		proxy.add_child(head_instance)
+		_set_shadow_only(proxy)
+		_set_instance_layers(proxy, int(pass_entry["layers"]))
+		((pass_entry["pass"] as Dictionary)["proxy_root"] as Node3D).add_child(
+			proxy)
 
 
 func add_pine_proxy(foot_position: Vector2, height_px: float = 124.0) -> void:
@@ -200,7 +268,7 @@ func add_pine_proxy(foot_position: Vector2, height_px: float = 124.0) -> void:
 		proxy.mesh = pine_shadow_mesh
 		proxy.position = Vector3(foot_position.x, 64.0, foot_position.y)
 		proxy.scale = Vector3(1.0, height_px / 128.0, 1.0)
-		proxy.layers = 2
+		proxy.layers = 1
 		proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		var material := StandardMaterial3D.new()
 		material.albedo_texture = load(
@@ -443,7 +511,7 @@ func clear_proxies() -> void:
 	player_proxies.clear()
 	player_contact_proxy = null
 	actor_proxies.clear()
-	var passes: Array = [sun_pass, building_sun_pass]
+	var passes: Array = [sun_pass, detail_sun_pass, building_sun_pass]
 	passes.append_array(lamp_passes)
 	for pass_data in passes:
 		var root := pass_data.get("proxy_root") as Node3D
@@ -457,7 +525,12 @@ func clear_proxies() -> void:
 func set_camera(camera_2d: Camera2D) -> void:
 	if camera_2d == null:
 		return
-	var passes: Array = [sun_pass, building_sun_pass, player_sun_pass]
+	var passes: Array = [
+		sun_pass,
+		detail_sun_pass,
+		building_sun_pass,
+		player_sun_pass,
+	]
 	passes.append_array(lamp_passes)
 	for pass_data in passes:
 		var camera := pass_data["camera"] as Camera3D
@@ -476,7 +549,12 @@ func set_camera(camera_2d: Camera2D) -> void:
 
 func set_sun(to_sun: Vector3) -> void:
 	var light_direction := -to_sun.normalized()
-	var passes: Array = [sun_pass, building_sun_pass, player_sun_pass]
+	var passes: Array = [
+		sun_pass,
+		detail_sun_pass,
+		building_sun_pass,
+		player_sun_pass,
+	]
 	for pass_data in passes:
 		var light := pass_data.get("directional") as DirectionalLight3D
 		if light == null:
@@ -491,6 +569,7 @@ func set_sun_shadow_softness(value: float) -> void:
 	var softness := clampf(value, 0.0, 1.0)
 	var settings := [
 		[sun_pass, lerpf(0.8, 6.0, softness), lerpf(0.06, 1.4, softness)],
+		[detail_sun_pass, lerpf(0.2, 1.2, softness), lerpf(0.01, 0.12, softness)],
 		[building_sun_pass, lerpf(1.1, 7.0, softness), lerpf(0.08, 1.6, softness)],
 		[player_sun_pass, lerpf(0.3, 2.8, softness), lerpf(0.03, 0.7, softness)],
 	]
@@ -540,11 +619,14 @@ func set_lamps(light_specs: Array) -> void:
 			var height := float(spec.get("height", 180.0))
 			var range_px := float(spec.get("range", 360.0))
 			var active := bool(spec.get("active", false))
+			var cull_mask := int(spec.get("cull_mask", (1 << 20) - 1))
 			light.position = Vector3(position.x, height, position.y)
 			light.look_at(
 				Vector3(position.x, 0.0, position.y),
 				Vector3(0.0, 0.0, -1.0))
 			light.spot_range = range_px
+			light.light_cull_mask = cull_mask
+			light.shadow_caster_mask = cull_mask
 			light.light_energy = 1.0 if active else 0.0
 			light.visible = active
 		if page_viewport != null and page_index >= active_lamp_page_count:
@@ -555,6 +637,9 @@ func refresh_shadow_maps() -> void:
 	var sun_viewport := sun_pass.get("viewport") as SubViewport
 	if sun_viewport != null:
 		sun_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var detail_sun_viewport := detail_sun_pass.get("viewport") as SubViewport
+	if detail_sun_viewport != null:
+		detail_sun_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var building_sun_viewport := building_sun_pass.get("viewport") as SubViewport
 	if building_sun_viewport != null:
 		building_sun_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
@@ -569,6 +654,11 @@ func refresh_shadow_maps() -> void:
 
 func get_sun_texture() -> Texture2D:
 	var viewport := sun_pass.get("viewport") as SubViewport
+	return viewport.get_texture() if viewport != null else null
+
+
+func get_detail_sun_texture() -> Texture2D:
+	var viewport := detail_sun_pass.get("viewport") as SubViewport
 	return viewport.get_texture() if viewport != null else null
 
 
@@ -603,3 +693,10 @@ func _set_shadow_only(node: Node) -> void:
 		geometry.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	for child in node.get_children():
 		_set_shadow_only(child)
+
+
+func _set_instance_layers(node: Node, layers: int) -> void:
+	if node is GeometryInstance3D:
+		(node as GeometryInstance3D).layers = layers
+	for child in node.get_children():
+		_set_instance_layers(child, layers)
