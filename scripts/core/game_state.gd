@@ -208,8 +208,14 @@ func earn_item_sale(amount: int) -> void:
 
 
 func day_report() -> Dictionary:
+	var calendar := SeasonCalendar.date_info(day)
 	var report := {
 		"day": day,
+		"year": int(calendar["year"]),
+		"season_id": str(calendar["season_id"]),
+		"season_name": str(calendar["season_name"]),
+		"day_in_season": int(calendar["day_in_season"]),
+		"day_in_year": int(calendar["day_in_year"]),
 		"revenue": daily_revenue,
 		"visitors": daily_visitors,
 		"reputation": reputation,

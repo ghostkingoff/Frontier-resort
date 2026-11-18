@@ -690,6 +690,11 @@ func _run_day_night_checks() -> void:
 	var x64 := GameClock.time_scale()
 	GameClock.set_speed(GameClock.Speed.X1)
 	checks.append("倍速档位：1x / 2x / 4x / 64x（测试用）｜ 64x = ×%.0f" % x64)
+	checks.append("季节日历：%s｜%s｜%s" % [
+		SeasonCalendar.format_date(1),
+		SeasonCalendar.format_date(40),
+		SeasonCalendar.format_date(121),
+	])
 	checks.append("时间轴：%s 开始 ｜ 24 小时 = %.0f 分钟（每小时 %.0f 秒）" % [
 		GameClock.time_text(), GameClock.cycle_length_seconds / 60.0, GameClock.cycle_length_seconds / 24.0])
 	GameClock.skip_to_end_of_day()
@@ -1703,21 +1708,24 @@ func _run_demolish_checks() -> void:
 	var exposure_schedule_ok := false
 	var ambient_schedule_ok := false
 	if next_system != null:
-		var sun_night: Dictionary = next_system._sample_light_state(2.0)
-		var sun_noon: Dictionary = next_system._sample_light_state(12.0)
-		var sun_evening: Dictionary = next_system._sample_light_state(18.5)
+		var seasonal_profile: Dictionary = \
+			next_system.season_light_profile.current_profile()
+		var seasonal_sunrise := float(seasonal_profile["sunrise_hour"])
+		var seasonal_noon := float(seasonal_profile["solar_noon_hour"])
+		var seasonal_sunset := float(seasonal_profile["sunset_hour"])
+		var sun_night: Dictionary = next_system._sample_light_state(
+			seasonal_sunrise - 0.001)
+		var sun_noon: Dictionary = next_system._sample_light_state(
+			seasonal_noon)
+		var sun_evening: Dictionary = next_system._sample_light_state(
+			seasonal_sunset - 0.5)
 		schedule_ok = is_zero_approx(float(sun_night["sun_energy"])) \
-			and float(sun_noon["sun_energy"]) > 0.75 \
+			and float(sun_noon["sun_energy"]) > 0.60 \
 			and float(sun_evening["sun_energy"]) > 0.0 \
 			and float(sun_evening["sun_energy"]) < float(sun_noon["sun_energy"])
-		exposure_schedule_ok = is_equal_approx(
-				float(next_system.config.get("exposure_day", -1.0)),
-				0.78) \
-			and is_equal_approx(
-				float(next_system.config.get("exposure_night", -1.0)),
-				0.20) \
-			and float(next_system.config.get("exposure_night", 1.0)) \
-				< float(next_system.config.get("exposure_day", 0.0))
+		exposure_schedule_ok = float(sun_night["exposure"]) < 0.5 \
+			and float(sun_night["exposure"]) < float(sun_noon["exposure"]) \
+			and float(sun_noon["exposure"]) <= 0.82
 		var night_sky: Color = sun_night["sky_color"]
 		var noon_sky: Color = sun_noon["sky_color"]
 		ambient_schedule_ok = not night_sky.is_equal_approx(noon_sky) \

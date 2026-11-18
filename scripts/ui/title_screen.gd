@@ -265,8 +265,10 @@ func _refresh_slot_list() -> void:
 		row.add_theme_constant_override("separation", 12)
 		var text := "存档 %d ｜ 空存档" % slot
 		if bool(info.get("exists", false)):
-			text = "存档 %d ｜ 第 %d 天 ｜ 资金 %s ｜ 设施 %d 座 ｜ 游玩 %s" % [
-				slot, int(info.get("day", 1)), GameState.format_money(int(info.get("money", 0))),
+			text = "存档 %d ｜ %s ｜ 资金 %s ｜ 设施 %d 座 ｜ 游玩 %s" % [
+				slot,
+				SeasonCalendar.format_date(int(info.get("day", 1))),
+				GameState.format_money(int(info.get("money", 0))),
 				int(info.get("buildings", 0)), _format_playtime(float(info.get("playtime", 0.0)))]
 		var label := UIKit.paragraph(text, 22, Color(0.9, 0.92, 0.98) if bool(info.get("exists", false)) else Color(0.6, 0.62, 0.68), 520.0)
 		row.add_child(label)

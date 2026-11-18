@@ -143,10 +143,17 @@ func slot_summary(slot: int) -> Dictionary:
 		return {"exists": false, "slot": slot}
 	var state: Dictionary = data.get("state", {})
 	var world: Dictionary = data.get("world", {})
+	var day := int(state.get("day", 1))
+	var calendar := SeasonCalendar.date_info(day)
 	return {
 		"exists": true,
 		"slot": slot,
-		"day": int(state.get("day", 1)),
+		"day": day,
+		"year": int(calendar["year"]),
+		"season_id": str(calendar["season_id"]),
+		"season_name": str(calendar["season_name"]),
+		"day_in_season": int(calendar["day_in_season"]),
+		"day_in_year": int(calendar["day_in_year"]),
 		"money": int(state.get("money", 0)),
 		"reputation": float(state.get("reputation", 0.0)),
 		"buildings": (world.get("buildings", []) as Array).size(),

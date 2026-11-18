@@ -703,7 +703,10 @@ func _prepare_exclusive_ui(except_name: String, cancel_build: bool = true,
 func _manual_save() -> void:
 	if SaveManager.save_game():
 		GameState.notice.emit("已保存到存档 %d" % SaveManager.active_slot)
-		show_notice("已保存到存档 %d（第 %d 天）" % [SaveManager.active_slot, GameState.day])
+		show_notice("已保存到存档 %d（%s）" % [
+			SaveManager.active_slot,
+			SeasonCalendar.format_date(GameState.day),
+		])
 	else:
 		GameState.notice.emit("保存失败")
 
@@ -1014,7 +1017,7 @@ func _refresh_money() -> void:
 
 
 func _refresh_day() -> void:
-	day_label.text = "第 %d 天" % GameState.day
+	day_label.text = SeasonCalendar.format_date(GameState.day)
 
 
 func _refresh_facility_label() -> void:
@@ -1101,7 +1104,8 @@ func _show_settlement(report: Dictionary) -> void:
 		settlement_box.remove_child(child)
 		child.queue_free()
 	settlement.visible = true
-	settlement_box.add_child(_make_label("第 %d 天 · 结算" % int(report.get("day", 1)), 40, Color(0.98, 0.88, 0.55)))
+	settlement_box.add_child(_make_label("%s · 结算" % SeasonCalendar.format_date(
+		int(report.get("day", 1))), 40, Color(0.98, 0.88, 0.55)))
 	settlement_box.add_child(_make_label("本日营业额：%s" % GameState.format_money(int(report.get("revenue", 0))), 28, Color(0.98, 0.85, 0.35)))
 	settlement_box.add_child(_make_label("其中展厅成交：%s" % GameState.format_money(int(report.get("item_income", 0))), 22, Color(0.90, 0.80, 0.95)))
 	settlement_box.add_child(_make_label("员工工资支出：-%s" % GameState.format_money(int(report.get("wages", 0))), 22, Color(0.95, 0.75, 0.75)))
@@ -1224,4 +1228,4 @@ func _start_next_day() -> void:
 	GameClock.paused = false
 	pause_button.text = "暂停时间"
 	_refresh_all()
-	show_notice("第 %d 天开始了" % GameState.day)
+	show_notice("%s开始了" % SeasonCalendar.format_date(GameState.day))

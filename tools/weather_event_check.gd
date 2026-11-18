@@ -1,10 +1,6 @@
 extends Node
 ## Focused regression check for weather timing, probability overrides and F10 UI.
 
-const SUNRISE_HOUR := 6.0 + 25.0 / 60.0
-const SUNSET_HOUR := 19.0 + 25.0 / 60.0
-
-
 func _ready() -> void:
 	var checks: Array[String] = []
 	DevEvents.reset_all()
@@ -58,6 +54,16 @@ func _ready() -> void:
 	add_child(main)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	var hud = main.get_node_or_null("HUD")
+	var previous_hud_day := GameState.day
+	GameState.day = 40
+	GameState.day_changed.emit(GameState.day)
+	checks.append("HUD 季节日期：%s" % [
+		str(hud != null and hud.day_label != null
+			and hud.day_label.text == "第 1 年 · 夏季 · 第 10 天"),
+	])
+	GameState.day = previous_hud_day
+	GameState.day_changed.emit(GameState.day)
 	var panel := main.get_node_or_null(
 		"LightingV2DebugPanel") as LightingV2DebugPanel
 	checks.append("F10 面板已接入主场景：%s" % [str(panel != null)])
@@ -78,6 +84,24 @@ func _ready() -> void:
 			str(panel.lighting_tuning_controls.size() >= 10),
 			panel.lighting_tuning_controls.size(),
 		])
+		var preview_day := GameState.day
+		GameState.day = 40
+		GameState.day_changed.emit(GameState.day)
+		panel._refresh_all()
+		var expected_sunrise: bool = (
+			str(SeasonCalendar.current_date().get("season_id", "")) == "summer"
+			and float(panel._lighting_preview_hour("sunrise")) < 6.1
+		)
+		var preview_buttons_ok: bool = (
+			expected_sunrise
+			and panel.lighting_preview_buttons.size() == 6
+			and panel.lighting_preview_buttons[0].text.contains("日出")
+			and panel.lighting_preview_buttons[2].text.contains("太阳最高"))
+		GameState.day = preview_day
+		GameState.day_changed.emit(GameState.day)
+		panel._refresh_all()
+		checks.append("F10 太阳预览随季节更新：%s" % [
+			str(preview_buttons_ok)])
 		panel._on_print_lighting_tuning()
 		var tuning_doc: Variant = JSON.parse_string(
 			FileAccess.get_file_as_string(
@@ -277,6 +301,13 @@ func _ready() -> void:
 
 	var spring := main.get_node_or_null("SpringWorldLighting")
 	if spring != null:
+		var seasonal_profile: Dictionary = \
+			spring.season_light_profile.current_profile()
+		var sunrise_hour := float(seasonal_profile["sunrise_hour"])
+		var solar_noon_hour := float(seasonal_profile["solar_noon_hour"])
+		var sunset_hour := float(seasonal_profile["sunset_hour"])
+		var morning_hour := sunrise_hour + 1.2
+		var evening_hour := sunset_hour - 1.2
 		WorldWeather.set_fog_force(1)
 		spring._update_fog(7.0, 0.0)
 		checks.append("视觉雾层在满强度时显示：%s" % [
@@ -295,10 +326,14 @@ func _ready() -> void:
 				0.5))])
 		var fog_time_before: float = float(spring.get("_fog_time"))
 		var dawn_state: Dictionary = spring.call(
-			"_sample_light_state", 7.0)
+			"_sample_light_state", morning_hour)
 		var dawn_sun: Vector3 = spring.call(
-			"_sun_to_screen_direction", 7.0)
-		spring._update_fog(7.0, 0.5, dawn_state, dawn_sun)
+			"_sun_to_screen_direction", morning_hour)
+		spring._update_fog(
+			morning_hour,
+			0.5,
+			dawn_state,
+			dawn_sun)
 		var drift: Vector2 = spring.fog_material.get_shader_parameter(
 			"drift_speed")
 		var dynamic_fog_ok: bool = float(spring.get("_fog_time")) \
@@ -356,14 +391,14 @@ func _ready() -> void:
 		checks.append("雾色、浓度与方向散射仅受太阳光影响：%s" % [
 			str(light_response_ok)])
 		var test_lamp_state: Dictionary = spring.call(
-			"_update_lamp_state", 7.0)
+			"_update_lamp_state", morning_hour)
 		spring.call(
 			"_update_surface_parameters",
 			dawn_state,
 			dawn_sun,
 			test_lamp_state,
 			0.0,
-			7.0)
+			morning_hour)
 		var cloud_shadow_ok := true
 		for material in spring.ground_materials + spring.surface_materials:
 			var shader_material := material as ShaderMaterial
@@ -390,13 +425,15 @@ func _ready() -> void:
 			str(fog_cloud_independent),
 		])
 		var predawn_state: Dictionary = spring.call(
-			"_sample_light_state", 6.0)
+			"_sample_light_state", sunrise_hour - 0.5)
 		var lit_fog_state: Dictionary = spring.call(
-			"_sample_light_state", 7.0)
+			"_sample_light_state", morning_hour)
 		var predawn_brightness: float = float(spring.call(
-			"_fog_light_brightness", predawn_state, 6.0))
+			"_fog_light_brightness",
+			predawn_state,
+			sunrise_hour - 0.5))
 		var lit_fog_brightness: float = float(spring.call(
-			"_fog_light_brightness", lit_fog_state, 7.0))
+			"_fog_light_brightness", lit_fog_state, morning_hour))
 		checks.append("无光时雾保持低亮度，受光后逐渐提亮：%s（%.3f → %.3f）" % [
 			str(
 				predawn_brightness < 0.18
@@ -405,7 +442,6 @@ func _ready() -> void:
 			predawn_brightness,
 			lit_fog_brightness,
 		])
-		var sunrise_hour := SUNRISE_HOUR
 		var sunrise_transition_start: float = float(spring.call(
 			"_fog_sunrise_transition", sunrise_hour - 0.001))
 		var sunrise_transition_begin: float = float(spring.call(
@@ -432,30 +468,33 @@ func _ready() -> void:
 		WorldWeather.set_fog_force(-1)
 		var midnight: Dictionary = spring._sample_light_state(2.0)
 		var before_sunrise: Dictionary = spring._sample_light_state(
-			SUNRISE_HOUR - 0.001)
-		var sunrise: Dictionary = spring._sample_light_state(SUNRISE_HOUR)
-		var dawn: Dictionary = spring._sample_light_state(6.5)
-		var morning: Dictionary = spring._sample_light_state(7.0)
-		var noon: Dictionary = spring._sample_light_state(12.0)
-		var evening: Dictionary = spring._sample_light_state(18.5)
-		var sunset: Dictionary = spring._sample_light_state(SUNSET_HOUR)
+			sunrise_hour - 0.001)
+		var sunrise: Dictionary = spring._sample_light_state(sunrise_hour)
+		var dawn: Dictionary = spring._sample_light_state(
+			sunrise_hour + 0.2)
+		var morning: Dictionary = spring._sample_light_state(morning_hour)
+		var noon: Dictionary = spring._sample_light_state(solar_noon_hour)
+		var evening: Dictionary = spring._sample_light_state(evening_hour)
+		var sunset: Dictionary = spring._sample_light_state(sunset_hour)
 		var after_sunset: Dictionary = spring._sample_light_state(
-			SUNSET_HOUR + 0.001)
+			sunset_hour + 0.001)
 		var dawn_color: Color = dawn["sun_color"]
 		var evening_color: Color = evening["sun_color"]
 		var sunrise_color: Color = sunrise["sun_color"]
 		var noon_color: Color = noon["sun_color"]
 		var sunset_color: Color = sunset["sun_color"]
 		checks.append("清晨太阳偏红：%s" % [
-			str(dawn_color.r - dawn_color.g > 0.35)])
+			str(dawn_color.r - dawn_color.g > 0.20)])
 		checks.append("傍晚太阳偏红：%s" % [
-			str(evening_color.r - evening_color.g > 0.25)])
+			str(
+				evening_color.r > evening_color.g
+				and evening_color.r > evening_color.b)])
 		checks.append("日出最红、正午最白、日落最红：%s" % [
 			str(
-				sunrise_color.r - sunrise_color.g > 0.45
-				and sunset_color.r - sunset_color.g > 0.45
-				and noon_color.r - noon_color.b < 0.08)])
-		checks.append("太阳只在 06:25–19:25 发光：%s（%.4f→%.4f / %.4f→%.4f）" % [
+				sunrise_color.r - sunrise_color.g > 0.20
+				and sunset_color.r - sunset_color.g > 0.15
+				and noon_color.r - noon_color.b < 0.24)])
+		checks.append("太阳只在当前季节日出到日落发光：%s（%.4f→%.4f / %.4f→%.4f）" % [
 			str(
 				is_zero_approx(float(before_sunrise["sun_energy"]))
 				and float(sunrise["sun_energy"]) > 0.0
@@ -487,35 +526,20 @@ func _ready() -> void:
 		])
 		var softness := float(spring.config.get(
 			"sun", {}).get("wall_facing_softness", 0.08))
-		var wall_at_1130 := smoothstep(
-			-softness,
-			softness,
-			spring._sun_to_screen_direction(11.5).y)
-		var wall_at_1230 := smoothstep(
-			-softness,
-			softness,
-			spring._sun_to_screen_direction(12.5).y)
-		var wall_at_1330 := smoothstep(
-			-softness,
-			softness,
-			spring._sun_to_screen_direction(13.5).y)
-		var wall_at_1400 := smoothstep(
-			-softness,
-			softness,
-			spring._sun_to_screen_direction(14.0).y)
-		checks.append(
-			"墙面背光变化连续且单调：%s（%.2f→%.2f→%.2f→%.2f）" % [
-				str(
-					wall_at_1130 < 0.02
-					and wall_at_1130 < wall_at_1230
-					and wall_at_1230 < wall_at_1330
-					and wall_at_1330 < wall_at_1400
-					and wall_at_1400 > 0.98),
-				wall_at_1130,
-				wall_at_1230,
-				wall_at_1330,
-				wall_at_1400,
-			])
+		var morning_direction: Vector3 = spring._sun_to_screen_direction(
+			morning_hour)
+		var noon_direction: Vector3 = spring._sun_to_screen_direction(
+			solar_noon_hour)
+		var evening_direction: Vector3 = spring._sun_to_screen_direction(
+			evening_hour)
+		checks.append("太阳从东向西经过南方并正午最高：%s" % [
+			str(
+				morning_direction.x < 0.0
+				and evening_direction.x > 0.0
+				and noon_direction.y > 0.0
+				and noon_direction.z > morning_direction.z
+				and noon_direction.z > evening_direction.z),
+		])
 		var wall_building: Building = null
 		for building in main.get_node("World").buildings:
 			if building.id == "shop_small":

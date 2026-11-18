@@ -125,8 +125,14 @@ func clear_force_overrides() -> void:
 
 
 func snapshot() -> Dictionary:
+	var calendar := SeasonCalendar.date_info(day)
 	return {
 		"day": day,
+		"year": int(calendar["year"]),
+		"season_id": str(calendar["season_id"]),
+		"season_name": str(calendar["season_name"]),
+		"day_in_season": int(calendar["day_in_season"]),
+		"day_in_year": int(calendar["day_in_year"]),
 		"today_rain": today_rain,
 		"yesterday_rain": yesterday_rain,
 		"fog_event": fog_event,

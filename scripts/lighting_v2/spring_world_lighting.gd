@@ -10,6 +10,8 @@ const ATMOSPHERE_SHADER := preload(
 	"res://shaders/lighting_v2/spring_atmosphere.gdshader")
 const FOG_SHADER := preload(
 	"res://shaders/lighting_v2/spring_fog.gdshader")
+const SEASON_LIGHT_PROFILE_SCRIPT := preload(
+	"res://scripts/lighting_v2/season_light_profile.gd")
 const LAMP_HEAD_GLOW_SHADER := preload(
 	"res://shaders/lighting_v2/lamp_head_glow.gdshader")
 const WINDOW_EMISSION_SHADER := preload(
@@ -64,6 +66,7 @@ var neutral_occlusion: ImageTexture
 var flat_black: ImageTexture
 var radial_texture: ImageTexture
 var window_texture: ImageTexture
+var season_light_profile
 var lighting_tuning: Dictionary = {}
 var last_shadow_key := ""
 var last_player_foot := Vector2(-INF, -INF)
@@ -83,6 +86,7 @@ func _ready() -> void:
 		push_error("[SpringWorldLighting] World not found")
 		return
 	config = _read_json(CONFIG_PATH)
+	season_light_profile = SEASON_LIGHT_PROFILE_SCRIPT.new()
 	_reset_lighting_tuning()
 	_make_neutral_textures()
 	camera = get_viewport().get_camera_2d()
@@ -113,6 +117,9 @@ func _process(delta: float) -> void:
 		sun_screen.x,
 		sun_screen.z,
 		sun_screen.y).normalized()
+	rig.set_sun_shadow_softness(float(state.get(
+		"shadow_softness",
+		0.5)))
 	var lamp_state := _update_lamp_state(
 		hour,
 		float(state["sun_energy"]))
@@ -1625,13 +1632,19 @@ func _set_cloud_shadow_parameters(
 			float(state.get("sun_energy", 0.0))))
 	material.set_shader_parameter(
 		"cloud_shadow_strength",
-		float(weather_config.get("cloud_shadow_strength", 1.0)))
+		float(state.get(
+			"cloud_shadow_strength",
+			weather_config.get("cloud_shadow_strength", 1.0))))
 	material.set_shader_parameter(
 		"cloud_shadow_threshold",
-		float(weather_config.get("cloud_shadow_threshold", 0.54)))
+		float(state.get(
+			"cloud_shadow_threshold",
+			weather_config.get("cloud_shadow_threshold", 0.54))))
 	material.set_shader_parameter(
 		"cloud_shadow_softness",
-		float(weather_config.get("cloud_shadow_softness", 0.24)))
+		float(state.get(
+			"cloud_shadow_softness",
+			weather_config.get("cloud_shadow_softness", 0.24))))
 	material.set_shader_parameter(
 		"cloud_shadow_width_px",
 		float(weather_config.get("cloud_shadow_width_px", 120.0)))
@@ -1808,6 +1821,17 @@ func _fog_light_brightness(
 
 
 func _fog_sunrise_transition(hour: float) -> float:
+	if season_light_profile != null:
+		var profile: Dictionary = season_light_profile.current_profile()
+		if not profile.is_empty():
+			var sunrise_window := maxf(float(
+				WorldWeather.config.get(
+					"fog_sunrise_transition_hours",
+					0.5)), 0.001)
+			return season_light_profile.sunrise_transition(
+				hour,
+				profile,
+				sunrise_window)
 	var sun_config: Dictionary = config.get("sun", {})
 	var sunrise := float(sun_config.get(
 		"sunrise_hour",
@@ -2028,6 +2052,12 @@ func _make_window_texture(size: int) -> ImageTexture:
 func _sun_to_screen_direction(at_hour: float) -> Vector3:
 	if use_sun_screen_override:
 		return sun_screen_override
+	if season_light_profile != null:
+		var profile: Dictionary = season_light_profile.current_profile()
+		if not profile.is_empty():
+			return season_light_profile.sun_screen_direction(
+				at_hour,
+				profile)
 	var sun_config: Dictionary = config.get("sun", {})
 	var sunrise := float(sun_config.get("sunrise_hour", 6.0 + 25.0 / 60.0))
 	var sunset := float(sun_config.get("sunset_hour", 19.0 + 25.0 / 60.0))
@@ -2050,6 +2080,14 @@ func _sun_to_screen_direction(at_hour: float) -> Vector3:
 
 
 func _sample_light_state(at_hour: float) -> Dictionary:
+	if season_light_profile != null:
+		var profile: Dictionary = season_light_profile.current_profile()
+		if not profile.is_empty():
+			var seasonal_state: Dictionary = season_light_profile.sample_light_state(
+				at_hour,
+				profile)
+			if not seasonal_state.is_empty():
+				return seasonal_state
 	var keyframes: Array = config.get("keyframes", [])
 	if keyframes.is_empty():
 		return {

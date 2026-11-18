@@ -4,6 +4,16 @@ class_name LightingV2DebugPanel
 
 const SNAPSHOT_PATH := "res://.tmp/lighting_v2_dev_events.json"
 const LIGHTING_TUNING_PATH := "res://.tmp/lighting_tuning.json"
+const SEASON_LIGHT_PROFILE_SCRIPT := preload(
+	"res://scripts/lighting_v2/season_light_profile.gd")
+const LIGHTING_PREVIEW_PHASES := [
+	{"phase": "sunrise", "label": "日出"},
+	{"phase": "morning", "label": "上午"},
+	{"phase": "solar_noon", "label": "太阳最高"},
+	{"phase": "afternoon", "label": "下午"},
+	{"phase": "sunset", "label": "日落"},
+	{"phase": "night", "label": "深夜"},
+]
 
 var panel: PanelContainer
 var blocker: ColorRect
@@ -20,6 +30,8 @@ var player_surface_toggles: Dictionary = {}
 var player_smooth_normal_toggle: CheckButton
 var player_shared_atlas_uv_toggle: CheckButton
 var spring_lighting: SpringWorldLighting
+var season_light_preview
+var lighting_preview_buttons: Array[Button] = []
 var _previous_text_input_active := false
 var _owns_text_lock := false
 var _status_elapsed := 0.0
@@ -30,6 +42,7 @@ func _ready() -> void:
 	layer = 100
 	spring_lighting = get_parent().get_node_or_null(
 		"SpringWorldLighting") as SpringWorldLighting
+	season_light_preview = SEASON_LIGHT_PROFILE_SCRIPT.new()
 	_build_panel()
 	visible = false
 	DevEvents.changed.connect(_on_events_changed)
@@ -189,20 +202,14 @@ func _add_weather_section() -> void:
 	var lighting_row := HBoxContainer.new()
 	lighting_row.add_theme_constant_override("separation", 5)
 	content.add_child(lighting_row)
-	for preview in [
-		["06:25", 6.0 + 25.0 / 60.0],
-		["10:00", 10.0],
-		["12:00", 12.0],
-		["18:30", 18.5],
-		["19:25", 19.0 + 25.0 / 60.0],
-		["01:00", 1.0],
-	]:
+	for preview in LIGHTING_PREVIEW_PHASES:
 		var button := Button.new()
-		button.text = str(preview[0])
+		button.text = "%s\n--:--" % str(preview["label"])
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(
-			_on_lighting_preview_time.bind(float(preview[1])))
+			_on_lighting_preview_phase.bind(str(preview["phase"])))
 		lighting_row.add_child(button)
+		lighting_preview_buttons.append(button)
 
 
 func _add_lighting_tuning_section() -> void:
@@ -709,8 +716,8 @@ func _on_fog_preview_time(hour: float) -> void:
 	_set_preview_hour(hour, true)
 
 
-func _on_lighting_preview_time(hour: float) -> void:
-	_set_preview_hour(hour, false)
+func _on_lighting_preview_phase(phase: String) -> void:
+	_set_preview_hour(_lighting_preview_hour(phase), false)
 
 
 func _set_preview_hour(hour: float, auto_play: bool) -> void:
@@ -809,6 +816,7 @@ func _refresh_multiplier_controls() -> void:
 func _refresh_dynamic_labels() -> void:
 	if status_label == null:
 		return
+	_refresh_lighting_preview_labels()
 	var lighting_text := ""
 	var spring := get_parent().get_node_or_null("SpringWorldLighting")
 	if spring != null:
@@ -820,8 +828,8 @@ func _refresh_dynamic_labels() -> void:
 			float(state["sun_energy"]) * 100.0,
 			float(state["sky_energy"]) * 100.0,
 		]
-	status_label.text = "第 %d 天 · %s · %s%s" % [
-		GameState.day,
+	status_label.text = "%s · %s · %s%s" % [
+		SeasonCalendar.format_date(GameState.day),
 		GameClock.time_text(),
 		"暂停" if GameClock.paused else "运行中",
 		lighting_text,
@@ -858,6 +866,66 @@ func _refresh_dynamic_labels() -> void:
 				]
 			else:
 				status.text = "自动 %.1f%%" % [effective * 100.0]
+
+
+func _refresh_lighting_preview_labels() -> void:
+	if lighting_preview_buttons.is_empty():
+		return
+	for index in range(mini(
+			lighting_preview_buttons.size(),
+			LIGHTING_PREVIEW_PHASES.size())):
+		var button := lighting_preview_buttons[index]
+		if button == null:
+			continue
+		var preview: Dictionary = LIGHTING_PREVIEW_PHASES[index]
+		button.text = "%s\n%s" % [
+			str(preview["label"]),
+			_format_preview_hour(_lighting_preview_hour(
+				str(preview["phase"]))),
+		]
+
+
+func _lighting_preview_hour(phase: String) -> float:
+	var profile: Dictionary = season_light_preview.current_profile()
+	if profile.is_empty():
+		match phase:
+			"sunrise":
+				return 6.0 + 25.0 / 60.0
+			"morning":
+				return 10.0
+			"solar_noon":
+				return 12.0
+			"afternoon":
+				return 15.0
+			"sunset":
+				return 19.0 + 25.0 / 60.0
+			_:
+				return 1.0
+	var sunrise := float(profile["sunrise_hour"])
+	var noon := float(profile["solar_noon_hour"])
+	var sunset := float(profile["sunset_hour"])
+	match phase:
+		"sunrise":
+			return sunrise
+		"morning":
+			return lerpf(sunrise, noon, 0.45)
+		"solar_noon":
+			return noon
+		"afternoon":
+			return lerpf(noon, sunset, 0.55)
+		"sunset":
+			return sunset
+		_:
+			return 1.0
+
+
+func _format_preview_hour(hour: float) -> String:
+	var normalized := fmod(hour + 24.0, 24.0)
+	var total_minutes := int(round(normalized * 60.0)) % (24 * 60)
+	return "%02d:%02d" % [
+		floori(float(total_minutes) / 60.0),
+		total_minutes % 60,
+	]
 
 
 func _refresh_weather_status() -> void:

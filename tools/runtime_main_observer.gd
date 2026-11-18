@@ -6,8 +6,8 @@ const WAIT_FRAMES := 16
 const BUILD_MARKER := "LIGHTING BUILD 2026-11-13-RGB-FOG-SUN-V3"
 const CONFIG_PATH := "res://data/lighting_v2/spring_clear.json"
 const ATMOSPHERE_SHADER_PATH := "res://shaders/lighting_v2/spring_atmosphere.gdshader"
-const SUNRISE_HOUR := 6.0 + 25.0 / 60.0
-const SUNSET_HOUR := 19.0 + 25.0 / 60.0
+const SEASON_LIGHT_PROFILE_SCRIPT := preload(
+	"res://scripts/lighting_v2/season_light_profile.gd")
 
 var world: Node2D
 var camera: Camera2D
@@ -21,6 +21,7 @@ var hold_hour := 12.0
 var hold_fog := false
 var hold_animate := false
 var hold_speed := GameClock.Speed.X1
+var hold_game_day := -1
 var focus_kind := ""
 var player_normal_mode := "normal"
 var lighting_debug_mode := -1
@@ -34,9 +35,9 @@ var use_sun_screen_override := false
 var sun_screen_override := Vector3.ZERO
 var capture_marker: Label
 var schedule := [
-	{"name": "title_flow_0625_sunrise.png", "hour": SUNRISE_HOUR, "fog": false},
-	{"name": "title_flow_1200_noon.png", "hour": 12.0, "fog": false},
-	{"name": "title_flow_1925_sunset.png", "hour": SUNSET_HOUR, "fog": false},
+	{"name": "title_flow_sunrise.png", "hour": 7.5, "fog": false},
+	{"name": "title_flow_noon.png", "hour": 13.0, "fog": false},
+	{"name": "title_flow_sunset.png", "hour": 19.0, "fog": false},
 	{"name": "title_flow_0100_night.png", "hour": 1.0, "fog": false},
 	{"name": "title_flow_0820_fog.png", "hour": 8.0 + 20.0 / 60.0, "fog": true},
 	{
@@ -50,6 +51,11 @@ var schedule := [
 
 func _ready() -> void:
 	_parse_capture_args()
+	var profile = SEASON_LIGHT_PROFILE_SCRIPT.new().current_profile()
+	if not profile.is_empty():
+		schedule[0]["hour"] = float(profile["sunrise_hour"])
+		schedule[1]["hour"] = float(profile["solar_noon_hour"])
+		schedule[2]["hour"] = float(profile["sunset_hour"])
 	output_dir = "%s/run_%d_%d" % [
 		OUT_DIR,
 		int(Time.get_unix_time_from_system() * 1000.0),
@@ -228,6 +234,9 @@ func _apply_schedule() -> void:
 	GameClock.phase = GameClock.Phase.RUNNING
 	GameClock.paused = not hold_animate
 	GameClock.set_speed(hold_speed)
+	if hold_game_day > 0:
+		GameState.day = hold_game_day
+		GameState.day_changed.emit(GameState.day)
 	GameClock.tick.emit(GameClock.progress, GameClock.current_hour())
 	var player := world.get("player_avatar") as Node2D
 	if player != null:
@@ -284,6 +293,10 @@ func _parse_capture_args() -> void:
 				int(arg.trim_prefix("--hold-speed=")),
 				GameClock.Speed.X1,
 				GameClock.Speed.X64)
+		elif arg.begins_with("--game-day="):
+			hold_game_day = maxi(
+				int(arg.trim_prefix("--game-day=")),
+				1)
 		elif arg.begins_with("--focus="):
 			focus_kind = arg.trim_prefix("--focus=")
 		elif arg.begins_with("--player-normal="):

@@ -63,8 +63,13 @@ func header_text() -> String:
 		speed_text = "已暂停"
 	if GameClock.phase == GameClock.Phase.SETTLEMENT:
 		speed_text = "结算中"
-	return "—— 第 %d 天 %s ｜ %s ｜ 在村游客 %d 人 ｜ 日志 %s ——" % [
-		GameState.day, GameClock.time_text(), speed_text, _collect().size(), log_path()]
+	return "—— %s %s ｜ %s ｜ 在村游客 %d 人 ｜ 日志 %s ——" % [
+		SeasonCalendar.format_date(GameState.day),
+		GameClock.time_text(),
+		speed_text,
+		_collect().size(),
+		log_path(),
+	]
 
 
 # ---------- 命令实现 ----------

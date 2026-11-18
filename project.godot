@@ -21,6 +21,7 @@ config/icon="res://icon.svg"
 DataRegistry="*res://scripts/core/data_registry.gd"
 Settings="*res://scripts/core/settings_manager.gd"
 GameState="*res://scripts/core/game_state.gd"
+SeasonCalendar="*res://scripts/core/season_calendar.gd"
 PlayerStats="*res://scripts/core/player_stats.gd"
 GameClock="*res://scripts/core/game_clock.gd"
 DevEvents="*res://scripts/core/dev_events.gd"
@@ -50,3 +51,4 @@ system="v2"
 
 textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
+rendering_device/d3d12/max_resource_descriptors=131072

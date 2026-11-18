@@ -1,0 +1,21 @@
+{
+  "days_per_season": 30,
+  "seasons": [
+    {
+      "id": "spring",
+      "name": "春季"
+    },
+    {
+      "id": "summer",
+      "name": "夏季"
+    },
+    {
+      "id": "autumn",
+      "name": "秋季"
+    },
+    {
+      "id": "winter",
+      "name": "冬季"
+    }
+  ]
+}

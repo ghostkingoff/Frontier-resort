@@ -487,6 +487,22 @@ func set_sun(to_sun: Vector3) -> void:
 			Vector3(0.0, 0.0, -1.0))
 
 
+func set_sun_shadow_softness(value: float) -> void:
+	var softness := clampf(value, 0.0, 1.0)
+	var settings := [
+		[sun_pass, lerpf(0.8, 6.0, softness), lerpf(0.06, 1.4, softness)],
+		[building_sun_pass, lerpf(1.1, 7.0, softness), lerpf(0.08, 1.6, softness)],
+		[player_sun_pass, lerpf(0.3, 2.8, softness), lerpf(0.03, 0.7, softness)],
+	]
+	for entry in settings:
+		var pass_data: Dictionary = entry[0]
+		var light := pass_data.get("directional") as DirectionalLight3D
+		if light == null:
+			continue
+		light.shadow_blur = float(entry[1])
+		light.light_angular_distance = float(entry[2])
+
+
 func set_lamp(
 		world_position: Vector2,
 		height_px: float,
