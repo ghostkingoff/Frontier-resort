@@ -19,6 +19,8 @@ var wait_left := 0
 var hold_mode := false
 var hold_hour := 12.0
 var hold_fog := false
+var hold_animate := false
+var hold_speed := GameClock.Speed.X1
 var focus_kind := ""
 var player_normal_mode := "normal"
 var lighting_debug_mode := -1
@@ -64,6 +66,9 @@ func _ready() -> void:
 	if use_sun_screen_override:
 		print("[runtime-main] 太阳方向覆盖：%s" % sun_screen_override)
 	if hold_mode:
+		if hold_animate:
+			GameClock.cycle_length_seconds = 1000000000.0
+			GameClock.paused = false
 		schedule = [{
 			"name": "os_hold_%s.png" % _hour_file_token(hold_hour),
 			"hour": hold_hour,
@@ -221,7 +226,8 @@ func _apply_schedule() -> void:
 		0.0,
 		1.0)
 	GameClock.phase = GameClock.Phase.RUNNING
-	GameClock.paused = true
+	GameClock.paused = not hold_animate
+	GameClock.set_speed(hold_speed)
 	GameClock.tick.emit(GameClock.progress, GameClock.current_hour())
 	var player := world.get("player_avatar") as Node2D
 	if player != null:
@@ -271,6 +277,13 @@ func _parse_capture_args() -> void:
 				23.999)
 		elif arg.begins_with("--hold-fog="):
 			hold_fog = arg.trim_prefix("--hold-fog=") == "1"
+		elif arg == "--hold-animate":
+			hold_animate = true
+		elif arg.begins_with("--hold-speed="):
+			hold_speed = clampi(
+				int(arg.trim_prefix("--hold-speed=")),
+				GameClock.Speed.X1,
+				GameClock.Speed.X64)
 		elif arg.begins_with("--focus="):
 			focus_kind = arg.trim_prefix("--focus=")
 		elif arg.begins_with("--player-normal="):
@@ -371,19 +384,30 @@ func _capture_shadow_map() -> void:
 	var spring_lighting := spring as SpringWorldLighting
 	if spring_lighting == null or spring_lighting.rig == null:
 		return
+	var wall_material: ShaderMaterial = null
 	for building in world.buildings:
 		if building.id == "shop_small":
 			var materials: Array = spring_lighting.building_materials.get(
 				building,
 				[])
 			if not materials.is_empty():
-				var wall_material := materials[0] as ShaderMaterial
+				wall_material = materials[0] as ShaderMaterial
 				print("[runtime-main] 墙面太阳投影 enabled=%s building_mask=%s" % [
 					str(wall_material.get_shader_parameter(
 						"apply_wall_shadow_projection")),
 					str(wall_material.get_shader_parameter(
 						"building_sun_shadow_texture") != null),
 				])
+			print("[runtime-main] 世界遮蔽 active=%s cloud_time=%.2f cloud=%s building=%s" % [
+				str(wall_material.get_shader_parameter(
+					"cloud_shadow_active")),
+				float(wall_material.get_shader_parameter(
+					"cloud_shadow_time")),
+				str(wall_material.get_shader_parameter(
+					"cloud_shadow_texture") != null),
+				str(wall_material.get_shader_parameter(
+						"cloud_shadow_texture") != null),
+			])
 			break
 	var player_node := world.get("player_avatar") as Node2D
 	if player_node != null and camera != null:
@@ -414,6 +438,15 @@ func _capture_shadow_map() -> void:
 			var building_shadow_path := "%s/building_sun_shadow_map.png" % output_dir
 			building_image.save_png(building_shadow_path)
 			print("[runtime-main] 建筑太阳阴影图 -> %s" % building_shadow_path)
+	var world_shadow_texture: Texture2D = \
+		spring_lighting.ground_materials[0].get_shader_parameter(
+			"cloud_shadow_texture")
+	if world_shadow_texture != null:
+		var world_shadow_image := world_shadow_texture.get_image()
+		if world_shadow_image != null and not world_shadow_image.is_empty():
+			var world_shadow_path := "%s/cloud_shadow_texture.png" % output_dir
+			world_shadow_image.save_png(world_shadow_path)
+			print("[runtime-main] 世界太阳阴影图 -> %s" % world_shadow_path)
 	var player_shadow_texture := spring_lighting.rig.get_player_sun_texture()
 	if player_shadow_texture != null:
 		var player_shadow_image := player_shadow_texture.get_image()

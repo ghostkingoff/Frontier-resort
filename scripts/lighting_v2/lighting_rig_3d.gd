@@ -476,7 +476,8 @@ func set_camera(camera_2d: Camera2D) -> void:
 
 func set_sun(to_sun: Vector3) -> void:
 	var light_direction := -to_sun.normalized()
-	for pass_data in [sun_pass, building_sun_pass, player_sun_pass]:
+	var passes: Array = [sun_pass, building_sun_pass, player_sun_pass]
+	for pass_data in passes:
 		var light := pass_data.get("directional") as DirectionalLight3D
 		if light == null:
 			continue

@@ -4,7 +4,8 @@ Example:
     blender --background --python tools/export_shadow_proxy_glb.py -- \
         --blend path/to/proxy.blend \
         --output res://path/proxy.glb \
-        --footprint 192 128
+        --footprint 192 128 \
+        --scale 32
 """
 
 from __future__ import annotations
@@ -15,6 +16,17 @@ from pathlib import Path
 
 import bpy
 from mathutils import Vector
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _portable_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return resolved.as_posix()
 
 
 def _args() -> dict:
@@ -29,6 +41,9 @@ def _args() -> dict:
         if key == "--footprint":
             parsed["footprint"] = (float(values[index + 1]), float(values[index + 2]))
             index += 3
+        elif key == "--scale":
+            parsed["scale"] = float(values[index + 1])
+            index += 2
         else:
             parsed[key.lstrip("-").replace("-", "_")] = values[index + 1]
             index += 2
@@ -78,9 +93,20 @@ def main() -> None:
     if min(span.x, span.y, span.z) <= 0.0001:
         raise RuntimeError(f"invalid proxy bounds: {span}")
 
-    scale_x = footprint_x / span.x
-    scale_y = footprint_y / span.y
-    uniform_scale = (scale_x + scale_y) * 0.5
+    if "scale" in arguments:
+        uniform_scale = arguments["scale"]
+        expected_x = span.x * uniform_scale
+        expected_y = span.y * uniform_scale
+        if abs(expected_x - footprint_x) > 0.05 or abs(expected_y - footprint_y) > 0.05:
+            raise RuntimeError(
+                "footprint does not match the model envelope at the requested scale: "
+                f"expected ({expected_x:.5f}, {expected_y:.5f}), "
+                f"got ({footprint_x:.5f}, {footprint_y:.5f})"
+            )
+    else:
+        scale_x = footprint_x / span.x
+        scale_y = footprint_y / span.y
+        uniform_scale = (scale_x + scale_y) * 0.5
     for obj in objects:
         obj.scale *= uniform_scale
     bpy.context.view_layer.update()
@@ -117,8 +143,8 @@ def main() -> None:
         export_yup=True,
     )
     metadata = {
-        "source_blend": str(blend_path).replace("\\", "/"),
-        "proxy_file": str(output_path).replace("\\", "/"),
+        "source_blend": _portable_path(blend_path),
+        "proxy_file": _portable_path(output_path),
         "uniform_scale": uniform_scale,
         "footprint_px": [footprint_x, footprint_y],
         "bounds_min_px": [round(value, 4) for value in minimum],

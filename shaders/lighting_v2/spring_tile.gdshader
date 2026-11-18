@@ -1,6 +1,8 @@
 shader_type canvas_item;
 render_mode unshaded;
 
+#include "res://shaders/lighting_v2/world_cloud_shadow.gdshaderinc"
+
 uniform sampler2D normal_texture : filter_linear, repeat_disable;
 uniform sampler2D specular_texture : filter_linear, repeat_disable;
 uniform sampler2D occlusion_texture : filter_linear, repeat_disable;
@@ -12,6 +14,7 @@ uniform sampler2D lamp_shadow_texture_2 : filter_linear, repeat_disable;
 uniform sampler2D lamp_shadow_texture_3 : filter_linear, repeat_disable;
 
 uniform vec3 sun_direction = vec3(0.0, 0.6, 0.8);
+uniform vec3 sun_screen_direction = vec3(0.0, 0.0, 1.0);
 uniform vec3 sun_color : source_color = vec3(1.0, 0.93, 0.78);
 uniform float sun_energy : hint_range(0.0, 4.0) = 1.0;
 uniform vec3 sky_color : source_color = vec3(0.62, 0.72, 0.66);
@@ -76,6 +79,10 @@ void fragment() {
 		0.82,
 		player_sun_luminance);
 	sun_visibility *= player_sun_visibility;
+	float cloud_shadow_transmission = sample_world_cloud_transmission(
+		v_world_position,
+		sun_screen_direction);
+	sun_visibility *= cloud_shadow_transmission;
 	vec3 sun_direct = sun_color * sun_energy
 		* sun_ndotl * sun_visibility * mix(0.55, 1.0, ao);
 	vec3 sky_ambient = sky_color * sky_energy * ambient_ao;

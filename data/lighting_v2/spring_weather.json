@@ -10,6 +10,20 @@
   "fog_max_alpha": 0.34,
   "fog_noise_scale_px": 620.0,
   "fog_depth_scale_px": 940.0,
-  "fog_drift_speed": [0.006, 0.003],
-  "fog_depth_drift_scale": -0.067
+  "fog_motion_speed": 2.0,
+  "fog_drift_speed": [0.014, 0.006],
+  "fog_depth_drift_scale": -0.11,
+  "fog_turbulence_strength": 0.28,
+  "fog_pulse_strength": 0.16,
+  "fog_sun_response": 0.46,
+  "fog_evaporation": 0.10,
+  "fog_scatter_strength": 0.09,
+  "fog_no_light_brightness": 0.09,
+  "fog_sunrise_transition_hours": 0.5,
+  "cloud_shadow_strength": 1.0,
+  "cloud_shadow_threshold": 0.54,
+  "cloud_shadow_softness": 0.24,
+  "cloud_shadow_width_px": 120.0,
+  "cloud_shadow_length_px": 900.0,
+  "cloud_shadow_drift_px": [10.0, 4.0]
 }

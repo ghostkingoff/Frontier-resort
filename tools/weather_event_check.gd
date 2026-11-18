@@ -207,6 +207,74 @@ func _ready() -> void:
 			checks.append("角色 3D 代理、独立太阳通道与四向旋转：%s" % [
 				str(proxy_ok)])
 
+	var proxy_specs := {
+		"lodge_ordinary": {
+			"footprint": Vector2(146.0, 98.09375),
+			"size": Vector3(146.0, 82.0, 98.0938),
+		},
+		"shop_general": {
+			"footprint": Vector2(176.0, 118.25),
+			"size": Vector3(176.0, 119.0, 118.25),
+		},
+		"shop_small": {
+			"footprint": Vector2(192.0, 128.0),
+			"size": Vector3(192.0, 90.0, 128.0),
+		},
+	}
+	var building_proxy_specs_ok := true
+	for asset_id in proxy_specs:
+		var proxy_path := \
+			"res://art/characters/buildings/%s/shadow_proxy.json" % asset_id
+		var proxy_doc: Variant = JSON.parse_string(
+			FileAccess.get_file_as_string(proxy_path))
+		if proxy_doc is not Dictionary:
+			building_proxy_specs_ok = false
+			break
+		var footprint: Array = proxy_doc.get("footprint_px", [])
+		var size: Array = proxy_doc.get("size_px", [])
+		var pivot: Array = proxy_doc.get("pivot_px", [])
+		var expected: Dictionary = proxy_specs[asset_id]
+		var expected_footprint: Vector2 = expected["footprint"]
+		var expected_size: Vector3 = expected["size"]
+		var packed := load(
+			"res://art/characters/buildings/%s/shadow_proxy.glb"
+				% asset_id) as PackedScene
+		var actual_size := Vector3.ZERO
+		var actual_ground_y := INF
+		if packed != null:
+			var proxy_node := packed.instantiate() as Node3D
+			if proxy_node != null:
+				var proxy_bounds: AABB = main.get_node(
+					"SpringWorldLighting").rig.call(
+						"_mesh_bounds_under", proxy_node)
+				actual_size = proxy_bounds.size
+				actual_ground_y = proxy_bounds.position.y
+				proxy_node.free()
+		if not is_equal_approx(
+				float(proxy_doc.get("uniform_scale", 0.0)),
+				32.0) \
+				or footprint.size() != 2 or size.size() != 3 \
+				or pivot.size() != 3 \
+				or not Vector2(
+					float(footprint[0]),
+					float(footprint[1])).is_equal_approx(
+						expected_footprint) \
+				or not Vector3(
+					float(size[0]),
+					float(size[2]),
+					float(size[1])).is_equal_approx(
+						expected_size) \
+				or not Vector3(
+					float(pivot[0]),
+					float(pivot[1]),
+					float(pivot[2])).is_zero_approx() \
+				or not actual_size.is_equal_approx(expected_size) \
+				or not is_zero_approx(actual_ground_y):
+			building_proxy_specs_ok = false
+			break
+	checks.append("建筑 3D 代理使用真实包络与统一 32× 缩放：%s" % [
+		str(building_proxy_specs_ok)])
+
 	var spring := main.get_node_or_null("SpringWorldLighting")
 	if spring != null:
 		WorldWeather.set_fog_force(1)
@@ -225,6 +293,139 @@ func _ready() -> void:
 				float(spring.fog_material.get_shader_parameter(
 					"fog_intensity")),
 				0.5))])
+		var fog_time_before: float = float(spring.get("_fog_time"))
+		var dawn_state: Dictionary = spring.call(
+			"_sample_light_state", 7.0)
+		var dawn_sun: Vector3 = spring.call(
+			"_sun_to_screen_direction", 7.0)
+		spring._update_fog(7.0, 0.5, dawn_state, dawn_sun)
+		var drift: Vector2 = spring.fog_material.get_shader_parameter(
+			"drift_speed")
+		var dynamic_fog_ok: bool = float(spring.get("_fog_time")) \
+			>= fog_time_before + 0.49 \
+			and drift.length() >= 0.01 \
+			and float(spring.fog_material.get_shader_parameter(
+				"motion_speed")) >= 1.9 \
+			and float(spring.fog_material.get_shader_parameter(
+				"turbulence_strength")) > 0.0 \
+			and float(spring.fog_material.get_shader_parameter(
+				"pulse_strength")) > 0.0
+		checks.append("视觉雾具有多层漂移、涡流与呼吸起伏：%s" % [
+			str(dynamic_fog_ok)])
+		var previous_speed := GameClock.speed
+		var previous_paused := GameClock.paused
+		var previous_phase := GameClock.phase
+		GameClock.phase = GameClock.Phase.RUNNING
+		GameClock.paused = false
+		GameClock.set_speed(GameClock.Speed.X1)
+		var fog_delta_x1: float = float(spring.call(
+			"_fog_time_delta", 0.25))
+		GameClock.set_speed(GameClock.Speed.X4)
+		var fog_delta_x4: float = float(spring.call(
+			"_fog_time_delta", 0.25))
+		GameClock.paused = true
+		var fog_delta_paused: float = float(spring.call(
+			"_fog_time_delta", 0.25))
+		GameClock.speed = previous_speed
+		GameClock.paused = previous_paused
+		GameClock.phase = previous_phase
+		checks.append("雾速跟随游戏倍速并在暂停时冻结：%s（%.3f / %.3f / %.3f）" % [
+			str(
+				is_equal_approx(fog_delta_x1, 0.25)
+				and is_equal_approx(fog_delta_x4, 1.0)
+				and is_zero_approx(fog_delta_paused)),
+			fog_delta_x1,
+			fog_delta_x4,
+			fog_delta_paused,
+		])
+		var light_response_ok: bool = float(
+			spring.fog_material.get_shader_parameter(
+				"sun_energy")) > 0.0 \
+			and float(spring.fog_material.get_shader_parameter(
+				"sun_response")) > 0.0 \
+			and float(spring.fog_material.get_shader_parameter(
+				"evaporation")) > 0.0 \
+			and float(spring.fog_material.get_shader_parameter(
+				"scatter_strength")) > 0.0 \
+			and float(spring.fog_material.get_shader_parameter(
+				"light_brightness")) > 0.5 \
+			and float(spring.fog_material.get_shader_parameter(
+				"no_light_brightness")) <= 0.10 \
+			and float(spring.fog_material.get_shader_parameter(
+				"sun_transition")) > 0.9
+		checks.append("雾色、浓度与方向散射仅受太阳光影响：%s" % [
+			str(light_response_ok)])
+		var test_lamp_state: Dictionary = spring.call(
+			"_update_lamp_state", 7.0)
+		spring.call(
+			"_update_surface_parameters",
+			dawn_state,
+			dawn_sun,
+			test_lamp_state,
+			0.0,
+			7.0)
+		var cloud_shadow_ok := true
+		for material in spring.ground_materials + spring.surface_materials:
+			var shader_material := material as ShaderMaterial
+			if shader_material == null \
+					or shader_material.get_shader_parameter(
+						"cloud_shadow_texture") == null \
+					or float(shader_material.get_shader_parameter(
+						"cloud_shadow_active")) <= 0.9 \
+					or float(shader_material.get_shader_parameter(
+						"cloud_shadow_time")) <= 0.0:
+				cloud_shadow_ok = false
+				break
+		var fog_cloud_independent: bool = \
+			spring.fog_material.get_shader_parameter(
+				"cloud_shadow_texture") == null \
+			and spring.fog_material.get_shader_parameter(
+				"world_building_shadow_texture") == null \
+			and spring.fog_material.get_shader_parameter(
+				"sky_energy") == null \
+			and spring.fog_material.get_shader_parameter(
+				"ambient_response") == null
+		checks.append("天空云层独立作用于场景且不进入雾层：%s｜雾只受太阳光：%s" % [
+			str(cloud_shadow_ok),
+			str(fog_cloud_independent),
+		])
+		var predawn_state: Dictionary = spring.call(
+			"_sample_light_state", 6.0)
+		var lit_fog_state: Dictionary = spring.call(
+			"_sample_light_state", 7.0)
+		var predawn_brightness: float = float(spring.call(
+			"_fog_light_brightness", predawn_state, 6.0))
+		var lit_fog_brightness: float = float(spring.call(
+			"_fog_light_brightness", lit_fog_state, 7.0))
+		checks.append("无光时雾保持低亮度，受光后逐渐提亮：%s（%.3f → %.3f）" % [
+			str(
+				predawn_brightness < 0.18
+				and lit_fog_brightness > 0.65
+				and lit_fog_brightness - predawn_brightness > 0.5),
+			predawn_brightness,
+			lit_fog_brightness,
+		])
+		var sunrise_hour := SUNRISE_HOUR
+		var sunrise_transition_start: float = float(spring.call(
+			"_fog_sunrise_transition", sunrise_hour - 0.001))
+		var sunrise_transition_begin: float = float(spring.call(
+			"_fog_sunrise_transition", sunrise_hour))
+		var sunrise_transition_mid: float = float(spring.call(
+			"_fog_sunrise_transition", sunrise_hour + 0.25))
+		var sunrise_transition_end: float = float(spring.call(
+			"_fog_sunrise_transition", sunrise_hour + 0.5))
+		checks.append("太阳出现时雾光照平滑过渡：%s（%.3f → %.3f → %.3f → %.3f）" % [
+			str(
+				sunrise_transition_start <= 0.001
+				and sunrise_transition_begin <= 0.001
+				and sunrise_transition_mid > 0.35
+				and sunrise_transition_mid < 0.65
+				and sunrise_transition_end >= 0.999),
+			sunrise_transition_start,
+			sunrise_transition_begin,
+			sunrise_transition_mid,
+			sunrise_transition_end,
+		])
 		spring._update_fog(9.0, 0.0)
 		checks.append("视觉雾层在 09:00 隐藏：%s" % [
 			str(not spring.fog_layer.visible)])

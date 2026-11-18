@@ -27,6 +27,8 @@ ASSETS = {
         "aseprite": "PuTongDuJiaWu.aseprite",
         "lighting_dir": "PuTongDuJiaWu_layers_lighting",
         "proxy": "PuTongDuJiaWu_3DShadowProxy_v3.blend",
+        "proxy_footprint_px": (146.0, 98.09375),
+        "proxy_scale": 32.0,
         "expected_layers": {
             "layer",
             "ground",
@@ -43,6 +45,8 @@ ASSETS = {
         "aseprite": "build1.aseprite",
         "lighting_dir": "build1_lighting",
         "proxy": "Build1_3DShadowProxy.blend",
+        "proxy_footprint_px": (176.0, 118.25),
+        "proxy_scale": 32.0,
         "expected_layers": {
             "layer",
             "interior",
@@ -58,6 +62,8 @@ ASSETS = {
         "aseprite": "ChaoShi1.aseprite",
         "lighting_dir": "ChaoShi1_lighting",
         "proxy": "ChaoShi1_3DShadowProxy_v2.blend",
+        "proxy_footprint_px": (192.0, 128.0),
+        "proxy_scale": 32.0,
         "expected_layers": {
             "layer",
             "interior",
@@ -385,6 +391,36 @@ def file_hash(path: Path) -> str:
     return digest.hexdigest()
 
 
+def validate_proxy_metadata(
+    asset_id: str,
+    metadata: dict,
+    spec: dict,
+) -> None:
+    expected_footprint = spec.get("proxy_footprint_px")
+    expected_scale = spec.get("proxy_scale")
+    if expected_footprint is None and expected_scale is None:
+        return
+    if not metadata:
+        raise ValueError(f"{asset_id}: missing shadow_proxy.json")
+    if expected_scale is not None and abs(
+        float(metadata.get("uniform_scale", 0.0)) - float(expected_scale)
+    ) > 0.001:
+        raise ValueError(
+            f"{asset_id}: proxy scale is {metadata.get('uniform_scale')}, "
+            f"expected {expected_scale}"
+        )
+    if expected_footprint is not None:
+        actual = metadata.get("footprint_px", [])
+        if len(actual) != 2 or any(
+            abs(float(actual[index]) - float(expected_footprint[index])) > 0.01
+            for index in range(2)
+        ):
+            raise ValueError(
+                f"{asset_id}: proxy footprint is {actual}, "
+                f"expected {list(expected_footprint)}"
+            )
+
+
 def import_asset(asset_id: str, spec: dict) -> dict:
     source_dir: Path = spec["source_dir"]
     expected: set[str] = spec["expected_layers"]
@@ -442,10 +478,13 @@ def import_asset(asset_id: str, spec: dict) -> dict:
         },
     }
     proxy_metadata_path = runtime_target / "shadow_proxy.json"
+    proxy_metadata = None
     if proxy_metadata_path.is_file():
-        manifest["proxy_metadata"] = json.loads(
+        proxy_metadata = json.loads(
             proxy_metadata_path.read_text(encoding="utf-8")
         )
+        validate_proxy_metadata(asset_id, proxy_metadata, spec)
+        manifest["proxy_metadata"] = proxy_metadata
     (runtime_target / "asset.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )

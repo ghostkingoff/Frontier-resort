@@ -17,6 +17,8 @@ const WINDOW_EMISSION_SHADER := preload(
 const INTERIOR_PORTAL_SHADER := preload(
 	"res://shaders/lighting_v2/spring_interior_portal.gdshader")
 const CONFIG_PATH := "res://data/lighting_v2/spring_clear.json"
+const CLOUD_SHADOW_TEXTURE := preload(
+	"res://art/generated/lighting_v2/fog_density.png")
 const WINDOW_TEXTURE_SIZE := 64
 const SHADOW_REGION_CELLS := 20
 const SHADOW_LIGHTS_PER_REGION := 3
@@ -69,6 +71,7 @@ var debug_mode := 0
 var zone_shadow_history: Dictionary = {}
 var global_shadow_history: Array[Building] = []
 var _fog_time := 0.0
+var _cloud_shadow_time := 0.0
 
 
 func _ready() -> void:
@@ -154,9 +157,9 @@ func _process(delta: float) -> void:
 		last_shadow_key = shadow_key
 
 	_sync_player_surface()
-	_update_surface_parameters(state, sun_screen, lamp_state, delta)
+	_update_surface_parameters(state, sun_screen, lamp_state, delta, hour)
 	_update_window_effects(state, sun_screen, hour)
-	_update_fog(hour, delta)
+	_update_fog(hour, delta, state, sun_screen)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1420,7 +1423,9 @@ func _update_surface_parameters(
 		state: Dictionary,
 		sun_screen: Vector3,
 		lamp_state: Dictionary,
-		_delta: float) -> void:
+		delta: float,
+		hour: float) -> void:
+	_cloud_shadow_time += _fog_time_delta(delta)
 	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
 	for material in ground_materials:
 		_set_material_parameters(
@@ -1428,14 +1433,16 @@ func _update_surface_parameters(
 			state,
 			sun_screen,
 			lamp_state,
-			viewport_size)
+			viewport_size,
+			hour)
 	for material in surface_materials:
 		_set_material_parameters(
 			material,
 			state,
 			sun_screen,
 			lamp_state,
-			viewport_size)
+			viewport_size,
+			hour)
 		material.set_shader_parameter(
 			"sun_screen_direction",
 			sun_screen)
@@ -1576,8 +1583,10 @@ func _set_material_parameters(
 		state: Dictionary,
 		sun_screen: Vector3,
 		lamp_state: Dictionary,
-		_viewport_size: Vector2) -> void:
+		_viewport_size: Vector2,
+		hour: float) -> void:
 	material.set_shader_parameter("sun_direction", sun_screen)
+	material.set_shader_parameter("sun_screen_direction", sun_screen)
 	material.set_shader_parameter("sun_color", state["sun_color"])
 	material.set_shader_parameter("sun_energy", float(state["sun_energy"]))
 	material.set_shader_parameter("sky_color", state["sky_color"])
@@ -1590,7 +1599,50 @@ func _set_material_parameters(
 	material.set_shader_parameter(
 		"lamp_shadow_strength",
 		float(lamp_state["shadow_strength"]))
+	_set_cloud_shadow_parameters(material, state, hour)
 	material.set_shader_parameter("debug_mode", debug_mode)
+
+
+func _set_cloud_shadow_parameters(
+		material: ShaderMaterial,
+		state: Dictionary,
+		_hour: float) -> void:
+	var weather_config: Dictionary = WorldWeather.config
+	var drift_array: Array = weather_config.get(
+		"cloud_shadow_drift_px",
+		[10.0, 4.0])
+	material.set_shader_parameter(
+		"cloud_shadow_texture",
+		CLOUD_SHADOW_TEXTURE)
+	material.set_shader_parameter(
+		"cloud_shadow_time",
+		_cloud_shadow_time)
+	material.set_shader_parameter(
+		"cloud_shadow_active",
+		smoothstep(
+			0.01,
+			0.18,
+			float(state.get("sun_energy", 0.0))))
+	material.set_shader_parameter(
+		"cloud_shadow_strength",
+		float(weather_config.get("cloud_shadow_strength", 1.0)))
+	material.set_shader_parameter(
+		"cloud_shadow_threshold",
+		float(weather_config.get("cloud_shadow_threshold", 0.54)))
+	material.set_shader_parameter(
+		"cloud_shadow_softness",
+		float(weather_config.get("cloud_shadow_softness", 0.24)))
+	material.set_shader_parameter(
+		"cloud_shadow_width_px",
+		float(weather_config.get("cloud_shadow_width_px", 120.0)))
+	material.set_shader_parameter(
+		"cloud_shadow_length_px",
+		float(weather_config.get("cloud_shadow_length_px", 900.0)))
+	material.set_shader_parameter(
+		"cloud_shadow_drift_px",
+		Vector2(
+			float(drift_array[0]) if drift_array.size() > 0 else 10.0,
+			float(drift_array[1]) if drift_array.size() > 1 else 4.0))
 
 
 func _set_local_light_arrays(
@@ -1657,10 +1709,18 @@ func _set_local_light_arrays(
 		PackedFloat32Array(attenuation_curves))
 
 
-func _update_fog(hour: float, delta: float) -> void:
-	_fog_time += delta
+func _update_fog(
+		hour: float,
+		delta: float,
+		state: Dictionary = {},
+		sun_screen: Vector3 = Vector3.ZERO) -> void:
+	_fog_time += _fog_time_delta(delta)
 	if fog_layer == null or fog_material == null:
 		return
+	if state.is_empty():
+		state = _sample_light_state(hour)
+	if sun_screen.length_squared() < 0.000001:
+		sun_screen = _sun_to_screen_direction(hour)
 	var intensity := WorldWeather.fog_strength(hour)
 	fog_layer.visible = intensity > 0.0001
 	if not fog_layer.visible:
@@ -1679,6 +1739,9 @@ func _update_fog(hour: float, delta: float) -> void:
 	fog_material.set_shader_parameter("fog_intensity", intensity)
 	fog_material.set_shader_parameter("fog_time", _fog_time)
 	fog_material.set_shader_parameter(
+		"motion_speed",
+		float(weather_config.get("fog_motion_speed", 2.0)))
+	fog_material.set_shader_parameter(
 		"fog_color",
 		Color.from_string(
 			str(weather_config.get("fog_color", "#c2cecd")),
@@ -1696,9 +1759,74 @@ func _update_fog(hour: float, delta: float) -> void:
 	fog_material.set_shader_parameter(
 		"depth_drift_scale",
 		float(weather_config.get("fog_depth_drift_scale", -0.067)))
+	fog_material.set_shader_parameter(
+		"turbulence_strength",
+		float(weather_config.get("fog_turbulence_strength", 0.24)))
+	fog_material.set_shader_parameter(
+		"pulse_strength",
+		float(weather_config.get("fog_pulse_strength", 0.16)))
 	fog_material.set_shader_parameter("camera_origin_px", camera_origin)
 	fog_material.set_shader_parameter("camera_zoom", zoom)
 	fog_material.set_shader_parameter("viewport_size_px", viewport_size)
+	fog_material.set_shader_parameter("sun_color", state["sun_color"])
+	fog_material.set_shader_parameter(
+		"sun_energy",
+		float(state["sun_energy"]))
+	fog_material.set_shader_parameter(
+		"sun_screen_direction",
+		sun_screen)
+	fog_material.set_shader_parameter(
+		"sun_response",
+		float(weather_config.get("fog_sun_response", 0.46)))
+	fog_material.set_shader_parameter(
+		"evaporation",
+		float(weather_config.get("fog_evaporation", 0.10)))
+	fog_material.set_shader_parameter(
+		"scatter_strength",
+		float(weather_config.get("fog_scatter_strength", 0.09)))
+	fog_material.set_shader_parameter(
+		"light_brightness",
+		_fog_light_brightness(state, hour))
+	fog_material.set_shader_parameter(
+		"no_light_brightness",
+		float(weather_config.get("fog_no_light_brightness", 0.09)))
+	fog_material.set_shader_parameter(
+		"sun_transition",
+		_fog_sunrise_transition(hour))
+
+
+func _fog_light_brightness(
+		state: Dictionary,
+		hour: float = -1.0) -> float:
+	var sun_transition := 1.0 if hour < 0.0 \
+		else _fog_sunrise_transition(hour)
+	var direct_light := clampf(
+		float(state.get("sun_energy", 0.0)) * 1.2 * sun_transition,
+		0.0,
+		1.0)
+	return smoothstep(0.02, 0.58, direct_light)
+
+
+func _fog_sunrise_transition(hour: float) -> float:
+	var sun_config: Dictionary = config.get("sun", {})
+	var sunrise := float(sun_config.get(
+		"sunrise_hour",
+		6.0 + 25.0 / 60.0))
+	var transition_hours := maxf(float(
+		WorldWeather.config.get(
+			"fog_sunrise_transition_hours",
+			0.5)), 0.001)
+	return smoothstep(
+		sunrise,
+		sunrise + transition_hours,
+		hour)
+
+
+func _fog_time_delta(delta: float) -> float:
+	if GameClock.paused \
+			or GameClock.phase != GameClock.Phase.RUNNING:
+		return 0.0
+	return delta * GameClock.time_scale()
 
 
 func _shadow_state_key(

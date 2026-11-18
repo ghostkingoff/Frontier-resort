@@ -414,25 +414,25 @@
   "proxy_metadata": {
     "source_blend": "art/source/buildings/lodge_ordinary/PuTongDuJiaWu_3DShadowProxy_v3.blend",
     "proxy_file": "art/characters/buildings/lodge_ordinary/shadow_proxy.glb",
-    "uniform_scale": 41.91908251035362,
+    "uniform_scale": 32.0,
     "footprint_px": [
-      192.0,
-      128.0
+      146.0,
+      98.09375
     ],
     "bounds_min_px": [
-      -95.6279,
-      -64.25,
+      -73.0,
+      -49.0469,
       0.0
     ],
     "bounds_max_px": [
-      95.6279,
-      64.25,
-      107.4176
+      73.0,
+      49.0469,
+      82.0
     ],
     "size_px": [
-      191.2558,
-      128.5,
-      107.4176
+      146.0,
+      98.0938,
+      82.0
     ],
     "pivot_px": [
       0.0,

@@ -292,25 +292,25 @@
   "proxy_metadata": {
     "source_blend": "art/source/buildings/shop_general/Build1_3DShadowProxy.blend",
     "proxy_file": "art/characters/buildings/shop_general/shadow_proxy.glb",
-    "uniform_scale": 34.7737843551797,
+    "uniform_scale": 32.0,
     "footprint_px": [
-      192.0,
-      128.0
+      176.0,
+      118.25
     ],
     "bounds_min_px": [
-      -95.6279,
-      -64.25,
+      -88.0,
+      -59.125,
       0.0
     ],
     "bounds_max_px": [
-      95.6279,
-      64.25,
-      129.315
+      88.0,
+      59.125,
+      119.0
     ],
     "size_px": [
-      191.2558,
-      128.5,
-      129.315
+      176.0,
+      118.25,
+      119.0
     ],
     "pivot_px": [
       0.0,
