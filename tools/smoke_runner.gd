@@ -632,6 +632,8 @@ func _finish() -> void:
 	_run_day_night_checks()
 	_run_ground_checks()
 	_run_exploration_checks()
+	checks.append("v2 建筑灯光资源：拆除/读档后无失效建筑或材质引用 %s" % [
+		str(_lighting_references_clean())])
 	# 内容回归（建筑表 / 解锁 / 服务设施 / 保洁工人 / 垃圾）已拆到单独文件
 	var content: Node = load("res://tools/smoke_content.gd").new()
 	add_child(content)
@@ -645,6 +647,25 @@ func _finish() -> void:
 	var passed: bool = saved and int(report.get("visitors", 0)) > 0 and int(report.get("wages", 0)) > 0
 	print("[smoke] 结果：%s" % ("通过" if passed else "未通过"))
 	get_tree().quit(0 if passed else 1)
+
+
+func _lighting_references_clean() -> bool:
+	var spring := get_node_or_null("../SpringWorldLighting") as SpringWorldLighting
+	if spring == null:
+		return false
+	for building_key in spring.building_materials.keys():
+		if not is_instance_valid(building_key):
+			return false
+	for material in spring.surface_materials:
+		if material == null or not is_instance_valid(material):
+			return false
+		var meta: Dictionary = spring.surface_meta.get(material, {})
+		if meta.is_empty():
+			continue
+		var building: Variant = meta.get("building")
+		if not is_instance_valid(building):
+			return false
+	return true
 
 
 func _player_per_frame_normals_ok(player) -> bool:

@@ -17,6 +17,8 @@ var start_usec := 0
 var fog_mode := false
 var morning_mode := false
 var rain_mode := false
+var day_mode := false
+var cloud_large_mode := false
 
 
 func _ready() -> void:
@@ -32,6 +34,10 @@ func _ready() -> void:
 			morning_mode = true
 		elif arg == "--rain":
 			rain_mode = true
+		elif arg == "--day":
+			day_mode = true
+		elif arg == "--cloud-large":
+			cloud_large_mode = true
 	render_viewport = SubViewport.new()
 	render_viewport.name = "PerfViewport"
 	render_viewport.size = Vector2i(1920, 1080)
@@ -49,12 +55,17 @@ func _ready() -> void:
 	if fog_mode:
 		WorldWeather.set_fog_force(1)
 		_set_hour(7.0)
+	elif day_mode:
+		WorldWeather.set_fog_force(-1)
+		_set_hour(13.0)
 	elif morning_mode:
 		WorldWeather.set_fog_force(-1)
 		_set_hour(7.0)
 	else:
 		WorldWeather.set_fog_force(-1)
 		_set_hour(22.0)
+	if cloud_large_mode:
+		WorldWeather.trigger_weather_event("cloud", "large", 12.0)
 	var lodge: Building = _find_building("lodge_ordinary")
 	if lodge != null:
 		camera.position = world.cell_center(Vector2i(20, 20))
@@ -159,7 +170,9 @@ func _finish() -> void:
 	var fps := float(sorted.size()) / maxf(elapsed, 0.001)
 	print("[lighting-v2-perf] %s ｜ 1920x1080 ｜ 帧 %d ｜ 平均 %.2f ms ｜ P95 %.2f ms ｜ P99 %.2f ms ｜ 平均 %.1f FPS" % [
 		"%s%s" % [
-			"全天降雨" if rain_mode else ("晴朗清晨" if morning_mode else "无雾"),
+			"全天降雨" if rain_mode else (
+				"晴朗清晨" if morning_mode else (
+					"晴天正午" if day_mode else "无雾")),
 			" + 噪声深度雾" if fog_mode else "",
 		],
 		sorted.size(),

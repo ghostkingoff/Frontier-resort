@@ -17,6 +17,8 @@
   "rain_post_brightness": 0.80,
   "rain_puddle_threshold": 0.48,
   "rain_puddle_deep_threshold": 0.56,
+  "rain_puddle_edge_softness": 0.04,
+  "rain_puddle_depth_softness": 0.025,
   "rain_puddle_scale_px": 1680.0,
   "rain_puddle_y_compression": 1.38,
   "rain_ripple_strength": 0.76,
@@ -43,10 +45,23 @@
   "fog_scatter_strength": 0.09,
   "fog_no_light_brightness": 0.09,
   "fog_sunrise_transition_hours": 0.5,
-  "cloud_shadow_strength": 1.0,
-  "cloud_shadow_threshold": 0.54,
-  "cloud_shadow_softness": 0.24,
-  "cloud_shadow_width_px": 120.0,
-  "cloud_shadow_length_px": 900.0,
-  "cloud_shadow_drift_px": [10.0, 4.0]
+  "god_rays": {
+    "energy": 1.0,
+    "layer_alpha": 0.055,
+    "spot_fade_start_px": 24.0,
+    "spot_fade_end_px": 160.0,
+    "bottom_fade_start": 0.78,
+    "fade_speed": 2.4
+  },
+  "cloud_shadow": {
+    "noise_scale_px": 1200.0,
+    "softness": 0.14,
+    "direct_strength": 0.82,
+    "ambient_strength": 0.42,
+    "large_hole_size": 3.0,
+    "large_hole_amount": 1.0,
+    "speed_px_per_second": 12.0,
+    "layout_offset_range_px": 8192.0,
+    "fade_speed": 1.8
+  }
 }

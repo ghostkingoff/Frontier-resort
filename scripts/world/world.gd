@@ -6,6 +6,8 @@ extends Node2D
 signal roof_mode_changed(show_roof: bool)
 signal building_placed(building)
 signal building_removed(building)
+signal buildings_batch_started
+signal buildings_batch_finished
 
 const CELL := 32
 const TILESET_PATH := "res://art/generated/spring_ground_tileset.tres"
@@ -47,6 +49,7 @@ var ground_sort: Node2D
 var active_actor_sort: Node2D
 
 var buildings: Array = []
+var buildings_batch_active := false
 var occupancy: Dictionary = {}
 var view_mode: int = ViewMode.ROOF
 var show_roofs := true                  # 兼容旧工具：等价于 view_mode == ROOF
@@ -912,6 +915,20 @@ func clear_buildings() -> void:
 	occupancy.clear()
 
 
+func _begin_buildings_batch() -> void:
+	if buildings_batch_active:
+		return
+	buildings_batch_active = true
+	buildings_batch_started.emit()
+
+
+func _end_buildings_batch() -> void:
+	if not buildings_batch_active:
+		return
+	buildings_batch_active = false
+	buildings_batch_finished.emit()
+
+
 # ---------- 顾客相关 ----------
 
 func random_target_building(prefers: Array, hour: float = -1.0, exclude: Building = null) -> Node2D:
@@ -1138,6 +1155,7 @@ func save_data() -> Dictionary:
 
 
 func load_data(d: Dictionary) -> void:
+	_begin_buildings_batch()
 	clear_buildings()
 	_init_ground_types()
 	var ground_save: Array = d.get("ground", [])
@@ -1161,3 +1179,4 @@ func load_data(d: Dictionary) -> void:
 		set_roof_mode(bool(d.get("show_roofs", true)))      # 旧存档兼容
 	if player_avatar != null and is_instance_valid(player_avatar):
 		player_avatar.reset_to_reception()   # 读档后角色回招待厅，新的一天从厅里开始
+	_end_buildings_batch()

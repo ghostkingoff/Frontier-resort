@@ -5,12 +5,18 @@ extends Node
 var main: Node
 var frames := 0
 var slot := 1
+var startup_load := false
 
 
 func _ready() -> void:
+	SaveManager.read_only = true
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--slot="):
 			slot = int(arg.split("=")[1])
+		elif arg == "--startup-load":
+			startup_load = true
+	if startup_load:
+		SaveManager.begin_load_game(slot)
 	var packed: PackedScene = load("res://scenes/main.tscn")
 	main = packed.instantiate()
 	add_child(main)
@@ -29,8 +35,9 @@ func _process(_delta: float) -> void:
 		get_tree().quit(1)
 		return
 	print("[save_check] 存档里记录的时间参数：%s" % JSON.stringify(data.get('clock', {})))
-	SaveManager.active_slot = slot
-	SaveManager.apply_save(data)
+	if not startup_load:
+		SaveManager.active_slot = slot
+		SaveManager.apply_save(data)
 	print("[save_check] 读档后：第 %d 天 ｜ 资金 %d ｜ 一天 %.0f 秒 ｜ 倍速档 %d ｜ 时间 %s" % [
 		GameState.day, GameState.money, GameClock.cycle_length_seconds, GameClock.speed, GameClock.time_text()])
 	get_tree().quit(0)

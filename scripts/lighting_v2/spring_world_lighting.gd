@@ -14,6 +14,8 @@ const RAIN_SHADER := preload(
 	"res://shaders/lighting_v2/spring_rain.gdshader")
 const RAIN_SKY_REFLECTION_SHADER := preload(
 	"res://shaders/lighting_v2/rain_sky_reflection.gdshader")
+const GOD_RAYS_SHADER := preload(
+	"res://shaders/lighting_v2/god_rays.gdshader")
 const SEASON_LIGHT_PROFILE_SCRIPT := preload(
 	"res://scripts/lighting_v2/season_light_profile.gd")
 const LAMP_HEAD_GLOW_SHADER := preload(
@@ -23,7 +25,7 @@ const WINDOW_EMISSION_SHADER := preload(
 const INTERIOR_PORTAL_SHADER := preload(
 	"res://shaders/lighting_v2/spring_interior_portal.gdshader")
 const CONFIG_PATH := "res://data/lighting_v2/spring_clear.json"
-const CLOUD_SHADOW_TEXTURE := preload(
+const WEATHER_NOISE_TEXTURE := preload(
 	"res://art/generated/lighting_v2/fog_density.png")
 const WINDOW_TEXTURE_SIZE := 64
 const SHADOW_REGION_CELLS := 20
@@ -54,6 +56,9 @@ var interior_materials: Dictionary = {}
 var portal_entries: Dictionary = {}
 var lamp_glows: Dictionary = {}
 var post_material: ShaderMaterial
+var god_ray_layer: CanvasLayer
+var god_ray_rect: ColorRect
+var god_ray_material: ShaderMaterial
 var fog_layer: CanvasLayer
 var fog_rect: ColorRect
 var fog_material: ShaderMaterial
@@ -96,13 +101,25 @@ var debug_mode := 0
 var zone_shadow_history: Dictionary = {}
 var global_shadow_history: Array[Building] = []
 var street_lamp_occlusion_layers: Dictionary = {}
+var building_batch_active := false
 var _fog_time := 0.0
-var _cloud_shadow_time := 0.0
 var _rain_time := 0.0
 var _rain_visual_strength := 0.0
 var _rain_effects_were_active := false
 var _rain_puddle_layout_day := -1
 var _rain_puddle_layout_offset := Vector2.ZERO
+var _cloud_shadow_strength := 0.0
+var _cloud_shadow_coverage := 0.0
+var _cloud_shadow_direct_strength := 0.0
+var _cloud_shadow_ambient_strength := 0.0
+var _cloud_shadow_tier := ""
+var _cloud_shadow_time := 0.0
+var _cloud_shadow_layout_day := -1
+var _cloud_shadow_layout_offset := Vector2.ZERO
+var _cloud_shadow_drift_direction := Vector2.RIGHT
+var _god_ray_visibility := 0.0
+var _god_ray_effective_energy := 0.0
+var cloud_shadow_tuning: Dictionary = {}
 var _grass_noise_shadow_day := -1
 var _grass_noise_shadow_time := 0.0
 var _grass_noise_shadow_offset := Vector2.ZERO
@@ -122,6 +139,7 @@ func _ready() -> void:
 	config = _read_json(CONFIG_PATH)
 	season_light_profile = SEASON_LIGHT_PROFILE_SCRIPT.new()
 	_reset_lighting_tuning()
+	_reset_cloud_shadow_tuning()
 	_make_neutral_textures()
 	camera = get_viewport().get_camera_2d()
 	if camera == null:
@@ -131,6 +149,7 @@ func _ready() -> void:
 	_create_fog_layer()
 	_create_rain_layer()
 	_create_atmosphere()
+	_create_god_ray_layer()
 	_create_region_debug_grid()
 	_setup_pines()
 	_setup_player_material()
@@ -139,6 +158,8 @@ func _ready() -> void:
 	_configure_rain_reflection_layers()
 	world.building_placed.connect(_on_building_placed)
 	world.building_removed.connect(_on_building_removed)
+	world.buildings_batch_started.connect(_on_buildings_batch_started)
+	world.buildings_batch_finished.connect(_on_buildings_batch_finished)
 	_rebuild_proxies()
 	set_process(true)
 
@@ -156,6 +177,7 @@ func _process(delta: float) -> void:
 		sun_screen.x,
 		sun_screen.z,
 		sun_screen.y).normalized()
+	_update_cloud_shadow(delta)
 	rig.set_sun_shadow_softness(lerpf(
 		float(state.get("shadow_softness", 0.5)),
 		1.0,
@@ -211,17 +233,18 @@ func _process(delta: float) -> void:
 	_update_window_effects(state, sun_screen, hour)
 	_update_fog(hour, delta, state, sun_screen)
 	_update_rain(hour, delta, state, sun_screen, lamp_state)
+	_update_god_rays(state, sun_screen, delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_F1:
-		set_debug_mode((debug_mode + 1) % 15)
+		set_debug_mode((debug_mode + 1) % 17)
 		get_viewport().set_input_as_handled()
 
 
 func set_debug_mode(value: int) -> void:
-	debug_mode = clampi(value, 0, 14)
+	debug_mode = clampi(value, 0, 16)
 	_apply_debug_mode()
 
 
@@ -396,6 +419,27 @@ func _create_atmosphere() -> void:
 	post_material.shader = ATMOSPHERE_SHADER
 	rect.material = post_material
 	layer.add_child(rect)
+
+
+func _create_god_ray_layer() -> void:
+	god_ray_layer = CanvasLayer.new()
+	god_ray_layer.name = "SpringGodRays"
+	# Weather particles and atmospheric grading render below this layer.
+	# The HUD and the development console stay above it.
+	god_ray_layer.layer = 9
+	god_ray_layer.visible = false
+	add_child(god_ray_layer)
+	god_ray_rect = ColorRect.new()
+	god_ray_rect.name = "CloudGapRays"
+	god_ray_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	god_ray_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	god_ray_material = ShaderMaterial.new()
+	god_ray_material.shader = GOD_RAYS_SHADER
+	god_ray_material.set_shader_parameter(
+		"noise_texture",
+		WEATHER_NOISE_TEXTURE)
+	god_ray_rect.material = god_ray_material
+	god_ray_layer.add_child(god_ray_rect)
 
 
 func _create_fog_layer() -> void:
@@ -1012,6 +1056,7 @@ func _setup_building(building: Building) -> void:
 		var terrain_material := _make_terrain_ground_material(layers)
 		building.ground_terrain.material = terrain_material
 		ground_materials.append(terrain_material)
+		materials.append(terrain_material)
 
 	building_materials[building] = materials
 	_ensure_lamp_glow(building)
@@ -1296,6 +1341,74 @@ func _window_lamp_light_style() -> Dictionary:
 				"window_ground_energy_ratio",
 				0.01)),
 		"spill_height_px": float(lamp_config.get("height_px", 44.0)),
+	}
+
+
+func _reset_cloud_shadow_tuning() -> void:
+	var settings: Dictionary = WorldWeather.config.get("cloud_shadow", {})
+	var ray_settings: Dictionary = WorldWeather.config.get("god_rays", {})
+	var base_direct := float(settings.get("direct_strength", 0.82))
+	var base_ambient := float(settings.get("ambient_strength", 0.42))
+	cloud_shadow_tuning = {}
+	for tier in ["small", "medium", "large"]:
+		var spec := WorldWeather.weather_event_spec("cloud", tier)
+		cloud_shadow_tuning["%s_coverage" % tier] = clampf(
+			float(spec.get("cloud_coverage", 0.0)),
+			0.0,
+			1.0)
+		cloud_shadow_tuning["%s_direct_strength" % tier] = clampf(
+			base_direct * float(spec.get(
+				"cloud_shadow_direct_scale",
+				1.0)),
+			0.0,
+			1.0)
+		cloud_shadow_tuning["%s_ambient_strength" % tier] = clampf(
+			base_ambient * float(spec.get(
+				"cloud_shadow_ambient_scale",
+				1.0)),
+			0.0,
+			1.0)
+	cloud_shadow_tuning["large_hole_size"] = maxf(
+		float(settings.get("large_hole_size", 3.0)),
+		0.25)
+	cloud_shadow_tuning["large_hole_amount"] = clampf(
+		float(settings.get("large_hole_amount", 1.0)),
+		0.0,
+		1.0)
+	cloud_shadow_tuning["god_ray_energy"] = clampf(
+		float(ray_settings.get("energy", 1.0)),
+		0.0,
+		2.0)
+
+
+func set_cloud_shadow_tuning(key: String, value: float) -> void:
+	if not cloud_shadow_tuning.has(key):
+		push_warning("[SpringWorldLighting] 未知云影调参项：%s" % key)
+		return
+	var maximum := 3.0 if key == "large_hole_size" else (
+		2.0 if key == "god_ray_energy" else 1.0)
+	cloud_shadow_tuning[key] = clampf(value, 0.0, maximum)
+
+
+func get_cloud_shadow_tuning() -> Dictionary:
+	return cloud_shadow_tuning.duplicate(true)
+
+
+func cloud_shadow_tuning_snapshot() -> Dictionary:
+	return {
+		"captured_at": Time.get_datetime_string_from_system(),
+		"game_day": GameState.day,
+		"game_time": GameClock.time_text(),
+		"active_cloud_event": WorldWeather.get_active_weather_event("cloud"),
+		"settings": get_cloud_shadow_tuning(),
+		"effective": {
+			"coverage": _cloud_shadow_coverage,
+			"direct_strength": _cloud_shadow_direct_strength,
+			"ambient_strength": _cloud_shadow_ambient_strength,
+			"visual_strength": _cloud_shadow_strength,
+			"god_ray_visibility": _god_ray_visibility,
+			"god_ray_energy": _god_ray_effective_energy,
+		},
 	}
 
 
@@ -1906,10 +2019,11 @@ func _update_surface_parameters(
 		lamp_state: Dictionary,
 		delta: float,
 		hour: float) -> void:
-	_cloud_shadow_time += _fog_time_delta(delta)
 	_grass_noise_shadow_time += _fog_time_delta(delta)
 	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
 	for material in ground_materials:
+		if material == null or not is_instance_valid(material):
+			continue
 		_set_material_parameters(
 			material,
 			state,
@@ -1919,6 +2033,8 @@ func _update_surface_parameters(
 			hour)
 		_set_rain_material_parameters(material)
 	for material in surface_materials:
+		if material == null or not is_instance_valid(material):
+			continue
 		_set_material_parameters(
 			material,
 			state,
@@ -1939,8 +2055,11 @@ func _update_wall_shadow_parameters(material: ShaderMaterial) -> void:
 	var meta: Dictionary = surface_meta.get(material, {})
 	if meta.is_empty():
 		return
-	var building := meta.get("building") as Building
-	if building == null or not is_instance_valid(building):
+	var building_variant: Variant = meta.get("building")
+	if not is_instance_valid(building_variant):
+		return
+	var building := building_variant as Building
+	if building == null:
 		return
 	var is_building_surface := bool(
 		meta.get("is_building_surface", false))
@@ -2031,10 +2150,14 @@ func _building_shadow_world_rect(building: Building) -> Vector4:
 
 func _update_interior_lighting(state: Dictionary) -> void:
 	var hour := GameClock.hour_of_day()
-	for building_key in interior_materials.keys():
+	for building_key in interior_materials.keys().duplicate():
+		if not is_instance_valid(building_key):
+			interior_materials.erase(building_key)
+			continue
 		var building := building_key as Building
 		var material := interior_materials.get(building) as ShaderMaterial
-		if building == null or not is_instance_valid(building) or material == null:
+		if building == null or material == null \
+				or not is_instance_valid(material):
 			continue
 		var center := building.global_position + Vector2(
 			building.footprint.x * 32.0 * 0.5,
@@ -2068,12 +2191,51 @@ func _set_material_parameters(
 		lamp_state: Dictionary,
 		_viewport_size: Vector2,
 		hour: float) -> void:
+	var cloud_settings: Dictionary = WorldWeather.config.get(
+		"cloud_shadow",
+		{})
+	material.set_shader_parameter(
+		"cloud_shadow_noise_texture",
+		WEATHER_NOISE_TEXTURE)
+	material.set_shader_parameter(
+		"cloud_shadow_direct_strength",
+		_cloud_shadow_direct_strength * _cloud_shadow_strength)
+	material.set_shader_parameter(
+		"cloud_shadow_ambient_strength",
+		_cloud_shadow_ambient_strength * _cloud_shadow_strength)
+	material.set_shader_parameter(
+		"cloud_shadow_coverage",
+		_cloud_shadow_coverage)
+	material.set_shader_parameter(
+		"cloud_shadow_softness",
+		float(cloud_settings.get("softness", 0.14)))
+	material.set_shader_parameter(
+		"cloud_shadow_world_scale",
+		float(cloud_settings.get("noise_scale_px", 1200.0)))
+	material.set_shader_parameter(
+		"cloud_shadow_offset_px",
+		_cloud_shadow_offset_world_px())
+	material.set_shader_parameter(
+		"cloud_hole_size",
+		float(cloud_shadow_tuning.get("large_hole_size", 3.0)))
+	material.set_shader_parameter(
+		"cloud_hole_amount",
+		float(cloud_shadow_tuning.get("large_hole_amount", 1.0)))
 	material.set_shader_parameter("sun_direction", sun_screen)
 	material.set_shader_parameter("sun_screen_direction", sun_screen)
 	material.set_shader_parameter("sun_color", state["sun_color"])
 	material.set_shader_parameter("sun_energy", float(state["sun_energy"]))
 	material.set_shader_parameter("sky_color", state["sky_color"])
 	material.set_shader_parameter("sky_energy", float(state["sky_energy"]))
+	material.set_shader_parameter(
+		"bounce_color",
+		state.get("bounce_color", Color("#71847A")))
+	material.set_shader_parameter(
+		"bounce_energy",
+		float(state.get("bounce_energy", 0.10)))
+	material.set_shader_parameter(
+		"shadow_alpha",
+		float(state.get("shadow_alpha", 1.0)))
 	material.set_shader_parameter("exposure", float(state["exposure"]))
 	_set_local_light_arrays(
 		material,
@@ -2082,11 +2244,10 @@ func _set_material_parameters(
 	material.set_shader_parameter(
 		"lamp_shadow_strength",
 		float(lamp_state["shadow_strength"]))
-	_set_cloud_shadow_parameters(material, state, hour)
 	var grass_shadow: Dictionary = config.get("grass_noise_shadow", {})
 	material.set_shader_parameter(
 		"grass_noise_shadow_texture",
-		CLOUD_SHADOW_TEXTURE)
+		WEATHER_NOISE_TEXTURE)
 	material.set_shader_parameter(
 		"grass_noise_shadow_time",
 		_grass_noise_shadow_time)
@@ -2109,54 +2270,6 @@ func _set_material_parameters(
 		"grass_noise_shadow_softness",
 		float(grass_shadow.get("softness", 0.28)))
 	material.set_shader_parameter("debug_mode", debug_mode)
-
-
-func _set_cloud_shadow_parameters(
-		material: ShaderMaterial,
-		state: Dictionary,
-		_hour: float) -> void:
-	var weather_config: Dictionary = WorldWeather.config
-	var drift_array: Array = weather_config.get(
-		"cloud_shadow_drift_px",
-		[10.0, 4.0])
-	material.set_shader_parameter(
-		"cloud_shadow_texture",
-		CLOUD_SHADOW_TEXTURE)
-	material.set_shader_parameter(
-		"cloud_shadow_time",
-		_cloud_shadow_time)
-	material.set_shader_parameter(
-		"cloud_shadow_active",
-		smoothstep(
-			0.01,
-			0.18,
-			float(state.get("sun_energy", 0.0))))
-	material.set_shader_parameter(
-		"cloud_shadow_strength",
-		float(state.get(
-			"cloud_shadow_strength",
-			weather_config.get("cloud_shadow_strength", 1.0))))
-	material.set_shader_parameter(
-		"cloud_shadow_threshold",
-		float(state.get(
-			"cloud_shadow_threshold",
-			weather_config.get("cloud_shadow_threshold", 0.54))))
-	material.set_shader_parameter(
-		"cloud_shadow_softness",
-		float(state.get(
-			"cloud_shadow_softness",
-			weather_config.get("cloud_shadow_softness", 0.24))))
-	material.set_shader_parameter(
-		"cloud_shadow_width_px",
-		float(weather_config.get("cloud_shadow_width_px", 120.0)))
-	material.set_shader_parameter(
-		"cloud_shadow_length_px",
-		float(weather_config.get("cloud_shadow_length_px", 900.0)))
-	material.set_shader_parameter(
-		"cloud_shadow_drift_px",
-		Vector2(
-			float(drift_array[0]) if drift_array.size() > 0 else 10.0,
-			float(drift_array[1]) if drift_array.size() > 1 else 4.0))
 
 
 func _set_local_light_arrays(
@@ -2384,6 +2497,215 @@ func _fog_time_delta(delta: float) -> float:
 			or GameClock.phase != GameClock.Phase.RUNNING:
 		return 0.0
 	return delta * GameClock.time_scale()
+
+
+func _update_cloud_shadow(delta: float) -> void:
+	var settings: Dictionary = WorldWeather.config.get("cloud_shadow", {})
+	var event := WorldWeather.get_active_weather_event("cloud")
+	var active_event := not event.is_empty()
+	var coverage := 0.0
+	_cloud_shadow_tier = ""
+	_cloud_shadow_direct_strength = 0.0
+	_cloud_shadow_ambient_strength = 0.0
+	if active_event:
+		var spec: Dictionary = event.get("spec", {})
+		var tier := str(spec.get("size", "small"))
+		_cloud_shadow_tier = tier
+		coverage = clampf(
+			float(cloud_shadow_tuning.get(
+				"%s_coverage" % tier,
+				spec.get("cloud_coverage", 0.0))),
+			0.0,
+			1.0)
+		_cloud_shadow_direct_strength = clampf(
+			float(cloud_shadow_tuning.get(
+				"%s_direct_strength" % tier,
+				0.0)),
+			0.0,
+			1.0)
+		_cloud_shadow_ambient_strength = clampf(
+			float(cloud_shadow_tuning.get(
+				"%s_ambient_strength" % tier,
+				0.0)),
+			0.0,
+			1.0)
+	_cloud_shadow_coverage = coverage
+	var target := 1.0 if active_event and coverage > 0.001 else 0.0
+	_cloud_shadow_strength = move_toward(
+		_cloud_shadow_strength,
+		target,
+		maxf(delta, 0.0) * float(settings.get("fade_speed", 1.8)))
+	_cloud_shadow_time += _fog_time_delta(delta)
+	_refresh_cloud_shadow_layout()
+
+
+func _cloud_shadow_offset_world_px() -> Vector2:
+	var settings: Dictionary = WorldWeather.config.get("cloud_shadow", {})
+	return _cloud_shadow_layout_offset \
+		+ _cloud_shadow_drift_direction * _cloud_shadow_time \
+			* float(settings.get("speed_px_per_second", 12.0))
+
+
+func _update_god_rays(
+		state: Dictionary,
+		sun_screen: Vector3,
+		delta: float) -> void:
+	if god_ray_layer == null or god_ray_material == null:
+		return
+	var ray_settings: Dictionary = WorldWeather.config.get("god_rays", {})
+	var fade_speed := maxf(float(ray_settings.get(
+		"fade_speed",
+		2.4)), 0.0)
+	var target_visibility := 1.0 if _cloud_shadow_tier == "large" else 0.0
+	_god_ray_visibility = move_toward(
+		_god_ray_visibility,
+		target_visibility,
+		maxf(delta, 0.0) * fade_speed)
+	var spot_energy := _god_ray_spot_energy_scale(state)
+	_god_ray_effective_energy = spot_energy * _god_ray_visibility
+	god_ray_layer.visible = _god_ray_visibility > 0.001 \
+		and spot_energy > 0.001
+	if not god_ray_layer.visible:
+		return
+
+	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
+	var camera_origin := Vector2.ZERO
+	var camera_zoom := Vector2.ONE
+	if camera != null:
+		camera_origin = camera.get_screen_center_position()
+		camera_zoom = camera.zoom
+	var visible_world_size := viewport_size / Vector2(
+		maxf(camera_zoom.x, 0.001),
+		maxf(camera_zoom.y, 0.001))
+	var cloud_settings: Dictionary = WorldWeather.config.get(
+		"cloud_shadow",
+		{})
+	var sun_color: Color = state.get("sun_color", Color.WHITE)
+	var ray_energy := clampf(
+		float(cloud_shadow_tuning.get("god_ray_energy", 1.0)),
+		0.0,
+		2.0)
+	var layer_alpha := clampf(
+		float(ray_settings.get("layer_alpha", 0.055)) * ray_energy,
+		0.0,
+		0.2)
+	god_ray_material.set_shader_parameter(
+		"noise_texture",
+		WEATHER_NOISE_TEXTURE)
+	god_ray_material.set_shader_parameter(
+		"camera_origin_px",
+		camera_origin)
+	god_ray_material.set_shader_parameter(
+		"visible_world_size_px",
+		visible_world_size)
+	god_ray_material.set_shader_parameter(
+		"cloud_shadow_offset_px",
+		_cloud_shadow_offset_world_px())
+	god_ray_material.set_shader_parameter(
+		"cloud_shadow_world_scale",
+		float(cloud_settings.get("noise_scale_px", 1200.0)))
+	god_ray_material.set_shader_parameter(
+		"cloud_hole_size",
+		float(cloud_shadow_tuning.get("large_hole_size", 3.0)))
+	god_ray_material.set_shader_parameter(
+		"cloud_hole_amount",
+		float(cloud_shadow_tuning.get("large_hole_amount", 1.0)))
+	god_ray_material.set_shader_parameter(
+		"sun_screen_direction",
+		sun_screen)
+	god_ray_material.set_shader_parameter(
+		"beam_color",
+		Vector3(sun_color.r, sun_color.g, sun_color.b))
+	god_ray_material.set_shader_parameter(
+		"sun_energy",
+		float(state.get("sun_energy", 0.0)))
+	god_ray_material.set_shader_parameter(
+		"spot_energy_scale",
+		spot_energy)
+	god_ray_material.set_shader_parameter(
+		"beam_visibility",
+		_god_ray_visibility)
+	god_ray_material.set_shader_parameter("layer_alpha", layer_alpha)
+	god_ray_material.set_shader_parameter(
+		"spot_fade_start_px",
+		maxf(float(ray_settings.get(
+			"spot_fade_start_px",
+			24.0)), 0.0))
+	god_ray_material.set_shader_parameter(
+		"spot_fade_end_px",
+		maxf(float(ray_settings.get(
+			"spot_fade_end_px",
+			160.0)), 1.0))
+	god_ray_material.set_shader_parameter(
+		"bottom_fade_start",
+		clampf(float(ray_settings.get(
+			"bottom_fade_start",
+			0.78)), 0.0, 1.0))
+
+
+func _god_ray_spot_energy_scale(state: Dictionary) -> float:
+	var solar_energy := smoothstep(
+		0.08,
+		0.86,
+		float(state.get("sun_energy", 0.0)))
+	var exposure := lerpf(
+		0.55,
+		1.0,
+		clampf(
+			float(state.get("exposure", 1.0)) / 0.78,
+			0.0,
+			1.0))
+	var cloud_contrast := lerpf(
+		0.25,
+		1.0,
+		clampf(_cloud_shadow_direct_strength, 0.0, 1.0))
+	return clampf(
+		solar_energy
+			* exposure
+			* cloud_contrast
+			* _cloud_shadow_strength,
+		0.0,
+		1.0)
+
+
+func god_ray_available_layers_for_screen_y(screen_y: float) -> float:
+	var height_ratio := clampf(
+		(1.0 - clampf(screen_y, 0.0, 1.0)) / 0.5,
+		0.0,
+		1.0)
+	return 1.0 + height_ratio * 7.0
+
+
+func god_ray_visible_layers(
+		spot_energy: float,
+		screen_y: float) -> float:
+	return minf(
+		clampf(spot_energy, 0.0, 1.0) * 8.0,
+		god_ray_available_layers_for_screen_y(screen_y))
+
+
+func _refresh_cloud_shadow_layout() -> void:
+	var day := GameState.day
+	if day == _cloud_shadow_layout_day:
+		return
+	_cloud_shadow_layout_day = day
+	var settings: Dictionary = WorldWeather.config.get("cloud_shadow", {})
+	var range_px := maxf(float(settings.get(
+		"layout_offset_range_px",
+		8192.0)), 0.0)
+	var rng := RandomNumberGenerator.new()
+	var seed_value := 2166136261
+	var key := "cloud-shadow-layout:%d" % day
+	for index in range(key.length()):
+		seed_value = seed_value ^ key.unicode_at(index)
+		seed_value = int((seed_value * 16777619) & 0x7fffffff)
+	rng.seed = seed_value
+	_cloud_shadow_layout_offset = Vector2(
+		rng.randf_range(-range_px, range_px),
+		rng.randf_range(-range_px, range_px))
+	var direction_index := rng.randi_range(0, 3)
+	_cloud_shadow_drift_direction = Vector2.from_angle(
+		PI * 0.25 + float(direction_index) * PI * 0.5)
 
 
 func _update_rain_visual_strength(delta: float) -> void:
@@ -2752,14 +3074,11 @@ func _update_rain_reflection_and_ripples(
 		rain_reflection_sky_material.set_shader_parameter(
 			"rain_intensity",
 			_rain_visual_strength)
-		rain_reflection_sky_material.set_shader_parameter(
-			"cloud_time",
-			_cloud_shadow_time)
 
 
 func _set_rain_material_parameters(material: ShaderMaterial) -> void:
 	var weather_config: Dictionary = WorldWeather.config
-	material.set_shader_parameter("rain_noise_texture", CLOUD_SHADOW_TEXTURE)
+	material.set_shader_parameter("rain_noise_texture", WEATHER_NOISE_TEXTURE)
 	material.set_shader_parameter(
 		"water_reflection_texture",
 		rain_reflection_viewport.get_texture())
@@ -2778,6 +3097,12 @@ func _set_rain_material_parameters(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(
 		"rain_puddle_deep_threshold",
 		float(weather_config.get("rain_puddle_deep_threshold", 0.56)))
+	material.set_shader_parameter(
+		"rain_puddle_edge_softness",
+		float(weather_config.get("rain_puddle_edge_softness", 0.04)))
+	material.set_shader_parameter(
+		"rain_puddle_depth_softness",
+		float(weather_config.get("rain_puddle_depth_softness", 0.025)))
 	material.set_shader_parameter(
 		"rain_puddle_scale_px",
 		float(weather_config.get("rain_puddle_scale_px", 1680.0)))
@@ -2854,6 +3179,63 @@ func _sync_actor_proxies() -> String:
 	return ",".join(signature_parts)
 
 
+func _add_building_proxies(building: Building) -> void:
+	if rig == null or building == null or not is_instance_valid(building):
+		return
+	var layers: Dictionary = building.data.get("sprite_layers", {})
+	var proxy_path := str(layers.get("shadow_proxy", ""))
+	if proxy_path == "" or not ResourceLoader.exists(proxy_path):
+		return
+	var center: Vector2 = building.global_position + Vector2(
+		building.footprint.x * 32.0 * 0.5,
+		building.footprint.y * 32.0 * 0.5)
+	var is_street_lamp := \
+		str(building.data.get("lighting_kind", "")) == "street_lamp"
+	var height_scale := 1.0
+	var lamp_layer := 1
+	if is_street_lamp:
+		var lamp_config: Dictionary = building.data.get(
+			"street_lamp_lighting", {})
+		height_scale = float(lamp_config.get(
+			"shadow_proxy_height_scale",
+			1.0))
+		lamp_layer = _ensure_street_lamp_layer(building)
+	rig.add_building_proxy(
+		proxy_path,
+		center,
+		height_scale,
+		not is_street_lamp,
+		not is_street_lamp,
+		1,
+		lamp_layer,
+		building)
+	if is_street_lamp:
+		rig.add_street_lamp_pole_proxy(center, lamp_layer, building)
+
+
+func _remove_building_proxies(building: Building) -> void:
+	if rig != null:
+		rig.remove_owner_proxies(building)
+	street_lamp_occlusion_layers.erase(building)
+
+
+func _ensure_street_lamp_layer(building: Building) -> int:
+	var existing := int(street_lamp_occlusion_layers.get(building, 0))
+	if existing != 0:
+		return existing
+	for index in range(LAMP_PROXY_LAYER_START, 20):
+		var layer := 1 << index
+		var used := false
+		for assigned in street_lamp_occlusion_layers.values():
+			if (int(assigned) & layer) != 0:
+				used = true
+				break
+		if not used:
+			street_lamp_occlusion_layers[building] = layer
+			return layer
+	return 1
+
+
 func _rebuild_proxies() -> void:
 	if rig == null or world == null:
 		return
@@ -2904,11 +3286,13 @@ func _rebuild_proxies() -> void:
 			not is_street_lamp,
 			not is_street_lamp,
 			1,
-			int(street_lamp_occlusion_layers.get(building, 1)))
+			int(street_lamp_occlusion_layers.get(building, 1)),
+			building)
 		if is_street_lamp:
 			rig.add_street_lamp_pole_proxy(
 				center,
-				int(street_lamp_occlusion_layers.get(building, 1)))
+				int(street_lamp_occlusion_layers.get(building, 1)),
+				building)
 	if world.player_avatar != null:
 		var foot := _player_foot_position()
 		foot = Vector2(roundf(foot.x), roundf(foot.y))
@@ -2955,24 +3339,78 @@ func _player_surface_world_rect(sprite: Sprite2D) -> Vector4:
 
 
 func _on_building_placed(building: Building) -> void:
+	if building_batch_active:
+		return
 	zone_shadow_history.clear()
 	global_shadow_history.clear()
 	_setup_building(building)
 	_configure_rain_reflection_building(building)
-	_rebuild_proxies()
+	_add_building_proxies(building)
 
 
 func _on_building_removed(building: Building) -> void:
+	if building_batch_active:
+		return
 	zone_shadow_history.clear()
 	global_shadow_history.clear()
+	_remove_building_proxies(building)
+	_detach_building_lighting(building)
+
+
+func _on_buildings_batch_started() -> void:
+	building_batch_active = true
+	zone_shadow_history.clear()
+	global_shadow_history.clear()
+	_clear_all_building_lighting()
+
+
+func _on_buildings_batch_finished() -> void:
+	building_batch_active = false
+	zone_shadow_history.clear()
+	global_shadow_history.clear()
+	for building in world.buildings:
+		if building == null or not is_instance_valid(building):
+			continue
+		_setup_building(building)
+		_configure_rain_reflection_building(building)
+	_rebuild_proxies()
+	last_shadow_key = ""
+
+
+func _clear_all_building_lighting() -> void:
+	for building_key in building_materials.keys().duplicate():
+		_detach_building_lighting(building_key)
+	for material in surface_materials.duplicate():
+		if surface_meta.has(material):
+			surface_materials.erase(material)
+	building_materials.clear()
+	interior_materials.clear()
+	portal_entries.clear()
+	lamp_glows.clear()
+	street_lamp_occlusion_layers.clear()
+	surface_meta.clear()
+	if rig != null:
+		rig.clear_proxies()
+
+
+func _detach_building_lighting(building: Variant) -> void:
+	var materials: Array = building_materials.get(building, [])
+	for material in materials:
+		surface_materials.erase(material)
+		ground_materials.erase(material)
+		surface_meta.erase(material)
 	building_materials.erase(building)
 	interior_materials.erase(building)
 	portal_entries.erase(building)
-	var glow := lamp_glows.get(building) as Sprite2D
-	if glow != null and is_instance_valid(glow):
-		glow.queue_free()
 	lamp_glows.erase(building)
-	_rebuild_proxies()
+	for source in rain_reflection_entries.keys():
+		var entry: Dictionary = rain_reflection_entries[source]
+		if entry.get("pivot_owner") != building:
+			continue
+		var clone := entry.get("clone") as Sprite2D
+		if clone != null and is_instance_valid(clone):
+			clone.queue_free()
+		rain_reflection_entries.erase(source)
 
 
 func _make_neutral_textures() -> void:

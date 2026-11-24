@@ -6,6 +6,8 @@ uniform float rain_intensity : hint_range(0.0, 1.0) = 0.0;
 uniform float rain_time_seconds = 0.0;
 uniform float rain_puddle_threshold : hint_range(0.0, 1.0) = 0.48;
 uniform float rain_puddle_deep_threshold : hint_range(0.0, 1.0) = 0.56;
+uniform float rain_puddle_edge_softness : hint_range(0.001, 0.15) = 0.04;
+uniform float rain_puddle_depth_softness : hint_range(0.001, 0.12) = 0.025;
 uniform float rain_puddle_scale_px = 1680.0;
 uniform float rain_puddle_y_compression : hint_range(1.0, 2.0) = 1.38;
 uniform vec2 rain_puddle_offset_px = vec2(0.0);
@@ -59,8 +61,16 @@ vec3 rain_puddle_masks(vec2 world_position) {
 		+ n3 * 1.5
 		+ n4
 		+ n5 * 0.5) / 6.25;
-	float outer_mask = step(rain_puddle_threshold, density);
-	float inner_mask = step(rain_puddle_deep_threshold, density);
+	float outer_softness = max(rain_puddle_edge_softness, 0.001);
+	float depth_softness = max(rain_puddle_depth_softness, 0.001);
+	float outer_mask = smoothstep(
+		rain_puddle_threshold - outer_softness,
+		rain_puddle_threshold + outer_softness,
+		density);
+	float inner_mask = smoothstep(
+		rain_puddle_deep_threshold - depth_softness,
+		rain_puddle_deep_threshold + depth_softness,
+		density);
 	float reflection_value = smoothstep(
 		rain_puddle_threshold,
 		min(rain_puddle_deep_threshold + 0.10, 1.0),

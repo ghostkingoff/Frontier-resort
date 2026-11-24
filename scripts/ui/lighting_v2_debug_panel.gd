@@ -7,11 +7,13 @@ const LIGHTING_TUNING_PATH := "res://.tmp/lighting_tuning.json"
 const SEASON_LIGHT_PROFILE_SCRIPT := preload(
 	"res://scripts/lighting_v2/season_light_profile.gd")
 const LIGHTING_PREVIEW_PHASES := [
+	{"phase": "blue_hour", "label": "黎明蓝调"},
 	{"phase": "sunrise", "label": "日出"},
 	{"phase": "morning", "label": "上午"},
-	{"phase": "solar_noon", "label": "太阳最高"},
+	{"phase": "noon", "label": "正午"},
 	{"phase": "afternoon", "label": "下午"},
 	{"phase": "sunset", "label": "日落"},
+	{"phase": "dusk", "label": "暮色蓝调"},
 	{"phase": "night", "label": "深夜"},
 ]
 
@@ -21,7 +23,11 @@ var content: VBoxContainer
 var scroll: ScrollContainer
 var status_label: Label
 var weather_status_label: Label
+var cloud_event_status_label: Label
 var day_spin: SpinBox
+var cloud_duration_spin: SpinBox
+var cloud_shadow_tuning_controls: Dictionary = {}
+var cloud_shadow_tuning_output: TextEdit
 var force_controls: Dictionary = {}
 var chance_controls: Dictionary = {}
 var multiplier_controls: Dictionary = {}
@@ -151,6 +157,8 @@ func _build_panel() -> void:
 	content.add_child(HSeparator.new())
 	_add_weather_section()
 	content.add_child(HSeparator.new())
+	_add_cloud_section()
+	content.add_child(HSeparator.new())
 	_add_lighting_tuning_section()
 	content.add_child(HSeparator.new())
 	_add_chance_section()
@@ -246,6 +254,264 @@ func _add_weather_section() -> void:
 			_on_lighting_preview_phase.bind(str(preview["phase"])))
 		lighting_row.add_child(button)
 		lighting_preview_buttons.append(button)
+
+
+func _add_cloud_section() -> void:
+	_add_section_title("云事件与云影 / 云隙光")
+	var hint := Label.new()
+	hint.text = (
+		"小云、中云、大云共用世界坐标云影；"
+		+ "大云另有跟随太阳方向的加法云隙光层。"
+	)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.modulate = Color(0.70, 0.84, 0.84, 1.0)
+	hint.add_theme_font_size_override("font_size", 15)
+	content.add_child(hint)
+	cloud_event_status_label = Label.new()
+	cloud_event_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cloud_event_status_label.add_theme_font_size_override("font_size", 17)
+	content.add_child(cloud_event_status_label)
+
+	var duration_row := HBoxContainer.new()
+	duration_row.add_theme_constant_override("separation", 8)
+	content.add_child(duration_row)
+	var duration_label := Label.new()
+	duration_label.text = "事件持续时间（游戏小时）"
+	duration_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	duration_label.add_theme_font_size_override("font_size", 16)
+	duration_row.add_child(duration_label)
+	cloud_duration_spin = SpinBox.new()
+	cloud_duration_spin.min_value = 0.25
+	cloud_duration_spin.max_value = 48.0
+	cloud_duration_spin.step = 0.25
+	cloud_duration_spin.value = 6.0
+	cloud_duration_spin.custom_minimum_size = Vector2(128.0, 0.0)
+	duration_row.add_child(cloud_duration_spin)
+
+	var event_row := HBoxContainer.new()
+	event_row.add_theme_constant_override("separation", 6)
+	content.add_child(event_row)
+	for definition in [
+		["小云", "small"],
+		["中云", "medium"],
+		["大云", "large"],
+	]:
+		var button := Button.new()
+		button.text = str(definition[0])
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(
+			_on_trigger_cloud_event.bind(str(definition[1])))
+		event_row.add_child(button)
+	var clear_button := Button.new()
+	clear_button.text = "清除云事件"
+	clear_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	clear_button.pressed.connect(_on_clear_cloud_event)
+	event_row.add_child(clear_button)
+	_add_cloud_shadow_tuning_section()
+
+
+func _add_cloud_shadow_tuning_section() -> void:
+	var hint := Label.new()
+	hint.text = (
+		"每档云影分别调整覆盖率、直射遮光和天空/反弹环境遮光；"
+		+ "大云光柱总亮度可独立微调。"
+		+ "修改仅作用于本次运行。"
+	)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.modulate = Color(0.72, 0.84, 0.82, 1.0)
+	hint.add_theme_font_size_override("font_size", 15)
+	content.add_child(hint)
+	if spring_lighting == null:
+		var missing := Label.new()
+		missing.text = "未找到 SpringWorldLighting，云影调参不可用。"
+		missing.modulate = Color(1.0, 0.55, 0.45, 1.0)
+		missing.add_theme_font_size_override("font_size", 16)
+		content.add_child(missing)
+		return
+	for tier in [
+		["small", "小云"],
+		["medium", "中云"],
+		["large", "大云"],
+	]:
+		var tier_title := Label.new()
+		tier_title.text = str(tier[1])
+		tier_title.modulate = Color(0.62, 0.88, 0.86, 1.0)
+		tier_title.add_theme_font_size_override("font_size", 18)
+		content.add_child(tier_title)
+		for definition in [
+			["coverage", "覆盖率"],
+			["direct_strength", "直射遮光"],
+			["ambient_strength", "环境遮光"],
+		]:
+			_add_cloud_shadow_tuning_control(
+				"%s_%s" % [str(tier[0]), str(definition[0])],
+				str(definition[1]))
+	var hole_title := Label.new()
+	hole_title.text = "大云光斑"
+	hole_title.modulate = Color(0.62, 0.88, 0.86, 1.0)
+	hole_title.add_theme_font_size_override("font_size", 18)
+	content.add_child(hole_title)
+	_add_cloud_hole_tuning_control(
+		"large_hole_size",
+		"光斑大小（相对基准）",
+		25.0,
+		300.0)
+	_add_cloud_hole_tuning_control(
+		"large_hole_amount",
+		"光斑数量",
+		0.0,
+		100.0)
+	_add_cloud_hole_tuning_control(
+		"god_ray_energy",
+		"光柱总亮度",
+		0.0,
+		200.0)
+	var button_row := HBoxContainer.new()
+	button_row.add_theme_constant_override("separation", 8)
+	content.add_child(button_row)
+	var print_button := Button.new()
+	print_button.text = "打印并复制云影参数"
+	print_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	print_button.pressed.connect(_on_print_cloud_shadow_tuning)
+	button_row.add_child(print_button)
+	var reset_button := Button.new()
+	reset_button.text = "恢复云影默认"
+	reset_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reset_button.pressed.connect(_on_reset_cloud_shadow_tuning)
+	button_row.add_child(reset_button)
+	cloud_shadow_tuning_output = TextEdit.new()
+	cloud_shadow_tuning_output.editable = false
+	cloud_shadow_tuning_output.custom_minimum_size = Vector2(0.0, 140.0)
+	cloud_shadow_tuning_output.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	cloud_shadow_tuning_output.add_theme_font_size_override("font_size", 14)
+	content.add_child(cloud_shadow_tuning_output)
+
+
+func _add_cloud_shadow_tuning_control(key: String, label_text: String) -> void:
+	var tuning := spring_lighting.get_cloud_shadow_tuning()
+	var value := float(tuning.get(key, 0.0))
+	var value_label := Label.new()
+	value_label.text = "%.1f%%" % (value * 100.0)
+	value_label.custom_minimum_size = Vector2(82.0, 0.0)
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value_label.add_theme_font_size_override("font_size", 15)
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	content.add_child(row)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	row.add_child(top)
+	var label := Label.new()
+	label.text = label_text
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("font_size", 16)
+	top.add_child(label)
+	top.add_child(value_label)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 100.0
+	slider.step = 0.1
+	slider.value = value * 100.0
+	slider.value_changed.connect(
+		_on_cloud_shadow_tuning_changed.bind(key, value_label))
+	row.add_child(slider)
+	cloud_shadow_tuning_controls[key] = {
+		"slider": slider,
+		"value_label": value_label,
+	}
+
+
+func _add_cloud_hole_tuning_control(
+		key: String,
+		label_text: String,
+		minimum: float,
+		maximum: float) -> void:
+	var tuning := spring_lighting.get_cloud_shadow_tuning()
+	var value := float(tuning.get(key, 0.0))
+	var value_label := Label.new()
+	value_label.text = "%.1f%%" % (value * 100.0)
+	value_label.custom_minimum_size = Vector2(82.0, 0.0)
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value_label.add_theme_font_size_override("font_size", 15)
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	content.add_child(row)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	row.add_child(top)
+	var label := Label.new()
+	label.text = label_text
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("font_size", 16)
+	top.add_child(label)
+	top.add_child(value_label)
+	var slider := HSlider.new()
+	slider.min_value = minimum
+	slider.max_value = maximum
+	slider.step = 1.0
+	slider.value = value * 100.0
+	slider.value_changed.connect(
+		_on_cloud_shadow_tuning_changed.bind(key, value_label))
+	row.add_child(slider)
+	cloud_shadow_tuning_controls[key] = {
+		"slider": slider,
+		"value_label": value_label,
+	}
+
+
+func _on_cloud_shadow_tuning_changed(
+		slider_value: float,
+		key: String,
+		value_label: Label) -> void:
+	if spring_lighting == null:
+		return
+	var value := slider_value / 100.0
+	spring_lighting.set_cloud_shadow_tuning(key, value)
+	value_label.text = "%.1f%%" % slider_value
+
+
+func _refresh_cloud_shadow_tuning_controls() -> void:
+	if spring_lighting == null:
+		return
+	var tuning := spring_lighting.get_cloud_shadow_tuning()
+	for key in cloud_shadow_tuning_controls.keys():
+		var control: Dictionary = cloud_shadow_tuning_controls[key]
+		var slider := control["slider"] as HSlider
+		var value_label := control["value_label"] as Label
+		var value := float(tuning.get(key, 0.0))
+		if slider != null:
+			slider.set_block_signals(true)
+			slider.set_value_no_signal(value * 100.0)
+			slider.set_block_signals(false)
+		if value_label != null:
+			value_label.text = "%.1f%%" % (value * 100.0)
+
+
+func _on_print_cloud_shadow_tuning() -> void:
+	if spring_lighting == null or cloud_shadow_tuning_output == null:
+		return
+	var text := JSON.stringify(
+		spring_lighting.cloud_shadow_tuning_snapshot(),
+		"\t")
+	DirAccess.make_dir_recursive_absolute("res://.tmp")
+	var file := FileAccess.open(
+		"res://.tmp/cloud_shadow_tuning.json",
+		FileAccess.WRITE)
+	if file != null:
+		file.store_string(text)
+		file.close()
+	DisplayServer.clipboard_set(text)
+	cloud_shadow_tuning_output.text = text
+	print("[CloudShadowTuning] %s" % text)
+
+
+func _on_reset_cloud_shadow_tuning() -> void:
+	if spring_lighting == null:
+		return
+	spring_lighting._reset_cloud_shadow_tuning()
+	_refresh_cloud_shadow_tuning_controls()
+	if cloud_shadow_tuning_output != null:
+		cloud_shadow_tuning_output.text = "云影参数已恢复默认。"
 
 
 func _add_lighting_tuning_section() -> void:
@@ -444,6 +710,18 @@ func _format_lighting_tuning_value(value: float, format: String) -> String:
 			return "%.2f×" % value
 		_:
 			return "%.2f" % value
+
+
+func _on_trigger_cloud_event(size_id: String) -> void:
+	var duration := 6.0 if cloud_duration_spin == null \
+		else cloud_duration_spin.value
+	WorldWeather.trigger_weather_event("cloud", size_id, duration)
+	_refresh_all()
+
+
+func _on_clear_cloud_event() -> void:
+	WorldWeather.clear_weather_event("cloud")
+	_refresh_all()
 
 
 func _on_lighting_tuning_changed(
@@ -830,6 +1108,7 @@ func _refresh_all() -> void:
 	_refresh_day_control()
 	_refresh_force_controls()
 	_refresh_multiplier_controls()
+	_refresh_cloud_shadow_tuning_controls()
 	_refresh_lighting_tuning_controls()
 	_refresh_dynamic_labels()
 
@@ -896,6 +1175,7 @@ func _refresh_dynamic_labels() -> void:
 		lighting_text,
 	]
 	_refresh_weather_status()
+	_refresh_cloud_status()
 	for event_id in chance_controls.keys():
 		var control: Dictionary = chance_controls[event_id]
 		var definition: Dictionary = control["definition"]
@@ -950,32 +1230,52 @@ func _lighting_preview_hour(phase: String) -> float:
 	var profile: Dictionary = season_light_preview.current_profile()
 	if profile.is_empty():
 		match phase:
+			"blue_hour":
+				return 4.2
 			"sunrise":
 				return 6.0 + 25.0 / 60.0
 			"morning":
 				return 10.0
-			"solar_noon":
+			"noon":
 				return 12.0
 			"afternoon":
 				return 15.0
 			"sunset":
 				return 19.0 + 25.0 / 60.0
+			"dusk":
+				return 20.0
 			_:
 				return 1.0
-	var sunrise := float(profile["sunrise_hour"])
-	var noon := float(profile["solar_noon_hour"])
-	var sunset := float(profile["sunset_hour"])
+	var phases: Array = season_light_preview.phase_windows(profile)
+	for phase_data in phases:
+		if str(phase_data.get("id", "")) != phase:
+			continue
+		var start := float(phase_data.get("start_hour", 0.0))
+		var end := float(phase_data.get("end_hour", start + 1.0))
+		if end <= start:
+			end += 24.0
+		return fposmod(start + (end - start) * 0.5, 24.0)
 	match phase:
+		"blue_hour":
+			return float(profile["sunrise_hour"]) - 1.5
 		"sunrise":
-			return sunrise
+			return float(profile["sunrise_hour"])
 		"morning":
-			return lerpf(sunrise, noon, 0.45)
-		"solar_noon":
-			return noon
+			return lerpf(
+				float(profile["sunrise_hour"]),
+				float(profile["solar_noon_hour"]),
+				0.45)
+		"noon":
+			return float(profile["solar_noon_hour"])
 		"afternoon":
-			return lerpf(noon, sunset, 0.55)
+			return lerpf(
+				float(profile["solar_noon_hour"]),
+				float(profile["sunset_hour"]),
+				0.55)
 		"sunset":
-			return sunset
+			return float(profile["sunset_hour"])
+		"dusk":
+			return float(profile["sunset_hour"]) + 1.5
 		_:
 			return 1.0
 
@@ -1008,6 +1308,24 @@ func _refresh_weather_status() -> void:
 	]
 
 
+func _refresh_cloud_status() -> void:
+	if cloud_event_status_label == null:
+		return
+	var active := WorldWeather.get_active_weather_event("cloud")
+	if active.is_empty():
+		cloud_event_status_label.text = "云事件：无"
+		return
+	var spec: Dictionary = active.get("spec", {})
+	cloud_event_status_label.text = (
+		"云事件：%s · %s ｜ 剩余 %.2f 小时\n"
+		+ "状态：仅触发接口，云视觉暂未实现"
+	) % [
+		str(spec.get("size_name", spec.get("size", ""))),
+		str(spec.get("type_name", "云")),
+		float(active.get("remaining_hours", 0.0)),
+	]
+
+
 func _on_refresh_weather() -> void:
 	WorldWeather.refresh()
 	_refresh_all()
@@ -1016,7 +1334,9 @@ func _on_refresh_weather() -> void:
 func _on_reset_all() -> void:
 	DevEvents.reset_all()
 	WorldWeather.clear_force_overrides()
+	WorldWeather.clear_weather_events()
 	if spring_lighting != null:
+		spring_lighting._reset_cloud_shadow_tuning()
 		spring_lighting._reset_lighting_tuning()
 		spring_lighting.reset_player_surface_map_disables()
 	_refresh_all()

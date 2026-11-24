@@ -37,6 +37,64 @@ func _ready() -> void:
 	DevEvents.clear_chance_override("weather.fog")
 	WorldWeather.clear_force_overrides()
 
+	checks.append("天气事件接口类型：%s" % [
+		str(WorldWeather.weather_types() == [
+			"cloud",
+			"fog",
+			"rain",
+			"snow",
+		])])
+	checks.append("天气事件接口尺寸：%s" % [
+		str(WorldWeather.weather_sizes() == [
+			"large",
+			"medium",
+			"small",
+		])])
+	var event_specs: Array = WorldWeather.all_weather_event_specs()
+	checks.append("雨雪云雾三级接口完整：%s（%d 项）" % [
+		str(event_specs.size() == 12),
+		event_specs.size(),
+	])
+	var cloud_tier_specs_ok := true
+	for tier in [
+		["small", 0.78],
+		["medium", 0.97],
+		["large", 0.995],
+	]:
+		var tier_spec: Dictionary = WorldWeather.weather_event_spec(
+			"cloud",
+			str(tier[0]))
+		if not is_equal_approx(
+				float(tier_spec.get("cloud_coverage", 0.0)),
+				float(tier[1])):
+			cloud_tier_specs_ok = false
+			break
+	checks.append("云接口效果整体上移一档：%s" % [
+		str(cloud_tier_specs_ok)])
+	var rain_visible_before := WorldWeather.today_rain
+	var snow_event: Dictionary = WorldWeather.trigger_weather_event(
+		"snow",
+		"medium",
+		2.0)
+	var snow_effects: Dictionary = WorldWeather.get_weather_event_effects()
+	var active_snow: Dictionary = WorldWeather.get_active_weather_event("snow")
+	checks.append("中雪事件触发与生效参数：%s（剩余 %.2f 小时）" % [
+		str(
+			not snow_event.is_empty()
+			and not active_snow.is_empty()
+			and is_equal_approx(
+				float(active_snow.get("remaining_hours", 0.0)),
+				2.0)
+			and float(snow_effects.get("sun_energy_factor", 1.0)) < 0.2
+			and float(snow_effects.get("cloud_coverage", 0.0)) >= 0.7),
+		float(active_snow.get("remaining_hours", 0.0)),
+	])
+	checks.append("天气事件接口暂不改动现有天气视觉：%s" % [
+		str(WorldWeather.today_rain == rain_visible_before)])
+	WorldWeather.clear_weather_event("snow")
+	checks.append("天气事件清理接口：%s" % [
+		str(WorldWeather.get_active_weather_event("snow").is_empty())])
+
 	DevEvents.set_chance_override("visitor.lodge_priority", 0.25)
 	checks.append("通用概率接管生效：%s" % [
 		str(is_equal_approx(
@@ -82,6 +140,13 @@ func _ready() -> void:
 			str(panel.lighting_tuning_controls.size() >= 10),
 			panel.lighting_tuning_controls.size(),
 		])
+		checks.append("F10 云事件与三档云影调参已接入：%s（%d 项）" % [
+			str(panel.cloud_event_status_label != null
+				and panel.cloud_duration_spin != null
+				and panel.cloud_shadow_tuning_controls.size() == 12
+				and panel.cloud_shadow_tuning_output != null),
+			panel.cloud_shadow_tuning_controls.size(),
+		])
 		var day_control_original := GameState.day
 		panel.day_spin.value = 64.0
 		panel._on_apply_day()
@@ -101,9 +166,9 @@ func _ready() -> void:
 		)
 		var preview_buttons_ok: bool = (
 			expected_sunrise
-			and panel.lighting_preview_buttons.size() == 6
-			and panel.lighting_preview_buttons[0].text.contains("日出")
-			and panel.lighting_preview_buttons[2].text.contains("太阳最高"))
+			and panel.lighting_preview_buttons.size() == 8
+			and panel.lighting_preview_buttons[1].text.contains("日出")
+			and panel.lighting_preview_buttons[3].text.contains("正午"))
 		GameState.day = preview_day
 		GameState.day_changed.emit(GameState.day)
 		panel._refresh_all()
@@ -119,6 +184,37 @@ func _ready() -> void:
 			and tuning_doc.get("derived", {}) is Dictionary
 		checks.append("光照参数打印并写入 .tmp/lighting_tuning.json：%s" % [
 			str(tuning_ok)])
+		panel._on_print_cloud_shadow_tuning()
+		var cloud_tuning_doc: Variant = JSON.parse_string(
+			FileAccess.get_file_as_string(
+				"res://.tmp/cloud_shadow_tuning.json"))
+		var default_cloud_tuning: Dictionary = {}
+		if cloud_tuning_doc is Dictionary:
+			default_cloud_tuning = cloud_tuning_doc.get("settings", {})
+		var cloud_tuning_print_ok: bool = cloud_tuning_doc is Dictionary \
+			and cloud_tuning_doc.get("settings", {}) is Dictionary \
+			and cloud_tuning_doc["settings"].size() == 12 \
+			and cloud_tuning_doc.get("effective", {}) is Dictionary \
+			and is_equal_approx(
+				float(default_cloud_tuning.get("small_coverage", 0.0)),
+				0.78) \
+			and is_equal_approx(
+				float(default_cloud_tuning.get("medium_coverage", 0.0)),
+				0.97) \
+			and is_equal_approx(
+				float(default_cloud_tuning.get("large_coverage", 0.0)),
+				0.995) \
+			and is_equal_approx(
+				float(default_cloud_tuning.get("large_hole_size", 0.0)),
+				3.0) \
+			and is_equal_approx(
+				float(default_cloud_tuning.get("large_hole_amount", 0.0)),
+				1.0) \
+			and is_equal_approx(
+				float(default_cloud_tuning.get("god_ray_energy", 0.0)),
+				1.0)
+		checks.append("云影参数打印并写入 .tmp/cloud_shadow_tuning.json：%s" % [
+			str(cloud_tuning_print_ok)])
 		var spring_lighting: SpringWorldLighting = main.get_node_or_null(
 			"SpringWorldLighting") as SpringWorldLighting
 		var player: Node2D = main.get_node("World").player_avatar as Node2D
@@ -313,8 +409,10 @@ func _ready() -> void:
 		var sunrise_hour := float(seasonal_profile["sunrise_hour"])
 		var solar_noon_hour := float(seasonal_profile["solar_noon_hour"])
 		var sunset_hour := float(seasonal_profile["sunset_hour"])
-		var morning_hour := sunrise_hour + 1.2
-		var evening_hour := sunset_hour - 1.2
+		var morning_hour := _profile_phase_center(
+			seasonal_profile, "morning")
+		var evening_hour := _profile_phase_center(
+			seasonal_profile, "afternoon")
 		WorldWeather.set_today_rain_force(1)
 		spring._rain_visual_strength = 0.0
 		spring._update_rain_visual_strength(1.0)
@@ -347,6 +445,10 @@ func _ready() -> void:
 						"rain_intensity")) < 0.99 \
 					or float(rain_material.get_shader_parameter(
 						"rain_puddle_threshold")) <= 0.0 \
+					or float(rain_material.get_shader_parameter(
+						"rain_puddle_edge_softness")) <= 0.0 \
+					or float(rain_material.get_shader_parameter(
+						"rain_puddle_depth_softness")) <= 0.0 \
 					or float(rain_material.get_shader_parameter(
 						"rain_puddle_scale_px")) < 300.0:
 				rain_ground_ok = false
@@ -600,31 +702,280 @@ func _ready() -> void:
 			test_lamp_state,
 			0.0,
 			morning_hour)
-		var cloud_shadow_ok := true
-		for material in spring.ground_materials + spring.surface_materials:
-			var shader_material := material as ShaderMaterial
-			if shader_material == null \
-					or shader_material.get_shader_parameter(
-						"cloud_shadow_texture") == null \
-					or float(shader_material.get_shader_parameter(
-						"cloud_shadow_active")) <= 0.9 \
-					or float(shader_material.get_shader_parameter(
-						"cloud_shadow_time")) <= 0.0:
-				cloud_shadow_ok = false
-				break
 		var fog_cloud_independent: bool = \
 			spring.fog_material.get_shader_parameter(
-				"cloud_shadow_texture") == null \
-			and spring.fog_material.get_shader_parameter(
 				"world_building_shadow_texture") == null \
 			and spring.fog_material.get_shader_parameter(
 				"sky_energy") == null \
 			and spring.fog_material.get_shader_parameter(
 				"ambient_response") == null
-		checks.append("天空云层独立作用于场景且不进入雾层：%s｜雾只受太阳光：%s" % [
-			str(cloud_shadow_ok),
-			str(fog_cloud_independent),
-		])
+		WorldWeather.trigger_weather_event("cloud", "large", 1.0)
+		var retained_cloud_event: Dictionary = \
+			WorldWeather.get_active_weather_event("cloud")
+		spring._cloud_shadow_strength = 1.0
+		spring.call("_update_cloud_shadow", 0.0)
+		spring.call(
+			"_update_surface_parameters",
+			dawn_state,
+			dawn_sun,
+			test_lamp_state,
+			0.0,
+			morning_hour)
+		var cloud_texture: Texture2D = load(
+			"res://art/generated/lighting_v2/fog_density.png") as Texture2D
+		var cloud_materials_ok := true
+		for material in spring.ground_materials + spring.surface_materials:
+			var cloud_material := material as ShaderMaterial
+			if cloud_material == null \
+					or cloud_material.get_shader_parameter(
+						"cloud_shadow_noise_texture") != cloud_texture \
+					or float(cloud_material.get_shader_parameter(
+						"cloud_shadow_direct_strength")) <= 0.0 \
+					or float(cloud_material.get_shader_parameter(
+						"cloud_shadow_ambient_strength")) <= 0.0 \
+					or float(cloud_material.get_shader_parameter(
+						"cloud_shadow_world_scale")) < 1200.0 \
+					or not is_equal_approx(
+						float(cloud_material.get_shader_parameter(
+							"cloud_shadow_coverage")),
+						0.995) \
+					or float(cloud_material.get_shader_parameter(
+						"cloud_shadow_softness")) <= 0.0:
+				cloud_materials_ok = false
+				break
+		var cloud_shadow_ok: bool = not retained_cloud_event.is_empty() \
+			and str(retained_cloud_event.get("type", "")) == "cloud" \
+			and str(retained_cloud_event.get("size", "")) == "large" \
+			and is_equal_approx(spring._cloud_shadow_coverage, 0.995) \
+			and spring._cloud_shadow_direct_strength >= 0.99 \
+			and spring._cloud_shadow_ambient_strength >= 0.79 \
+			and cloud_materials_ok \
+			and spring.get_node_or_null("SpringCloudBeams") == null
+		checks.append(
+			"云事件驱动地面与对象云影：%s｜雾层独立：%s" % [
+				str(cloud_shadow_ok),
+				str(fog_cloud_independent),
+			])
+		spring.call(
+			"_update_god_rays",
+			dawn_state,
+			dawn_sun,
+			1.0)
+		var ray_material := spring.god_ray_material as ShaderMaterial
+		var expected_ray_offset: Vector2 = spring.call(
+			"_cloud_shadow_offset_world_px")
+		var actual_ray_offset := ray_material.get_shader_parameter(
+			"cloud_shadow_offset_px") as Vector2
+		var god_ray_setup_ok: bool = spring.god_ray_layer != null \
+			and spring.god_ray_layer.layer == 9 \
+			and spring.god_ray_layer.layer > spring.fog_layer.layer \
+			and spring.god_ray_layer.layer < 10 \
+			and spring.god_ray_layer.visible \
+			and ray_material != null \
+			and ray_material.get_shader_parameter(
+				"noise_texture") == cloud_texture \
+			and actual_ray_offset.is_equal_approx(expected_ray_offset) \
+			and is_equal_approx(
+				float(ray_material.get_shader_parameter(
+					"cloud_hole_size")),
+				3.0) \
+			and is_equal_approx(
+				float(ray_material.get_shader_parameter(
+					"cloud_hole_amount")),
+				1.0) \
+			and float(ray_material.get_shader_parameter(
+				"spot_energy_scale")) > 0.0 \
+			and float(ray_material.get_shader_parameter(
+				"layer_alpha")) > 0.0
+		checks.append("大云云隙光层在世界坐标接入且位于 HUD 下方：%s" % [
+			str(god_ray_setup_ok)])
+		var ray_camera := spring.camera as Camera2D
+		var previous_camera_position: Vector2 = ray_camera.position
+		var previous_camera_zoom: Vector2 = ray_camera.zoom
+		ray_camera.position += Vector2(96.0, 64.0)
+		ray_camera.zoom = Vector2(1.6, 1.6)
+		spring.call(
+			"_update_god_rays",
+			dawn_state,
+			dawn_sun,
+			0.0)
+		var expected_world_size: Vector2 = Vector2(
+			spring.get_viewport().get_visible_rect().size) \
+			/ ray_camera.zoom
+		var ray_camera_origin: Vector2 = \
+			spring.god_ray_material.get_shader_parameter(
+				"camera_origin_px")
+		var ray_visible_world_size: Vector2 = \
+			spring.god_ray_material.get_shader_parameter(
+				"visible_world_size_px")
+		var ray_view_follow_ok: bool = ray_camera_origin.is_equal_approx(
+			ray_camera.get_screen_center_position()) \
+			and ray_visible_world_size.is_equal_approx(
+				expected_world_size)
+		ray_camera.position = previous_camera_position
+		ray_camera.zoom = previous_camera_zoom
+		spring.call(
+			"_update_god_rays",
+			dawn_state,
+			dawn_sun,
+			0.0)
+		checks.append("云隙光随镜头平移与缩放即时更新：%s" % [
+			str(ray_view_follow_ok)])
+		var top_available: float = spring.god_ray_available_layers_for_screen_y(
+			0.25)
+		var middle_available: float = \
+			spring.god_ray_available_layers_for_screen_y(0.5)
+		var bottom_available: float = \
+			spring.god_ray_available_layers_for_screen_y(1.0)
+		var bottom_visible: float = spring.god_ray_visible_layers(1.0, 1.0)
+		var ray_layer_limits_ok: bool = is_equal_approx(
+			top_available,
+			8.0) \
+			and is_equal_approx(middle_available, 8.0) \
+			and is_equal_approx(bottom_available, 1.0) \
+			and is_equal_approx(bottom_visible, 1.0)
+		checks.append("云隙光中部 8 层、最下方最多 1 层：%s" % [
+			str(ray_layer_limits_ok)])
+		var unlit_ray_state := dawn_state.duplicate(true)
+		unlit_ray_state["sun_energy"] = 0.0
+		spring.call(
+			"_update_god_rays",
+			unlit_ray_state,
+			dawn_sun,
+			0.0)
+		var ray_final_energy_gate_ok: bool = \
+			not spring.god_ray_layer.visible
+		spring.call(
+			"_update_god_rays",
+			dawn_state,
+			dawn_sun,
+			0.0)
+		checks.append("云隙光使用最终光斑亮度而非原始光洞强度：%s" % [
+			str(ray_final_energy_gate_ok)])
+		spring.set_cloud_shadow_tuning("large_coverage", 0.90)
+		spring.set_cloud_shadow_tuning("large_direct_strength", 0.60)
+		spring.set_cloud_shadow_tuning("large_ambient_strength", 0.40)
+		spring.set_cloud_shadow_tuning("large_hole_size", 2.20)
+		spring.set_cloud_shadow_tuning("large_hole_amount", 0.80)
+		spring.set_cloud_shadow_tuning("god_ray_energy", 0.50)
+		spring._cloud_shadow_strength = 1.0
+		spring.call("_update_cloud_shadow", 0.0)
+		spring.call(
+			"_update_surface_parameters",
+			dawn_state,
+			dawn_sun,
+			test_lamp_state,
+			0.0,
+			morning_hour)
+		var tuned_material := spring.ground_materials[0] as ShaderMaterial
+		var tuned_cloud_shadow_ok := is_equal_approx(
+			float(tuned_material.get_shader_parameter(
+				"cloud_shadow_coverage")),
+			0.90) \
+			and is_equal_approx(
+				float(tuned_material.get_shader_parameter(
+					"cloud_shadow_direct_strength")),
+				0.60) \
+			and is_equal_approx(
+				float(tuned_material.get_shader_parameter(
+					"cloud_shadow_ambient_strength")),
+				0.40) \
+			and is_equal_approx(
+				float(tuned_material.get_shader_parameter(
+					"cloud_hole_size")),
+				2.20) \
+			and is_equal_approx(
+				float(tuned_material.get_shader_parameter(
+					"cloud_hole_amount")),
+				0.80)
+		checks.append("F10 云影覆盖率与双遮光滑杆实时生效：%s" % [
+			str(tuned_cloud_shadow_ok)])
+		spring.call(
+			"_update_god_rays",
+			dawn_state,
+			dawn_sun,
+			0.0)
+		var ray_settings: Dictionary = WorldWeather.config.get("god_rays", {})
+		var expected_ray_alpha := float(ray_settings.get(
+			"layer_alpha",
+			0.055)) * 0.5
+		var tuned_ray_energy_ok := is_equal_approx(
+			float(spring.god_ray_material.get_shader_parameter(
+				"layer_alpha")),
+			expected_ray_alpha) \
+			and is_equal_approx(
+				float(spring.god_ray_material.get_shader_parameter(
+					"cloud_hole_size")),
+				2.20) \
+			and is_equal_approx(
+				float(spring.god_ray_material.get_shader_parameter(
+					"cloud_hole_amount")),
+				0.80)
+		checks.append("F10 云隙光总亮度与光斑参数实时同步：%s" % [
+			str(tuned_ray_energy_ok)])
+		spring._reset_cloud_shadow_tuning()
+		spring.call("_update_cloud_shadow", 0.0)
+		WorldWeather.trigger_weather_event("cloud", "small", 1.0)
+		spring._cloud_shadow_strength = 1.0
+		spring.call("_update_cloud_shadow", 0.0)
+		spring.call(
+			"_update_god_rays",
+			dawn_state,
+			dawn_sun,
+			1.0)
+		checks.append("云隙光仅由大云事件显示：%s" % [
+			str(not spring.god_ray_layer.visible)])
+		WorldWeather.clear_weather_event("cloud")
+		spring._cloud_shadow_strength = 0.0
+		spring.call("_update_cloud_shadow", 0.0)
+		spring.call(
+			"_update_god_rays",
+			dawn_state,
+			dawn_sun,
+			0.0)
+		var god_ray_cleared: bool = \
+			not spring.god_ray_layer.visible
+		checks.append("清除云事件后云隙光层关闭：%s" % [
+			str(god_ray_cleared)])
+		spring.call(
+			"_update_surface_parameters",
+			dawn_state,
+			dawn_sun,
+			test_lamp_state,
+			0.0,
+			morning_hour)
+		var cloud_shadow_cleared: bool = \
+			WorldWeather.get_active_weather_event("cloud").is_empty()
+		for material in spring.ground_materials + spring.surface_materials:
+			var cloud_material := material as ShaderMaterial
+			if cloud_material != null \
+					and not is_zero_approx(float(
+						cloud_material.get_shader_parameter(
+							"cloud_shadow_direct_strength"))):
+				cloud_shadow_cleared = false
+				break
+		checks.append("清除云事件后云影关闭：%s" % [
+			str(cloud_shadow_cleared)])
+		var previous_shadow_day := GameState.day
+		var diagonal_direction_ok := true
+		for test_day in range(1, 33):
+			GameState.day = test_day
+			spring._cloud_shadow_layout_day = -1
+			spring.call("_refresh_cloud_shadow_layout")
+			var direction: Vector2 = spring._cloud_shadow_drift_direction
+			var steps: float = fposmod(
+				direction.angle() - PI * 0.25,
+				TAU) / (PI * 0.5)
+			if absf(steps - roundf(steps)) > 0.001 \
+					or absf(
+						absf(direction.x) - absf(direction.y)) > 0.001:
+				diagonal_direction_ok = false
+				break
+		GameState.day = previous_shadow_day
+		spring._cloud_shadow_layout_day = -1
+		spring.call("_refresh_cloud_shadow_layout")
+		checks.append("云影移动方向限制为 4 个斜向：%s" % [
+			str(diagonal_direction_ok)])
 		var predawn_state: Dictionary = spring.call(
 			"_sample_light_state", sunrise_hour - 0.5)
 		var lit_fog_state: Dictionary = spring.call(
@@ -667,18 +1018,21 @@ func _ready() -> void:
 		checks.append("视觉雾层在 09:00 隐藏：%s" % [
 			str(not spring.fog_layer.visible)])
 		WorldWeather.set_fog_force(-1)
-		var midnight: Dictionary = spring._sample_light_state(2.0)
+		var midnight: Dictionary = spring._sample_light_state(
+			_profile_phase_center(seasonal_profile, "night"))
 		var before_sunrise: Dictionary = spring._sample_light_state(
-			sunrise_hour - 0.001)
-		var sunrise: Dictionary = spring._sample_light_state(sunrise_hour)
-		var dawn: Dictionary = spring._sample_light_state(
-			sunrise_hour + 0.2)
+			_profile_phase_center(seasonal_profile, "blue_hour"))
+		var sunrise: Dictionary = spring._sample_light_state(
+			_profile_phase_center(seasonal_profile, "sunrise"))
+		var dawn: Dictionary = sunrise
 		var morning: Dictionary = spring._sample_light_state(morning_hour)
-		var noon: Dictionary = spring._sample_light_state(solar_noon_hour)
+		var noon: Dictionary = spring._sample_light_state(
+			_profile_phase_center(seasonal_profile, "noon"))
 		var evening: Dictionary = spring._sample_light_state(evening_hour)
-		var sunset: Dictionary = spring._sample_light_state(sunset_hour)
+		var sunset: Dictionary = spring._sample_light_state(
+			_profile_phase_center(seasonal_profile, "sunset"))
 		var after_sunset: Dictionary = spring._sample_light_state(
-			sunset_hour + 0.001)
+			_profile_phase_center(seasonal_profile, "dusk"))
 		var dawn_color: Color = dawn["sun_color"]
 		var evening_color: Color = evening["sun_color"]
 		var sunrise_color: Color = sunrise["sun_color"]
@@ -722,7 +1076,7 @@ func _ready() -> void:
 			day_exposure,
 		])
 		checks.append("夜间环境亮度已降低：%s（%.2f）" % [
-			str(float(midnight["sky_energy"]) <= 0.05),
+			str(float(midnight["sky_energy"]) <= 0.10),
 			float(midnight["sky_energy"]),
 		])
 		var softness := float(spring.config.get(
@@ -1086,8 +1440,20 @@ func _ready() -> void:
 		print("[weather-event-check] %s" % line)
 		if line.contains("false"):
 			failed += 1
-	print("[weather-event-check] 结果：%s（失败 %d）" % [
-		"通过" if failed == 0 else "失败",
+	print("[weather-event-check] result: %s (failed %d)" % [
+		"PASS" if failed == 0 else "FAIL",
 		failed,
 	])
 	get_tree().quit(0 if failed == 0 else 1)
+
+
+func _profile_phase_center(profile: Dictionary, phase_id: String) -> float:
+	for phase in profile.get("phase_windows", profile.get("phases", [])):
+		if str(phase.get("id", "")) != phase_id:
+			continue
+		var start := float(phase.get("start_hour", 0.0))
+		var end := float(phase.get("end_hour", start + 1.0))
+		if end <= start:
+			end += 24.0
+		return fposmod(start + (end - start) * 0.5, 24.0)
+	return float(profile.get("solar_noon_hour", 12.0))

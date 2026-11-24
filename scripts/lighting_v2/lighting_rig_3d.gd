@@ -21,6 +21,7 @@ var player_facing_yaw := 0.0
 var player_proxy_resource_path := ""
 var player_contact_proxy: MeshInstance3D
 var actor_proxies: Dictionary = {}
+var owner_proxies: Dictionary = {}
 var pine_shadow_mesh: QuadMesh
 
 
@@ -179,7 +180,8 @@ func add_building_proxy(
 		include_in_lamp_pass: bool = true,
 		include_in_building_mask: bool = true,
 		proxy_layers: int = 1,
-		lamp_proxy_layers: int = 1) -> bool:
+		lamp_proxy_layers: int = 1,
+		owner_key: Variant = null) -> bool:
 	if resource_path == "" or not ResourceLoader.exists(resource_path):
 		push_warning("[LightingRig3D] Missing shadow proxy: %s" % resource_path)
 		return false
@@ -211,12 +213,14 @@ func add_building_proxy(
 		_set_shadow_only(proxy)
 		_set_instance_layers(proxy, int(pass_entry["layers"]))
 		(pass_data["proxy_root"] as Node3D).add_child(proxy)
+		_register_owner_proxy(owner_key, proxy)
 	return true
 
 
 func add_street_lamp_pole_proxy(
 		center: Vector2,
-		_lamp_proxy_layers: int) -> void:
+		_lamp_proxy_layers: int,
+		owner_key: Variant = null) -> void:
 	var pass_layers: Array = [
 		{
 			"pass": sun_pass,
@@ -256,6 +260,7 @@ func add_street_lamp_pole_proxy(
 		_set_instance_layers(proxy, int(pass_entry["layers"]))
 		((pass_entry["pass"] as Dictionary)["proxy_root"] as Node3D).add_child(
 			proxy)
+		_register_owner_proxy(owner_key, proxy)
 
 
 func add_pine_proxy(foot_position: Vector2, height_px: float = 124.0) -> void:
@@ -507,10 +512,24 @@ func remove_actor_proxy(actor_id: Variant) -> void:
 	actor_proxies.erase(actor_id)
 
 
+func remove_owner_proxies(owner_key: Variant) -> void:
+	if owner_key == null or not owner_proxies.has(owner_key):
+		return
+	for proxy in owner_proxies.get(owner_key, []):
+		if proxy == null or not is_instance_valid(proxy):
+			continue
+		var parent := (proxy as Node).get_parent()
+		if parent != null:
+			parent.remove_child(proxy)
+		proxy.queue_free()
+	owner_proxies.erase(owner_key)
+
+
 func clear_proxies() -> void:
 	player_proxies.clear()
 	player_contact_proxy = null
 	actor_proxies.clear()
+	owner_proxies.clear()
 	var passes: Array = [sun_pass, detail_sun_pass, building_sun_pass]
 	passes.append_array(lamp_passes)
 	for pass_data in passes:
@@ -700,3 +719,11 @@ func _set_instance_layers(node: Node, layers: int) -> void:
 		(node as GeometryInstance3D).layers = layers
 	for child in node.get_children():
 		_set_instance_layers(child, layers)
+
+
+func _register_owner_proxy(owner_key: Variant, proxy: Node3D) -> void:
+	if owner_key == null:
+		return
+	var proxies: Array = owner_proxies.get(owner_key, [])
+	proxies.append(proxy)
+	owner_proxies[owner_key] = proxies

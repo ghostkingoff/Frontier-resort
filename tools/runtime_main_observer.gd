@@ -20,6 +20,7 @@ var hold_mode := false
 var hold_hour := 12.0
 var hold_fog := false
 var hold_rain := false
+var hold_cloud := ""
 var hold_animate := false
 var hold_speed := GameClock.Speed.X1
 var hold_game_day := -1
@@ -87,6 +88,8 @@ func _ready() -> void:
 		_create_capture_marker()
 		print("[runtime-main] Windows 系统截图停留模式：%s" %
 			_hour_display(hold_hour))
+		print("[runtime-main] 云事件：%s" % (
+			hold_cloud if hold_cloud != "" else "关闭"))
 
 
 func _process(_delta: float) -> void:
@@ -230,6 +233,12 @@ func _apply_schedule() -> void:
 	WorldWeather.set_fog_force(1 if bool(entry["fog"]) else -1)
 	WorldWeather.set_today_rain_force(
 		1 if bool(entry.get("rain", false)) else -1)
+	WorldWeather.clear_weather_event("cloud")
+	if hold_cloud in ["small", "medium", "large"]:
+		WorldWeather.trigger_weather_event(
+			"cloud",
+			hold_cloud,
+			24.0)
 	var hour := float(entry["hour"])
 	var target := hour if hour >= GameClock.DAY_START_HOUR else hour + 24.0
 	GameClock.progress = clampf(
@@ -293,6 +302,10 @@ func _parse_capture_args() -> void:
 			hold_fog = arg.trim_prefix("--hold-fog=") == "1"
 		elif arg.begins_with("--hold-rain="):
 			hold_rain = arg.trim_prefix("--hold-rain=") == "1"
+		elif arg.begins_with("--hold-cloud="):
+			var cloud_size := arg.trim_prefix("--hold-cloud=")
+			if cloud_size in ["small", "medium", "large"]:
+				hold_cloud = cloud_size
 		elif arg == "--rain":
 			hold_rain = true
 		elif arg == "--hold-animate":
@@ -372,6 +385,8 @@ func _create_capture_marker() -> void:
 		_hour_display(hold_hour),
 		OS.get_process_id(),
 	]
+	if hold_cloud != "":
+		capture_marker.text += "  CLOUD %s" % hold_cloud.to_upper()
 	capture_marker.add_theme_font_size_override("font_size", 18)
 	capture_marker.add_theme_color_override("font_color", Color(1.0, 0.94, 0.74))
 	capture_marker.add_theme_color_override(
@@ -388,6 +403,7 @@ func _write_hold_ready(viewport_path: String) -> void:
 		"pid": OS.get_process_id(),
 		"hour": hold_hour,
 		"fog": hold_fog,
+		"cloud": hold_cloud,
 		"viewport_capture": viewport_path,
 		"config_md5": FileAccess.get_md5(CONFIG_PATH),
 		"atmosphere_shader_md5": FileAccess.get_md5(ATMOSPHERE_SHADER_PATH),
@@ -420,16 +436,6 @@ func _capture_shadow_map() -> void:
 					str(wall_material.get_shader_parameter(
 						"building_sun_shadow_texture") != null),
 				])
-			print("[runtime-main] 世界遮蔽 active=%s cloud_time=%.2f cloud=%s building=%s" % [
-				str(wall_material.get_shader_parameter(
-					"cloud_shadow_active")),
-				float(wall_material.get_shader_parameter(
-					"cloud_shadow_time")),
-				str(wall_material.get_shader_parameter(
-					"cloud_shadow_texture") != null),
-				str(wall_material.get_shader_parameter(
-						"cloud_shadow_texture") != null),
-			])
 			break
 	var player_node := world.get("player_avatar") as Node2D
 	if player_node != null and camera != null:
@@ -460,15 +466,6 @@ func _capture_shadow_map() -> void:
 			var building_shadow_path := "%s/building_sun_shadow_map.png" % output_dir
 			building_image.save_png(building_shadow_path)
 			print("[runtime-main] 建筑太阳阴影图 -> %s" % building_shadow_path)
-	var world_shadow_texture: Texture2D = \
-		spring_lighting.ground_materials[0].get_shader_parameter(
-			"cloud_shadow_texture")
-	if world_shadow_texture != null:
-		var world_shadow_image := world_shadow_texture.get_image()
-		if world_shadow_image != null and not world_shadow_image.is_empty():
-			var world_shadow_path := "%s/cloud_shadow_texture.png" % output_dir
-			world_shadow_image.save_png(world_shadow_path)
-			print("[runtime-main] 世界太阳阴影图 -> %s" % world_shadow_path)
 	var player_shadow_texture := spring_lighting.rig.get_player_sun_texture()
 	if player_shadow_texture != null:
 		var player_shadow_image := player_shadow_texture.get_image()

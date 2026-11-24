@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "sizes": {
+    "small": {"rank": 1, "name": "小"},
+    "medium": {"rank": 2, "name": "中"},
+    "large": {"rank": 3, "name": "大"}
+  },
+  "types": {
+    "rain": {
+      "name": "雨",
+      "small": {
+        "duration_hours": [0.5, 3.0],
+        "sky_energy_factor": 0.68,
+        "sun_energy_factor": 0.30,
+        "exposure_factor": 0.86,
+        "shadow_alpha_factor": 0.35,
+        "cloud_coverage": 0.58,
+        "intensity": 0.33
+      },
+      "medium": {
+        "duration_hours": [1.0, 6.0],
+        "sky_energy_factor": 0.58,
+        "sun_energy_factor": 0.18,
+        "exposure_factor": 0.82,
+        "shadow_alpha_factor": 0.26,
+        "cloud_coverage": 0.72,
+        "intensity": 0.66
+      },
+      "large": {
+        "duration_hours": [3.0, 12.0],
+        "sky_energy_factor": 0.52,
+        "sun_energy_factor": 0.12,
+        "exposure_factor": 0.78,
+        "shadow_alpha_factor": 0.18,
+        "cloud_coverage": 0.88,
+        "intensity": 1.0
+      }
+    },
+    "snow": {
+      "name": "雪",
+      "small": {
+        "duration_hours": [1.0, 4.0],
+        "sky_energy_factor": 0.80,
+        "sun_energy_factor": 0.18,
+        "exposure_factor": 0.92,
+        "shadow_alpha_factor": 0.22,
+        "cloud_coverage": 0.64,
+        "intensity": 0.33
+      },
+      "medium": {
+        "duration_hours": [2.0, 8.0],
+        "sky_energy_factor": 0.72,
+        "sun_energy_factor": 0.12,
+        "exposure_factor": 0.86,
+        "shadow_alpha_factor": 0.15,
+        "cloud_coverage": 0.78,
+        "intensity": 0.66
+      },
+      "large": {
+        "duration_hours": [4.0, 18.0],
+        "sky_energy_factor": 0.66,
+        "sun_energy_factor": 0.06,
+        "exposure_factor": 0.82,
+        "shadow_alpha_factor": 0.08,
+        "cloud_coverage": 0.92,
+        "intensity": 1.0
+      }
+    },
+    "fog": {
+      "name": "雾",
+      "small": {
+        "duration_hours": [1.0, 3.0],
+        "sky_energy_factor": 0.85,
+        "sun_energy_factor": 0.85,
+        "exposure_factor": 0.94,
+        "shadow_alpha_factor": 0.55,
+        "fog_density": 0.33,
+        "intensity": 0.33
+      },
+      "medium": {
+        "duration_hours": [2.0, 6.0],
+        "sky_energy_factor": 0.72,
+        "sun_energy_factor": 0.62,
+        "exposure_factor": 0.88,
+        "shadow_alpha_factor": 0.35,
+        "fog_density": 0.66,
+        "intensity": 0.66
+      },
+      "large": {
+        "duration_hours": [4.0, 12.0],
+        "sky_energy_factor": 0.58,
+        "sun_energy_factor": 0.35,
+        "exposure_factor": 0.80,
+        "shadow_alpha_factor": 0.12,
+        "fog_density": 1.0,
+        "intensity": 1.0
+      }
+    },
+    "cloud": {
+      "name": "云",
+      "small": {
+        "duration_hours": [2.0, 6.0],
+        "sky_energy_factor": 0.92,
+        "sun_energy_factor": 0.75,
+        "exposure_factor": 0.96,
+        "shadow_alpha_factor": 0.75,
+        "cloud_coverage": 0.78,
+        "intensity": 0.33
+      },
+      "medium": {
+        "duration_hours": [4.0, 12.0],
+        "sky_energy_factor": 0.82,
+        "sun_energy_factor": 0.50,
+        "exposure_factor": 0.90,
+        "shadow_alpha_factor": 0.55,
+        "cloud_coverage": 0.97,
+        "cloud_shadow_direct_scale": 1.18,
+        "cloud_shadow_ambient_scale": 1.65,
+        "intensity": 0.66
+      },
+      "large": {
+        "duration_hours": [6.0, 24.0],
+        "sky_energy_factor": 0.72,
+        "sun_energy_factor": 0.25,
+        "exposure_factor": 0.84,
+        "shadow_alpha_factor": 0.30,
+        "cloud_coverage": 0.995,
+        "cloud_shadow_direct_scale": 1.35,
+        "cloud_shadow_ambient_scale": 1.90,
+        "intensity": 1.0
+      }
+    }
+  },
+  "season_event_weights": {
+    "spring": {"rain": [0.78, 0.18, 0.04], "snow": [0.19, 0.07, 0.02], "fog": [0.5, 0.35, 0.15], "cloud": [0.5, 0.35, 0.15]},
+    "summer": {"rain": [0.58, 0.32, 0.10], "snow": [1.0, 0.0, 0.0], "fog": [0.55, 0.32, 0.13], "cloud": [0.45, 0.38, 0.17]},
+    "autumn": {"rain": [0.65, 0.28, 0.07], "snow": [0.90, 0.10, 0.0], "fog": [0.45, 0.35, 0.20], "cloud": [0.45, 0.38, 0.17]},
+    "winter": {"rain": [0.90, 0.09, 0.01], "snow": [0.54, 0.27, 0.19], "fog": [0.40, 0.35, 0.25], "cloud": [0.38, 0.38, 0.24]}
+  }
+}

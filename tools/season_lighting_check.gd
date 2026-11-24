@@ -16,12 +16,16 @@ func _ready() -> void:
 	}
 	var profiles := {}
 	var states := {}
+	var night_states := {}
 	for season_id in representative_days:
 		GameState.day = int(representative_days[season_id])
 		var profile := helper.current_profile()
 		profiles[season_id] = profile
 		states[season_id] = helper.sample_light_state(
 			float(profile["solar_noon_hour"]),
+			profile)
+		night_states[season_id] = helper.sample_light_state(
+			_phase_center(profile, "night"),
 			profile)
 		checks.append("%s：日出 %.3f ｜ 正午 %.3f ｜ 日落 %.3f ｜ 高度 %.1f° ｜ 云 %.2f" % [
 			str(profile["season_name"]),
@@ -31,6 +35,50 @@ func _ready() -> void:
 			float(profile["noon_elevation_degrees"]),
 			float(profile["cloud_coverage"]),
 		])
+	var expected_phase_ids := [
+		"night",
+		"blue_hour",
+		"sunrise",
+		"morning",
+		"noon",
+		"afternoon",
+		"sunset",
+		"dusk",
+	]
+	var phase_tables_ok := true
+	for season_id in profiles:
+		var profile: Dictionary = profiles[season_id]
+		var windows: Array = profile.get("phase_windows", [])
+		if windows.size() != 8:
+			phase_tables_ok = false
+			break
+		for index in range(expected_phase_ids.size()):
+			if str(windows[index].get("id", "")) != expected_phase_ids[index]:
+				phase_tables_ok = false
+				break
+		if not phase_tables_ok:
+			break
+	checks.append("四季八阶段光照表：%s" % [str(phase_tables_ok)])
+	var night_ambient_ok := true
+	var night_ambient_summary: Array[String] = []
+	for season_id in night_states:
+		var night_state: Dictionary = night_states[season_id]
+		var night_sky := float(night_state["sky_energy"])
+		var night_bounce := float(night_state["bounce_energy"])
+		night_ambient_ok = night_ambient_ok \
+			and night_sky <= 0.003 \
+			and night_bounce <= 0.003 \
+			and is_zero_approx(float(night_state["sun_energy"]))
+		night_ambient_summary.append(
+			"%s %.3f/%.3f" % [
+				str(profiles[season_id]["season_name"]),
+				night_sky,
+				night_bounce,
+			])
+	checks.append("四季夜间环境天光与反弹光接近 0：%s（%s）" % [
+		str(night_ambient_ok),
+		" / ".join(night_ambient_summary),
+	])
 
 	var summer_profile: Dictionary = profiles["summer"]
 	var autumn_profile: Dictionary = profiles["autumn"]
@@ -119,3 +167,15 @@ func _ready() -> void:
 		failed,
 	])
 	get_tree().quit(0 if failed == 0 else 1)
+
+
+func _phase_center(profile: Dictionary, phase_id: String) -> float:
+	for phase in profile.get("phase_windows", []):
+		if str(phase.get("id", "")) != phase_id:
+			continue
+		var start := float(phase.get("start_hour", 0.0))
+		var end := float(phase.get("end_hour", start + 1.0))
+		if end <= start:
+			end += 24.0
+		return fposmod(start + (end - start) * 0.5, 24.0)
+	return 1.0
