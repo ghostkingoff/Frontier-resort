@@ -5,37 +5,114 @@ func _ready() -> void:
 	var checks: Array[String] = []
 	DevEvents.reset_all()
 	WorldWeather.clear_force_overrides()
-	WorldWeather.set_fog_force(1)
-	var at_start := WorldWeather.fog_strength(6.0)
-	var at_mid_fade_in := WorldWeather.fog_strength(6.25)
-	var at_full := WorldWeather.fog_strength(7.0)
-	var at_mid_fade_out := WorldWeather.fog_strength(8.75)
-	var at_end := WorldWeather.fog_strength(9.0)
-	checks.append("06:00 雾逻辑强度为 0：%s（%.3f）" % [
-		str(is_zero_approx(at_start)), at_start])
-	checks.append("06:15 雾逻辑淡入一半：%s（%.3f）" % [
-		str(absf(at_mid_fade_in - 0.5) < 0.02), at_mid_fade_in])
-	checks.append("07:00 雾逻辑满强度：%s（%.3f）" % [
-		str(is_equal_approx(at_full, 1.0)), at_full])
-	checks.append("08:45 雾逻辑淡出一半：%s（%.3f）" % [
-		str(at_mid_fade_out > 0.1 and at_mid_fade_out < 0.95),
-		at_mid_fade_out])
-	checks.append("09:00 雾逻辑结束：%s（%.3f）" % [
-		str(is_zero_approx(at_end)), at_end])
+	WorldWeather.clear_weather_events()
+	WorldWeather.trigger_weather_event("fog", "small", 4.0)
+	WorldWeather.set_weather_event_remaining_hours("fog", 4.0)
+	var fade_in_start := WorldWeather.weather_event_envelope("fog")
+	WorldWeather.set_weather_event_remaining_hours("fog", 3.625)
+	var fade_in_mid := WorldWeather.weather_event_envelope("fog")
+	WorldWeather.set_weather_event_remaining_hours("fog", 1.5)
+	var fade_full := WorldWeather.weather_event_envelope("fog")
+	var all_day_strength := WorldWeather.fog_strength(20.0)
+	WorldWeather.set_weather_event_remaining_hours("fog", 0.375)
+	var fade_out_mid := WorldWeather.weather_event_envelope("fog")
+	WorldWeather.set_weather_event_remaining_hours("fog", 0.0)
+	checks.append("雾事件独立淡入：%s（%.3f → %.3f → %.3f）" % [
+		str(
+			is_zero_approx(fade_in_start)
+			and absf(fade_in_mid - 0.5) < 0.03
+			and is_equal_approx(fade_full, 1.0)),
+		fade_in_start,
+		fade_in_mid,
+		fade_full,
+	])
+	checks.append("雾事件淡出且不依赖清晨时段：%s（%.3f / %.3f）" % [
+		str(
+			absf(fade_out_mid - 0.5) < 0.03
+			and WorldWeather.get_active_weather_event("fog").is_empty()
+			and all_day_strength > 0.30
+			and is_zero_approx(WorldWeather.fog_strength(20.0))),
+		fade_out_mid,
+		all_day_strength,
+	])
 
 	WorldWeather.clear_force_overrides()
 	WorldWeather.set_yesterday_rain_force(0)
+	DevEvents.set_chance_override("weather.rain", 0.0)
 	DevEvents.set_chance_override("weather.fog", 1.0)
+	DevEvents.set_chance_override("weather.cloud", 0.0)
 	WorldWeather.refresh()
-	checks.append("昨日不下雨也可独立起雾：%s" % [
-		str(WorldWeather.fog_event)])
-	WorldWeather.set_yesterday_rain_force(1)
-	DevEvents.set_chance_override("weather.fog", 0.0)
-	WorldWeather.refresh()
-	checks.append("昨日下雨也不会强制起雾：%s" % [
-		str(not WorldWeather.fog_event)])
+	WorldWeather.call("_rebuild_auto_weather_schedule")
+	var scheduled_fog := WorldWeather.get_scheduled_weather_events()
+	checks.append("雨雾云自动事件独立判定：%s" % [
+		str(
+			WorldWeather.fog_event
+			and not WorldWeather.today_rain
+			and not WorldWeather.cloud_event
+			and scheduled_fog.has("fog")
+			and not scheduled_fog.has("rain")
+			and not scheduled_fog.has("cloud"))])
+	DevEvents.clear_chance_override("weather.rain")
 	DevEvents.clear_chance_override("weather.fog")
+	DevEvents.clear_chance_override("weather.cloud")
 	WorldWeather.clear_force_overrides()
+	var schedule_test_day := GameState.day
+	DevEvents.set_chance_override("weather.rain", 1.0)
+	DevEvents.set_chance_override("weather.fog", 1.0)
+	DevEvents.set_chance_override("weather.cloud", 1.0)
+	var schedule_spread_ok := true
+	var minimum_start := 1.0
+	var maximum_start := 0.0
+	for test_day in range(1, 9):
+		GameState.day = test_day
+		WorldWeather.refresh()
+		WorldWeather.call("_rebuild_auto_weather_schedule")
+		var schedule_test: Dictionary = \
+			WorldWeather.get_scheduled_weather_events()
+		if not schedule_test.has("rain") \
+				or not schedule_test.has("fog") \
+				or not schedule_test.has("cloud"):
+			schedule_spread_ok = false
+			break
+		var start_progress := float(
+			(schedule_test["rain"] as Dictionary).get(
+				"start_progress",
+				0.0))
+		minimum_start = minf(minimum_start, start_progress)
+		maximum_start = maxf(maximum_start, start_progress)
+	GameState.day = schedule_test_day
+	DevEvents.clear_chance_override("weather.rain")
+	DevEvents.clear_chance_override("weather.fog")
+	DevEvents.clear_chance_override("weather.cloud")
+	WorldWeather.refresh()
+	WorldWeather.call("_rebuild_auto_weather_schedule")
+	checks.append("雨雾云独立计划可在全天随机时段开始：%s（%.2f—%.2f）" % [
+		str(schedule_spread_ok and maximum_start - minimum_start > 0.25),
+		minimum_start,
+		maximum_start,
+	])
+	WorldWeather.clear_weather_events()
+	WorldWeather._scheduled_weather_events = {
+		"rain": {
+			"type": "rain", "size": "small",
+			"duration_hours": 2.0, "start_progress": 0.0, "fired": false,
+		},
+		"fog": {
+			"type": "fog", "size": "small",
+			"duration_hours": 2.0, "start_progress": 0.0, "fired": false,
+		},
+		"cloud": {
+			"type": "cloud", "size": "small",
+			"duration_hours": 2.0, "start_progress": 0.0, "fired": false,
+		},
+	}
+	WorldWeather.call("_start_scheduled_weather_events")
+	var concurrent_events := WorldWeather.get_active_weather_events()
+	checks.append("雨雾云自动事件可独立同时启动：%s" % [
+		str(concurrent_events.has("rain")
+			and concurrent_events.has("fog")
+			and concurrent_events.has("cloud"))])
+	WorldWeather.clear_weather_events()
 
 	checks.append("天气事件接口类型：%s" % [
 		str(WorldWeather.weather_types() == [
@@ -55,6 +132,18 @@ func _ready() -> void:
 		str(event_specs.size() == 12),
 		event_specs.size(),
 	])
+	var event_fades_ok := true
+	for type_id in ["rain", "fog", "cloud"]:
+		for size_id in ["small", "medium", "large"]:
+			var spec := WorldWeather.weather_event_spec(type_id, size_id)
+			if float(spec.get("fade_in_hours", 0.0)) <= 0.0 \
+					or float(spec.get("fade_out_hours", 0.0)) <= 0.0:
+				event_fades_ok = false
+				break
+		if not event_fades_ok:
+			break
+	checks.append("雨雾云事件均配置淡入淡出：%s" % [
+		str(event_fades_ok)])
 	var cloud_tier_specs_ok := true
 	for tier in [
 		["small", 0.78],
@@ -76,6 +165,7 @@ func _ready() -> void:
 		"snow",
 		"medium",
 		2.0)
+	WorldWeather.set_weather_event_remaining_hours("snow", 1.0)
 	var snow_effects: Dictionary = WorldWeather.get_weather_event_effects()
 	var active_snow: Dictionary = WorldWeather.get_active_weather_event("snow")
 	checks.append("中雪事件触发与生效参数：%s（剩余 %.2f 小时）" % [
@@ -84,12 +174,12 @@ func _ready() -> void:
 			and not active_snow.is_empty()
 			and is_equal_approx(
 				float(active_snow.get("remaining_hours", 0.0)),
-				2.0)
+				1.0)
 			and float(snow_effects.get("sun_energy_factor", 1.0)) < 0.2
 			and float(snow_effects.get("cloud_coverage", 0.0)) >= 0.7),
 		float(active_snow.get("remaining_hours", 0.0)),
 	])
-	checks.append("天气事件接口暂不改动现有天气视觉：%s" % [
+	checks.append("雪事件不会改动降雨日标记：%s" % [
 		str(WorldWeather.today_rain == rain_visible_before)])
 	WorldWeather.clear_weather_event("snow")
 	checks.append("天气事件清理接口：%s" % [
@@ -147,6 +237,27 @@ func _ready() -> void:
 				and panel.cloud_shadow_tuning_output != null),
 			panel.cloud_shadow_tuning_controls.size(),
 		])
+		checks.append("F10 雨雾独立事件与云概率接口已接入：%s" % [
+			str(panel.rain_event_status_label != null
+				and panel.fog_event_status_label != null
+				and panel.rain_duration_spin != null
+				and panel.fog_duration_spin != null
+				and panel.chance_controls.has("weather.rain")
+				and panel.chance_controls.has("weather.fog")
+				and panel.chance_controls.has("weather.cloud"))])
+		panel._on_trigger_weather_event(
+			"rain",
+			"small",
+			panel.rain_duration_spin)
+		panel._on_trigger_weather_event(
+			"fog",
+			"small",
+			panel.fog_duration_spin)
+		var f10_events := WorldWeather.get_active_weather_events()
+		checks.append("F10 可独立同时触发雨雾事件：%s" % [
+			str(f10_events.has("rain") and f10_events.has("fog"))])
+		panel._on_clear_weather_event("rain")
+		panel._on_clear_weather_event("fog")
 		var day_control_original := GameState.day
 		panel.day_spin.value = 64.0
 		panel._on_apply_day()
@@ -413,7 +524,8 @@ func _ready() -> void:
 			seasonal_profile, "morning")
 		var evening_hour := _profile_phase_center(
 			seasonal_profile, "afternoon")
-		WorldWeather.set_today_rain_force(1)
+		WorldWeather.trigger_weather_event("rain", "large", 4.0)
+		WorldWeather.set_weather_event_remaining_hours("rain", 1.5)
 		spring._rain_visual_strength = 0.0
 		spring._update_rain_visual_strength(1.0)
 		var rain_state: Dictionary = spring._rain_adjusted_light_state(
@@ -595,7 +707,7 @@ func _ready() -> void:
 			day_rain_opacity,
 			night_rain_opacity,
 		])
-		WorldWeather.set_today_rain_force(-1)
+		WorldWeather.clear_weather_event("rain")
 		spring._update_rain_visual_strength(1.0)
 		spring._update_rain(
 			solar_noon_hour,
@@ -611,9 +723,10 @@ func _ready() -> void:
 			and not spring.rain_ripple_particles.emitting)
 		checks.append("关闭降雨后雨层、倒影和水波停止：%s" % [
 			str(rain_shutdown_ok)])
-		WorldWeather.set_fog_force(1)
+		WorldWeather.trigger_weather_event("fog", "large", 4.0)
+		WorldWeather.set_weather_event_remaining_hours("fog", 1.5)
 		spring._update_fog(7.0, 0.0)
-		checks.append("视觉雾层在满强度时显示：%s" % [
+		checks.append("独立雾事件在满强度时显示：%s" % [
 			str(
 				spring.fog_layer != null
 				and spring.fog_layer.visible
@@ -621,12 +734,14 @@ func _ready() -> void:
 					float(spring.fog_material.get_shader_parameter(
 						"fog_intensity")),
 					1.0))])
-		spring._update_fog(6.25, 0.0)
-		checks.append("视觉雾层参与 30 分钟淡入：%s" % [
+		WorldWeather.set_weather_event_remaining_hours("fog", 0.375)
+		spring._update_fog(20.0, 0.0)
+		checks.append("视觉雾层可在夜间淡出且不依赖固定时段：%s" % [
 			str(is_equal_approx(
 				float(spring.fog_material.get_shader_parameter(
 					"fog_intensity")),
 				0.5))])
+		WorldWeather.set_weather_event_remaining_hours("fog", 1.5)
 		var fog_time_before: float = float(spring.get("_fog_time"))
 		var dawn_state: Dictionary = spring.call(
 			"_sample_light_state", morning_hour)
@@ -702,6 +817,31 @@ func _ready() -> void:
 			test_lamp_state,
 			0.0,
 			morning_hour)
+		var day_tint: Color = spring.post_material.get_shader_parameter(
+			"tint")
+		var day_grade_ok: bool = not day_tint.is_equal_approx(Color.WHITE) \
+			and float(spring.post_material.get_shader_parameter(
+				"contrast")) > 1.0 \
+			and float(spring.post_material.get_shader_parameter(
+				"saturation")) > 1.0
+		var night_grade_state: Dictionary = spring._sample_light_state(1.0)
+		spring.call("_update_season_grade", night_grade_state)
+		var night_grade_ok: bool = (
+			spring.post_material.get_shader_parameter(
+				"tint") as Color).is_equal_approx(Color.WHITE) \
+			and is_equal_approx(
+				float(spring.post_material.get_shader_parameter(
+					"contrast")),
+				0.98) \
+			and is_equal_approx(
+				float(spring.post_material.get_shader_parameter(
+					"saturation")),
+				0.98)
+		spring.call("_update_season_grade", dawn_state)
+		checks.append("季节色相只在校正白天并保持夜间中性：%s｜%s" % [
+			str(day_grade_ok),
+			str(night_grade_ok),
+		])
 		var fog_cloud_independent: bool = \
 			spring.fog_material.get_shader_parameter(
 				"world_building_shadow_texture") == null \
@@ -1014,10 +1154,10 @@ func _ready() -> void:
 			sunrise_transition_mid,
 			sunrise_transition_end,
 		])
-		spring._update_fog(9.0, 0.0)
-		checks.append("视觉雾层在 09:00 隐藏：%s" % [
+		WorldWeather.clear_weather_event("fog")
+		spring._update_fog(1.0, 0.0)
+		checks.append("清除独立雾事件后视觉雾层隐藏：%s" % [
 			str(not spring.fog_layer.visible)])
-		WorldWeather.set_fog_force(-1)
 		var midnight: Dictionary = spring._sample_light_state(
 			_profile_phase_center(seasonal_profile, "night"))
 		var before_sunrise: Dictionary = spring._sample_light_state(
@@ -1256,13 +1396,13 @@ func _ready() -> void:
 		var lamp_color := Color.from_string(
 			str(lamp_config.get("color", "#ffd36a")),
 			Color("#ffd36a"))
-		var expected_spill_range := 21.0
+		var expected_spill_range := 34.0
 		var expected_spill_energy := float(
-			lamp_config.get("player_energy", 2.6)) * 0.01
+			lamp_config.get("player_energy", 2.6)) * 0.02
 		var expected_spill_height := float(
 			lamp_config.get("height_px", 44.0))
 		var expected_head_energy := float(
-			lamp_config.get("glow_energy", 1.0)) * 0.15 * 0.5
+			lamp_config.get("glow_energy", 1.0)) * 0.15 * 0.4
 		var window_lamp_state: Dictionary = spring._update_lamp_state(
 			1.0,
 			float(midnight["sun_energy"]))
@@ -1345,7 +1485,7 @@ func _ready() -> void:
 						expected_spill_range) \
 					and is_equal_approx(
 						float(light_spec["attenuation_range"]),
-						expected_spill_range * 2.5) \
+						expected_spill_range * 2.0) \
 					and is_equal_approx(
 						float(light_spec["attenuation_power"]),
 						4.0) \

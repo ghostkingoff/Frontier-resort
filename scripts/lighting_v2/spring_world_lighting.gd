@@ -36,7 +36,7 @@ const PLAYER_SHADOW_PROXY_PATH := \
 	"res://art/characters/player/star2a/shadow_proxy.glb"
 const PLAYER_SHADOW_HEIGHT_PX := 44.0
 const WINDOW_HEAD_OPACITY := 0.15
-const WINDOW_HEAD_BRIGHTNESS := 0.5
+const WINDOW_HEAD_BRIGHTNESS := 0.4
 const LAMP_HEAD_OPACITY := 0.12
 const LAMP_HEAD_BRIGHTNESS := 0.18
 const WINDOW_GROUND_FOOT_FADE_PX := 10.0
@@ -1334,12 +1334,12 @@ func _window_lamp_light_style() -> Dictionary:
 		"spill_range_px": maxf(
 			float(lighting_tuning.get(
 				"window_ground_range_px",
-				21.0)),
+				34.0)),
 			1.0),
 		"spill_energy": float(lamp_config.get("player_energy", 2.6))
 			* float(lighting_tuning.get(
 				"window_ground_energy_ratio",
-				0.01)),
+				0.02)),
 		"spill_height_px": float(lamp_config.get("height_px", 44.0)),
 	}
 
@@ -1419,9 +1419,9 @@ func _reset_lighting_tuning() -> void:
 	var defaults := {
 		"window_head_opacity": WINDOW_HEAD_OPACITY,
 		"window_head_brightness": WINDOW_HEAD_BRIGHTNESS,
-		"window_ground_energy_ratio": 0.01,
-		"window_ground_range_px": 21.0,
-		"window_ground_attenuation_multiplier": 2.5,
+		"window_ground_energy_ratio": 0.02,
+		"window_ground_range_px": 34.0,
+		"window_ground_attenuation_multiplier": 2.0,
 		"window_ground_attenuation_curve": 2.0,
 		"lamp_head_opacity": LAMP_HEAD_OPACITY,
 		"lamp_head_brightness": LAMP_HEAD_BRIGHTNESS,
@@ -1429,7 +1429,7 @@ func _reset_lighting_tuning() -> void:
 		"lamp_ground_range_px": lamp_range,
 		"lamp_ground_attenuation_multiplier": 2.0,
 		"lamp_ground_falloff_power": 4.0,
-		"lamp_ground_ellipse_height_ratio": 1.0 / sqrt(2.0),
+		"lamp_ground_ellipse_height_ratio": 0.72,
 	}
 	var configured: Dictionary = config.get("lighting_tuning", {})
 	for key in defaults.keys():
@@ -2049,6 +2049,39 @@ func _update_surface_parameters(
 		material.set_shader_parameter("viewport_size_px", viewport_size)
 		_update_wall_shadow_parameters(material)
 	_update_interior_lighting(state)
+	_update_season_grade(state)
+
+
+func _update_season_grade(state: Dictionary) -> void:
+	if post_material == null:
+		return
+	var sky_color: Color = state.get("sky_color", Color.WHITE)
+	var sun_color: Color = state.get("sun_color", Color.WHITE)
+	var bounce_color: Color = state.get("bounce_color", Color.WHITE)
+	var sky_energy := clampf(float(state.get("sky_energy", 0.0)), 0.0, 1.0)
+	var sun_energy := clampf(float(state.get("sun_energy", 0.0)), 0.0, 1.0)
+	var bounce_energy := clampf(
+		float(state.get("bounce_energy", 0.0)),
+		0.0,
+		1.0)
+	var daylight := smoothstep(0.02, 0.18, sky_energy)
+	var grade_color := sky_color.lerp(bounce_color, 0.60).lerp(
+		sun_color,
+		0.18)
+	var grade_strength := clampf(
+		sky_energy * 0.35 + bounce_energy * 0.25,
+		0.12,
+		0.45) * daylight
+	var tint := Color.WHITE.lerp(grade_color, grade_strength)
+	tint.a = 1.0
+	var sun_response := smoothstep(0.02, 0.98, sun_energy)
+	post_material.set_shader_parameter("tint", tint)
+	post_material.set_shader_parameter(
+		"contrast",
+		0.98 + sun_response * 0.09 + sky_energy * 0.025 * daylight)
+	post_material.set_shader_parameter(
+		"saturation",
+		0.98 + sun_response * 0.10 + bounce_energy * 0.10 * daylight)
 
 
 func _update_wall_shadow_parameters(material: ShaderMaterial) -> void:
@@ -2229,10 +2262,10 @@ func _set_material_parameters(
 	material.set_shader_parameter("sky_energy", float(state["sky_energy"]))
 	material.set_shader_parameter(
 		"bounce_color",
-		state.get("bounce_color", Color("#71847A")))
+		state.get("bounce_color", Color("#57C49A")))
 	material.set_shader_parameter(
 		"bounce_energy",
-		float(state.get("bounce_energy", 0.10)))
+		float(state.get("bounce_energy", 0.16)))
 	material.set_shader_parameter(
 		"shadow_alpha",
 		float(state.get("shadow_alpha", 1.0)))
@@ -2530,7 +2563,9 @@ func _update_cloud_shadow(delta: float) -> void:
 			0.0,
 			1.0)
 	_cloud_shadow_coverage = coverage
-	var target := 1.0 if active_event and coverage > 0.001 else 0.0
+	var target := 0.0
+	if active_event and coverage > 0.001:
+		target = WorldWeather.weather_event_envelope("cloud")
 	_cloud_shadow_strength = move_toward(
 		_cloud_shadow_strength,
 		target,
@@ -2709,7 +2744,7 @@ func _refresh_cloud_shadow_layout() -> void:
 
 
 func _update_rain_visual_strength(delta: float) -> void:
-	var target := 1.0 if WorldWeather.today_rain else 0.0
+	var target := WorldWeather.weather_event_visual_strength("rain")
 	var speed := 2.4 if target > _rain_visual_strength else 4.0
 	_rain_visual_strength = move_toward(
 		_rain_visual_strength,
@@ -3499,11 +3534,11 @@ func _sample_light_state(at_hour: float) -> Dictionary:
 	var keyframes: Array = config.get("keyframes", [])
 	if keyframes.is_empty():
 		return {
-			"sky_color": Color("#adc2ae"),
-			"sky_energy": 0.65,
-			"sun_color": Color("#fff1d6"),
-			"sun_energy": 1.0,
-			"exposure": 1.0,
+			"sky_color": Color("#A9E6D7"),
+			"sky_energy": 0.64,
+			"sun_color": Color("#FFF1C4"),
+			"sun_energy": 0.76,
+			"exposure": 0.80,
 		}
 	var before: Dictionary = keyframes[0]
 	var after: Dictionary = keyframes[keyframes.size() - 1]

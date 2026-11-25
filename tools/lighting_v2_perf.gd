@@ -51,21 +51,23 @@ func _ready() -> void:
 	camera = main.get_node("Camera")
 	camera.set_process(false)
 	camera.zoom = Vector2(0.82, 0.82)
-	WorldWeather.set_today_rain_force(1 if rain_mode else -1)
+	WorldWeather.clear_weather_events()
+	if rain_mode:
+		WorldWeather.trigger_weather_event("rain", "large", 12.0)
+		WorldWeather.set_weather_event_remaining_hours("rain", 10.0)
 	if fog_mode:
-		WorldWeather.set_fog_force(1)
+		WorldWeather.trigger_weather_event("fog", "large", 12.0)
+		WorldWeather.set_weather_event_remaining_hours("fog", 10.0)
 		_set_hour(7.0)
 	elif day_mode:
-		WorldWeather.set_fog_force(-1)
 		_set_hour(13.0)
 	elif morning_mode:
-		WorldWeather.set_fog_force(-1)
 		_set_hour(7.0)
 	else:
-		WorldWeather.set_fog_force(-1)
 		_set_hour(22.0)
 	if cloud_large_mode:
 		WorldWeather.trigger_weather_event("cloud", "large", 12.0)
+		WorldWeather.set_weather_event_remaining_hours("cloud", 10.0)
 	var lodge: Building = _find_building("lodge_ordinary")
 	if lodge != null:
 		camera.position = world.cell_center(Vector2i(20, 20))
@@ -170,7 +172,7 @@ func _finish() -> void:
 	var fps := float(sorted.size()) / maxf(elapsed, 0.001)
 	print("[lighting-v2-perf] %s ｜ 1920x1080 ｜ 帧 %d ｜ 平均 %.2f ms ｜ P95 %.2f ms ｜ P99 %.2f ms ｜ 平均 %.1f FPS" % [
 		"%s%s" % [
-			"全天降雨" if rain_mode else (
+			"连续降雨事件" if rain_mode else (
 				"晴朗清晨" if morning_mode else (
 					"晴天正午" if day_mode else "无雾")),
 			" + 噪声深度雾" if fog_mode else "",

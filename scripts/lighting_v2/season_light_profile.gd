@@ -69,40 +69,40 @@ func current_profile() -> Dictionary:
 		"cloud_coverage": float(source.get("cloud_coverage", 0.6)),
 		"cloud_strength": float(source.get("cloud_strength", 0.55)),
 		"bounce_color": _color(
-			source, "bounce_color", "#71847A"),
-		"bounce_energy": float(source.get("bounce_energy", 0.10)),
+			source, "bounce_color", "#57C49A"),
+		"bounce_energy": float(source.get("bounce_energy", 0.16)),
 		"phases": phases,
 		"phase_order": document.get("phase_order", []),
 		"phase_time_offset_hours": (
 			(sunrise - representative_sunrise)
 			+ (sunset - representative_sunset)) * 0.5,
 		"night_sky_color": _phase_color(
-			night_phase, "sky_color", "#111D2E"),
+			night_phase, "sky_color", "#08142D"),
 		"blue_sky_color": _phase_color(
-			blue_phase, "sky_color", "#2B3F56"),
+			blue_phase, "sky_color", "#213B6B"),
 		"twilight_sky_color": _phase_color(
-			dusk_phase, "sky_color", "#2A3B51"),
+			dusk_phase, "sky_color", "#1C3159"),
 		"day_sky_color": _phase_color(
-			noon_phase, "sky_color", "#CADBD8"),
+			noon_phase, "sky_color", "#A9E6D7"),
 		"sunrise_color": _phase_color(
-			sunrise_phase, "sun_color", "#F0A27A"),
+			sunrise_phase, "sun_color", "#FF956A"),
 		"sunset_color": _phase_color(
-			sunset_phase, "sun_color", "#EDA17D"),
+			sunset_phase, "sun_color", "#FF805C"),
 		"golden_color": _phase_color(
-			sunrise_phase, "sun_color", "#FFE1B7"),
+			sunrise_phase, "sun_color", "#FFDEA0"),
 		"noon_color": _phase_color(
-			noon_phase, "sun_color", "#FFF0D2"),
+			noon_phase, "sun_color", "#FFF1C4"),
 		"night_sun_color": _phase_color(
-			night_phase, "sun_color", "#7E93AA"),
-		"max_sun_energy": _max_phase_value(phases, "sun_energy", 0.68),
-		"day_sky_energy": _phase_value(noon_phase, "sky_energy", 0.58),
+			night_phase, "sun_color", "#000000"),
+		"max_sun_energy": _max_phase_value(phases, "sun_energy", 0.76),
+		"day_sky_energy": _phase_value(noon_phase, "sky_energy", 0.64),
 		"twilight_sky_energy": _phase_value(
-			dusk_phase, "sky_energy", 0.16),
+			dusk_phase, "sky_energy", 0.14),
 		"night_sky_energy": _phase_value(
-			night_phase, "sky_energy", 0.08),
-		"day_exposure": _phase_value(noon_phase, "exposure", 0.73),
+			night_phase, "sky_energy", 0.002),
+		"day_exposure": _phase_value(noon_phase, "exposure", 0.80),
 		"night_exposure": _phase_value(
-			night_phase, "exposure", 0.22),
+			night_phase, "exposure", 0.12),
 		"blue_hour_hours": maxf(
 			sunrise - float(blue_phase.get("start_hour", sunrise - 1.5)),
 			0.001),
@@ -110,7 +110,7 @@ func current_profile() -> Dictionary:
 			float(dusk_phase.get("end_hour", sunset + 1.5)) - sunset,
 			0.001),
 		"shadow_softness": _phase_value(
-			noon_phase, "shadow_softness", 0.5),
+			noon_phase, "shadow_softness", 0.28),
 	}
 	profile["phase_windows"] = phase_windows(profile)
 	return profile

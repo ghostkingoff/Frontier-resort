@@ -9,6 +9,7 @@ const EVENT_CONFIG_PATH := "res://data/lighting_v2/weather_events.json"
 const FORCE_AUTO := 0
 const FORCE_ON := 1
 const FORCE_OFF := -1
+const AUTO_WEATHER_TYPES := ["rain", "fog", "cloud"]
 
 var config: Dictionary = {}
 var event_catalog: Dictionary = {}
@@ -16,9 +17,12 @@ var day := 1
 var today_rain := false
 var yesterday_rain := false
 var fog_event := false
+var cloud_event := false
 var rain_chance := 0.24
 var fog_chance := 0.18
+var cloud_chance := 0.24
 var active_weather_events: Dictionary = {}
+var _scheduled_weather_events: Dictionary = {}
 
 var _today_rain_force := FORCE_AUTO
 var _yesterday_rain_force := FORCE_AUTO
@@ -33,6 +37,10 @@ func _ready() -> void:
 		float(config.get("fog_chance", 0.18)),
 		0.0,
 		1.0)
+	cloud_chance = clampf(
+		float(config.get("cloud_chance", 0.24)),
+		0.0,
+		1.0)
 	GameState.day_changed.connect(_on_day_changed)
 	GameClock.morning_started.connect(_on_morning_started)
 	DevEvents.changed.connect(_on_dev_events_changed)
@@ -40,13 +48,14 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if active_weather_events.is_empty():
-		return
 	if GameClock.paused or GameClock.phase != GameClock.Phase.RUNNING:
 		return
 	var cycle_seconds := maxf(GameClock.cycle_length_seconds, 0.001)
 	var game_hours := delta * GameClock.time_scale() * 24.0 / cycle_seconds
 	if game_hours <= 0.0:
+		return
+	_start_scheduled_weather_events()
+	if active_weather_events.is_empty():
 		return
 	var expired: Array[String] = []
 	for type_id in active_weather_events.keys():
@@ -94,27 +103,53 @@ func refresh() -> void:
 		fog_chance)
 	fog_event = fog_roll < effective_fog_chance
 	fog_event = _resolve_forced(_fog_force, fog_event)
+	var cloud_roll := _daily_roll("cloud", day)
+	var effective_cloud_chance := DevEvents.chance(
+		"weather.cloud",
+		cloud_chance)
+	cloud_event = cloud_roll < effective_cloud_chance
+	if GameClock.progress <= 0.05:
+		_rebuild_auto_weather_schedule()
 	changed.emit()
 
 
-func fog_strength(at_hour: float) -> float:
-	if not fog_event:
+func fog_strength(_at_hour: float = 0.0) -> float:
+	return weather_event_visual_strength("fog")
+
+
+func weather_event_envelope(type_id: String) -> float:
+	var event := get_active_weather_event(type_id)
+	if event.is_empty():
 		return 0.0
-	var start := float(config.get("fog_start_hour", 6.0))
-	var full := float(config.get("fog_full_hour", 6.5))
-	var fade_start := float(config.get("fog_fade_start_hour", 8.5))
-	var end := float(config.get("fog_end_hour", 9.0))
-	var hour := fmod(at_hour, 24.0)
-	if hour < start or hour >= end:
+	var duration := maxf(float(event.get("duration_hours", 0.0)), 0.001)
+	var remaining := clampf(
+		float(event.get("remaining_hours", 0.0)),
+		0.0,
+		duration)
+	var elapsed := maxf(duration - remaining, 0.0)
+	var spec: Dictionary = event.get("spec", {})
+	var fade_in := clampf(
+		float(spec.get("fade_in_hours", 0.75)),
+		0.001,
+		duration * 0.45)
+	var fade_out := clampf(
+		float(spec.get("fade_out_hours", 0.75)),
+		0.001,
+		duration * 0.45)
+	var fade_in_weight := smoothstep(0.0, fade_in, elapsed)
+	var fade_out_weight := smoothstep(0.0, fade_out, remaining)
+	return minf(fade_in_weight, fade_out_weight)
+
+
+func weather_event_visual_strength(type_id: String) -> float:
+	var event := get_active_weather_event(type_id)
+	if event.is_empty():
 		return 0.0
-	if hour < full:
-		return smoothstep(start, maxf(full, start + 0.001), hour)
-	if hour <= fade_start:
-		return 1.0
-	return 1.0 - smoothstep(
-		fade_start,
-		maxf(end, fade_start + 0.001),
-		hour)
+	var spec: Dictionary = event.get("spec", {})
+	return weather_event_envelope(type_id) * clampf(
+		float(spec.get("intensity", 1.0)),
+		0.0,
+		1.0)
 
 
 func set_today_rain_force(mode: int) -> void:
@@ -180,6 +215,9 @@ func weather_event_spec(type_id: String, size_id: String) -> Dictionary:
 	var size_meta: Dictionary = event_catalog.get(
 		"sizes", {}).get(size_id, {})
 	var spec: Dictionary = (size_data as Dictionary).duplicate(true)
+	for key in ["fade_in_hours", "fade_out_hours"]:
+		if not spec.has(key) and type_data.has(key):
+			spec[key] = float(type_data[key])
 	spec["id"] = "%s.%s" % [type_id, size_id]
 	spec["type"] = type_id
 	spec["type_name"] = str(type_data.get("name", type_id))
@@ -258,12 +296,30 @@ func clear_weather_events() -> void:
 	changed.emit()
 
 
+func set_weather_event_remaining_hours(
+		type_id: String,
+		remaining_hours: float) -> bool:
+	if not active_weather_events.has(type_id):
+		return false
+	var event: Dictionary = active_weather_events[type_id]
+	var duration := maxf(float(event.get("duration_hours", 0.001)), 0.001)
+	event["remaining_hours"] = clampf(remaining_hours, 0.0, duration)
+	if float(event["remaining_hours"]) <= 0.0:
+		active_weather_events.erase(type_id)
+	changed.emit()
+	return true
+
+
 func get_active_weather_event(type_id: String) -> Dictionary:
 	return (active_weather_events.get(type_id, {}) as Dictionary).duplicate(true)
 
 
 func get_active_weather_events() -> Dictionary:
 	return active_weather_events.duplicate(true)
+
+
+func get_scheduled_weather_events() -> Dictionary:
+	return _scheduled_weather_events.duplicate(true)
 
 
 func get_weather_event_effects() -> Dictionary:
@@ -276,9 +332,10 @@ func get_weather_event_effects() -> Dictionary:
 		"fog_density": 0.0,
 		"intensity": 0.0,
 	}
-	for event_value in active_weather_events.values():
-		var event: Dictionary = event_value
+	for type_id in active_weather_events.keys():
+		var event: Dictionary = active_weather_events[type_id]
 		var spec: Dictionary = event.get("spec", {})
+		var weight := weather_event_envelope(str(type_id))
 		for key in [
 			"sky_energy_factor",
 			"sun_energy_factor",
@@ -286,13 +343,101 @@ func get_weather_event_effects() -> Dictionary:
 			"shadow_alpha_factor",
 		]:
 			if spec.has(key):
-				effects[key] = float(effects[key]) * float(spec[key])
+				effects[key] = float(effects[key]) * lerpf(
+					1.0,
+					float(spec[key]),
+					weight)
 		for key in ["cloud_coverage", "fog_density", "intensity"]:
 			if spec.has(key):
-				effects[key] = maxf(float(effects[key]), float(spec[key]))
+				effects[key] = maxf(
+					float(effects[key]),
+					float(spec[key]) * weight)
 	for key in effects:
 		effects[key] = float(effects[key])
 	return effects
+
+
+func _rebuild_auto_weather_schedule() -> void:
+	_scheduled_weather_events.clear()
+	for type_id in AUTO_WEATHER_TYPES:
+		if not _auto_weather_enabled(str(type_id)):
+			continue
+		var rng := RandomNumberGenerator.new()
+		rng.seed = _stable_seed("auto-weather:%s" % type_id, day)
+		var weights: Array = season_event_weights(
+			str(SeasonCalendar.current_date().get("season_id", "spring")),
+			str(type_id))
+		var size_id := _weighted_event_size(weights, rng.randf())
+		if size_id == "":
+			continue
+		var spec := weather_event_spec(str(type_id), size_id)
+		var duration_range: Array = spec.get(
+			"duration_hours",
+			[1.0, 1.0])
+		var minimum_duration := _range_value(
+			duration_range,
+			0,
+			1.0)
+		var maximum_duration := maxf(
+			_range_value(duration_range, 1, minimum_duration),
+			minimum_duration)
+		_scheduled_weather_events[type_id] = {
+			"type": str(type_id),
+			"size": size_id,
+			"duration_hours": rng.randf_range(
+				minimum_duration,
+				maximum_duration),
+			"start_progress": rng.randf(),
+			"fired": false,
+		}
+
+
+func _start_scheduled_weather_events() -> void:
+	if _scheduled_weather_events.is_empty():
+		return
+	var progress := clampf(GameClock.progress, 0.0, 1.0)
+	for type_id in AUTO_WEATHER_TYPES:
+		if not _scheduled_weather_events.has(type_id):
+			continue
+		var entry: Dictionary = _scheduled_weather_events[type_id]
+		if bool(entry.get("fired", false)):
+			continue
+		if progress + 0.00001 < float(entry.get("start_progress", 0.0)):
+			continue
+		entry["fired"] = true
+		if active_weather_events.has(type_id):
+			continue
+		trigger_weather_event(
+			str(type_id),
+			str(entry.get("size", "small")),
+			float(entry.get("duration_hours", 1.0)))
+
+
+func _auto_weather_enabled(type_id: String) -> bool:
+	match type_id:
+		"rain":
+			return today_rain
+		"fog":
+			return fog_event
+		"cloud":
+			return cloud_event
+	return false
+
+
+func _weighted_event_size(weights: Array, roll: float) -> String:
+	var sizes := ["small", "medium", "large"]
+	var cumulative := 0.0
+	for index in range(mini(weights.size(), sizes.size())):
+		cumulative += maxf(float(weights[index]), 0.0)
+		if roll <= cumulative:
+			return sizes[index]
+	return "small" if cumulative > 0.0 else ""
+
+
+func _range_value(array: Array, index: int, fallback: float) -> float:
+	if index < 0 or index >= array.size():
+		return fallback
+	return float(array[index])
 
 
 func snapshot() -> Dictionary:
@@ -307,13 +452,16 @@ func snapshot() -> Dictionary:
 		"today_rain": today_rain,
 		"yesterday_rain": yesterday_rain,
 		"fog_event": fog_event,
+		"cloud_event": cloud_event,
 		"fog_strength": fog_strength(GameClock.hour_of_day()),
 		"rain_chance": rain_chance,
 		"fog_chance": fog_chance,
+		"cloud_chance": cloud_chance,
 		"today_rain_force": _today_rain_force,
 		"yesterday_rain_force": _yesterday_rain_force,
 		"fog_force": _fog_force,
 		"active_weather_events": get_active_weather_events(),
+		"scheduled_weather_events": get_scheduled_weather_events(),
 		"weather_event_effects": get_weather_event_effects(),
 	}
 

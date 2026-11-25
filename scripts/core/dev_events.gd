@@ -8,16 +8,23 @@ const CHANCE_DEFINITIONS := [
 	{
 		"id": "weather.rain",
 		"group": "天气",
-		"label": "每日降雨",
+		"label": "每日自动雨事件",
 		"default": 0.24,
-		"hint": "当天是否下雨。改动后会立即重算当前日天气。",
+		"hint": "当天是否安排一次随机时段降雨事件。",
 	},
 	{
 		"id": "weather.fog",
 		"group": "天气",
-		"label": "每日清晨雾",
+		"label": "每日自动雾事件",
 		"default": 0.18,
-		"hint": "与降雨独立判定；视觉雾使用噪声深度遮罩。",
+		"hint": "雾不再固定清晨出现，可在全天任意时段触发。",
+	},
+	{
+		"id": "weather.cloud",
+		"group": "天气",
+		"label": "每日自动云事件",
+		"default": 0.24,
+		"hint": "云与雨、雾独立安排，可在任意时段开始。",
 	},
 	{
 		"id": "visitor.star_arrival",

@@ -26,11 +26,11 @@ var schedule := [
 	{"hour": SUNSET_HOUR, "name": "main_sunset_1925.png", "debug": 0},
 	{"hour": 21.5, "name": "main_2130.png", "debug": 0},
 	{"hour": 1.0, "name": "main_night_0100.png", "debug": 0},
-	{"hour": 6.15, "name": "main_fog_0615_fade_in.png", "debug": 0, "fog_force": 1},
-	{"hour": 6.5, "name": "main_fog_0630_full.png", "debug": 0, "fog_force": 1},
-	{"hour": 8.5, "name": "main_fog_0830_fade_start.png", "debug": 0, "fog_force": 1},
-	{"hour": 8.75, "name": "main_fog_0845_fade_out.png", "debug": 0, "fog_force": 1},
-	{"hour": 9.0, "name": "main_fog_0900_end.png", "debug": 0, "fog_force": 0},
+	{"hour": 6.15, "name": "main_fog_0615_fade_in.png", "debug": 0, "fog_event": true, "fog_remaining": 3.625},
+	{"hour": 6.5, "name": "main_fog_0630_full.png", "debug": 0, "fog_event": true, "fog_remaining": 1.5},
+	{"hour": 8.5, "name": "main_fog_0830_fade_start.png", "debug": 0, "fog_event": true, "fog_remaining": 1.5},
+	{"hour": 8.75, "name": "main_fog_0845_fade_out.png", "debug": 0, "fog_event": true, "fog_remaining": 0.375},
+	{"hour": 9.0, "name": "main_fog_0900_end.png", "debug": 0, "fog_event": false},
 	{"hour": 7.0, "name": "main_wall_0700_backlit.png", "debug": 0},
 	{"hour": 11.5, "name": "main_wall_1130_dark.png", "debug": 0},
 	{"hour": 12.5, "name": "main_wall_1230_transition.png", "debug": 0},
@@ -41,7 +41,7 @@ var schedule := [
 	{"hour": 7.5, "name": "main_pine_0730.png", "debug": 0, "focus": "pine"},
 	{"hour": 17.5, "name": "main_pine_1730.png", "debug": 0, "focus": "pine"},
 	{"hour": 12.0, "name": "main_region_grid.png", "debug": 11},
-	{"hour": 7.0, "name": "main_f10_dev_panel.png", "debug": 0, "fog_force": 1, "panel": true},
+	{"hour": 7.0, "name": "main_f10_dev_panel.png", "debug": 0, "fog_event": true, "fog_remaining": 1.5, "panel": true},
 ]
 
 
@@ -102,7 +102,12 @@ func _set_next_shot() -> void:
 	_set_hour(float(entry["hour"]))
 	if spring != null:
 		spring.call("set_debug_mode", int(entry.get("debug", 0)))
-	WorldWeather.set_fog_force(int(entry.get("fog_force", -1)))
+	WorldWeather.clear_weather_event("fog")
+	if bool(entry.get("fog_event", false)):
+		WorldWeather.trigger_weather_event("fog", "large", 4.0)
+		WorldWeather.set_weather_event_remaining_hours(
+			"fog",
+			float(entry.get("fog_remaining", 1.5)))
 	var dev_panel := main.get_node_or_null(
 		"LightingV2DebugPanel") as LightingV2DebugPanel
 	if dev_panel != null:

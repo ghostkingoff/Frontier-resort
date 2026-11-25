@@ -30,17 +30,17 @@
       "south_component": 0.12,
       "cloud_coverage": 0.62,
       "cloud_strength": 0.58,
-      "bounce_color": "#71847A",
-      "bounce_energy": 0.12,
+      "bounce_color": "#57C49A",
+      "bounce_energy": 0.16,
       "phases": [
-        {"id":"night","name":"夜间","start_hour":19.833,"end_hour":27.65,"sun_elevation_min_deg":-30.0,"sun_elevation_max_deg":-18.0,"sky_color":"#111D2E","sky_energy":0.002,"sun_color":"#7E93AA","sun_energy":0.03,"exposure":0.22,"shadow_alpha":0.04,"shadow_softness":0.85,"bounce_color":"#71847A","bounce_energy":0.002},
-        {"id":"blue_hour","name":"黎明蓝调","start_hour":3.667,"end_hour":5.2,"sun_elevation_min_deg":-18.0,"sun_elevation_max_deg":-0.8,"sky_color":"#2B3F56","sky_energy":0.17,"sun_color":"#75879E","sun_energy":0.01,"exposure":0.31,"shadow_alpha":0.04,"shadow_softness":0.86,"bounce_color":"#71847A","bounce_energy":0.12},
-        {"id":"sunrise","name":"日出","start_hour":5.2,"end_hour":5.767,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":6.0,"sky_color":"#627484","sky_energy":0.28,"sun_color":"#F0A27A","sun_energy":0.34,"exposure":0.46,"shadow_alpha":0.22,"shadow_softness":0.68,"bounce_color":"#71847A","bounce_energy":0.12},
-        {"id":"morning","name":"上午","start_hour":5.783,"end_hour":10.483,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":62.6,"sky_color":"#B7CDCB","sky_energy":0.50,"sun_color":"#FFE1B7","sun_energy":0.58,"exposure":0.66,"shadow_alpha":0.36,"shadow_softness":0.45,"bounce_color":"#71847A","bounce_energy":0.12},
-        {"id":"noon","name":"正午","start_hour":10.5,"end_hour":13.0,"sun_elevation_min_deg":62.6,"sun_elevation_max_deg":62.6,"sky_color":"#CADBD8","sky_energy":0.58,"sun_color":"#FFF0D2","sun_energy":0.68,"exposure":0.73,"shadow_alpha":0.44,"shadow_softness":0.40,"bounce_color":"#71847A","bounce_energy":0.12},
-        {"id":"afternoon","name":"下午","start_hour":13.017,"end_hour":17.7,"sun_elevation_min_deg":62.6,"sun_elevation_max_deg":6.0,"sky_color":"#B6CCCA","sky_energy":0.48,"sun_color":"#FFDCAE","sun_energy":0.54,"exposure":0.64,"shadow_alpha":0.35,"shadow_softness":0.50,"bounce_color":"#71847A","bounce_energy":0.12},
-        {"id":"sunset","name":"日落","start_hour":17.717,"end_hour":18.283,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":-0.8,"sky_color":"#647684","sky_energy":0.27,"sun_color":"#EDA17D","sun_energy":0.30,"exposure":0.44,"shadow_alpha":0.20,"shadow_softness":0.72,"bounce_color":"#71847A","bounce_energy":0.12},
-        {"id":"dusk","name":"暮色蓝调","start_hour":18.3,"end_hour":19.817,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":-18.0,"sky_color":"#2A3B51","sky_energy":0.16,"sun_color":"#79889D","sun_energy":0.01,"exposure":0.29,"shadow_alpha":0.03,"shadow_softness":0.88,"bounce_color":"#71847A","bounce_energy":0.12}
+        {"id":"night","name":"夜间","start_hour":19.833,"end_hour":27.65,"sun_elevation_min_deg":-30.0,"sun_elevation_max_deg":-18.0,"sky_color":"#08142D","sky_energy":0.002,"sun_color":"#000000","sun_energy":0.00,"exposure":0.12,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#57C49A","bounce_energy":0.002},
+        {"id":"blue_hour","name":"黎明蓝调","start_hour":3.667,"end_hour":5.2,"sun_elevation_min_deg":-18.0,"sun_elevation_max_deg":-0.8,"sky_color":"#213B6B","sky_energy":0.15,"sun_color":"#000000","sun_energy":0.00,"exposure":0.27,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#57C49A","bounce_energy":0.16},
+        {"id":"sunrise","name":"日出","start_hour":5.2,"end_hour":5.767,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":6.0,"sky_color":"#638CAE","sky_energy":0.29,"sun_color":"#FF956A","sun_energy":0.36,"exposure":0.49,"shadow_alpha":0.24,"shadow_softness":0.58,"bounce_color":"#57C49A","bounce_energy":0.16},
+        {"id":"morning","name":"上午","start_hour":5.783,"end_hour":10.483,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":62.6,"sky_color":"#83DCCB","sky_energy":0.55,"sun_color":"#FFDEA0","sun_energy":0.66,"exposure":0.72,"shadow_alpha":0.42,"shadow_softness":0.32,"bounce_color":"#57C49A","bounce_energy":0.16},
+        {"id":"noon","name":"正午","start_hour":10.5,"end_hour":13.0,"sun_elevation_min_deg":62.6,"sun_elevation_max_deg":62.6,"sky_color":"#A9E6D7","sky_energy":0.64,"sun_color":"#FFF1C4","sun_energy":0.76,"exposure":0.80,"shadow_alpha":0.52,"shadow_softness":0.28,"bounce_color":"#57C49A","bounce_energy":0.16},
+        {"id":"afternoon","name":"下午","start_hour":13.017,"end_hour":17.7,"sun_elevation_min_deg":62.6,"sun_elevation_max_deg":6.0,"sky_color":"#72CEC4","sky_energy":0.52,"sun_color":"#FFD394","sun_energy":0.60,"exposure":0.70,"shadow_alpha":0.40,"shadow_softness":0.36,"bounce_color":"#57C49A","bounce_energy":0.16},
+        {"id":"sunset","name":"日落","start_hour":17.717,"end_hour":18.283,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":-0.8,"sky_color":"#6A7DAA","sky_energy":0.28,"sun_color":"#FF805C","sun_energy":0.32,"exposure":0.45,"shadow_alpha":0.22,"shadow_softness":0.62,"bounce_color":"#57C49A","bounce_energy":0.16},
+        {"id":"dusk","name":"暮色蓝调","start_hour":18.3,"end_hour":19.817,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":-18.0,"sky_color":"#1C3159","sky_energy":0.14,"sun_color":"#000000","sun_energy":0.00,"exposure":0.26,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#57C49A","bounce_energy":0.16}
       ]
     },
     "summer": {
@@ -54,17 +54,17 @@
       "south_component": 0.05,
       "cloud_coverage": 0.66,
       "cloud_strength": 0.66,
-      "bounce_color": "#4F735C",
-      "bounce_energy": 0.10,
+      "bounce_color": "#1D9B67",
+      "bounce_energy": 0.15,
       "phases": [
-        {"id":"night","name":"夜间","start_hour":20.883,"end_hour":26.783,"sun_elevation_min_deg":-30.0,"sun_elevation_max_deg":-18.0,"sky_color":"#101F31","sky_energy":0.002,"sun_color":"#8398AC","sun_energy":0.03,"exposure":0.23,"shadow_alpha":0.04,"shadow_softness":0.82,"bounce_color":"#4F735C","bounce_energy":0.002},
-        {"id":"blue_hour","name":"黎明蓝调","start_hour":2.8,"end_hour":4.6,"sun_elevation_min_deg":-18.0,"sun_elevation_max_deg":-0.8,"sky_color":"#28465E","sky_energy":0.20,"sun_color":"#7A8FA4","sun_energy":0.01,"exposure":0.33,"shadow_alpha":0.04,"shadow_softness":0.84,"bounce_color":"#4F735C","bounce_energy":0.10},
-        {"id":"sunrise","name":"日出","start_hour":4.6,"end_hour":5.217,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":6.0,"sky_color":"#627A8B","sky_energy":0.30,"sun_color":"#F3A06F","sun_energy":0.46,"exposure":0.49,"shadow_alpha":0.24,"shadow_softness":0.64,"bounce_color":"#4F735C","bounce_energy":0.10},
-        {"id":"morning","name":"上午","start_hour":5.233,"end_hour":10.5,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":74.7,"sky_color":"#B6D0CF","sky_energy":0.55,"sun_color":"#FFE9BF","sun_energy":0.72,"exposure":0.70,"shadow_alpha":0.40,"shadow_softness":0.42,"bounce_color":"#4F735C","bounce_energy":0.10},
-        {"id":"noon","name":"正午","start_hour":10.517,"end_hour":13.0,"sun_elevation_min_deg":74.7,"sun_elevation_max_deg":74.7,"sky_color":"#C2D9D7","sky_energy":0.65,"sun_color":"#FFF6D9","sun_energy":0.86,"exposure":0.77,"shadow_alpha":0.48,"shadow_softness":0.36,"bounce_color":"#4F735C","bounce_energy":0.10},
-        {"id":"afternoon","name":"下午","start_hour":13.017,"end_hour":18.433,"sun_elevation_min_deg":74.7,"sun_elevation_max_deg":6.0,"sky_color":"#B4CFCD","sky_energy":0.54,"sun_color":"#FFE4B6","sun_energy":0.68,"exposure":0.67,"shadow_alpha":0.39,"shadow_softness":0.47,"bounce_color":"#4F735C","bounce_energy":0.10},
-        {"id":"sunset","name":"日落","start_hour":18.45,"end_hour":19.067,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":-0.8,"sky_color":"#607789","sky_energy":0.30,"sun_color":"#EFA076","sun_energy":0.40,"exposure":0.49,"shadow_alpha":0.22,"shadow_softness":0.68,"bounce_color":"#4F735C","bounce_energy":0.10},
-        {"id":"dusk","name":"暮色蓝调","start_hour":19.083,"end_hour":20.867,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":-18.0,"sky_color":"#2C4960","sky_energy":0.20,"sun_color":"#7B8FA5","sun_energy":0.01,"exposure":0.34,"shadow_alpha":0.04,"shadow_softness":0.86,"bounce_color":"#4F735C","bounce_energy":0.10}
+        {"id":"night","name":"夜间","start_hour":20.883,"end_hour":26.783,"sun_elevation_min_deg":-30.0,"sun_elevation_max_deg":-18.0,"sky_color":"#07142E","sky_energy":0.002,"sun_color":"#000000","sun_energy":0.00,"exposure":0.13,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#1D9B67","bounce_energy":0.002},
+        {"id":"blue_hour","name":"黎明蓝调","start_hour":2.8,"end_hour":4.6,"sun_elevation_min_deg":-18.0,"sun_elevation_max_deg":-0.8,"sky_color":"#153B70","sky_energy":0.20,"sun_color":"#000000","sun_energy":0.00,"exposure":0.34,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#1D9B67","bounce_energy":0.15},
+        {"id":"sunrise","name":"日出","start_hour":4.6,"end_hour":5.217,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":6.0,"sky_color":"#4175B6","sky_energy":0.32,"sun_color":"#FF8755","sun_energy":0.52,"exposure":0.52,"shadow_alpha":0.28,"shadow_softness":0.52,"bounce_color":"#1D9B67","bounce_energy":0.15},
+        {"id":"morning","name":"上午","start_hour":5.233,"end_hour":10.5,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":74.7,"sky_color":"#76D8E6","sky_energy":0.62,"sun_color":"#FFE2A4","sun_energy":0.82,"exposure":0.74,"shadow_alpha":0.48,"shadow_softness":0.30,"bounce_color":"#1D9B67","bounce_energy":0.15},
+        {"id":"noon","name":"正午","start_hour":10.517,"end_hour":13.0,"sun_elevation_min_deg":74.7,"sun_elevation_max_deg":74.7,"sky_color":"#95E8E7","sky_energy":0.72,"sun_color":"#FFFBDE","sun_energy":0.98,"exposure":0.84,"shadow_alpha":0.58,"shadow_softness":0.24,"bounce_color":"#1D9B67","bounce_energy":0.15},
+        {"id":"afternoon","name":"下午","start_hour":13.017,"end_hour":18.433,"sun_elevation_min_deg":74.7,"sun_elevation_max_deg":6.0,"sky_color":"#61CED9","sky_energy":0.58,"sun_color":"#FFD899","sun_energy":0.76,"exposure":0.73,"shadow_alpha":0.46,"shadow_softness":0.34,"bounce_color":"#1D9B67","bounce_energy":0.15},
+        {"id":"sunset","name":"日落","start_hour":18.45,"end_hour":19.067,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":-0.8,"sky_color":"#5C73B2","sky_energy":0.31,"sun_color":"#FF7650","sun_energy":0.45,"exposure":0.50,"shadow_alpha":0.24,"shadow_softness":0.58,"bounce_color":"#1D9B67","bounce_energy":0.15},
+        {"id":"dusk","name":"暮色蓝调","start_hour":19.083,"end_hour":20.867,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":-18.0,"sky_color":"#123A68","sky_energy":0.20,"sun_color":"#000000","sun_energy":0.00,"exposure":0.34,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#1D9B67","bounce_energy":0.15}
       ]
     },
     "autumn": {
@@ -78,17 +78,17 @@
       "south_component": 0.30,
       "cloud_coverage": 0.72,
       "cloud_strength": 0.48,
-      "bounce_color": "#79675A",
-      "bounce_energy": 0.08,
+      "bounce_color": "#C56F2D",
+      "bounce_energy": 0.12,
       "phases": [
-        {"id":"night","name":"夜间","start_hour":18.6,"end_hour":28.4,"sun_elevation_min_deg":-30.0,"sun_elevation_max_deg":-18.0,"sky_color":"#111D28","sky_energy":0.002,"sun_color":"#75889A","sun_energy":0.03,"exposure":0.21,"shadow_alpha":0.03,"shadow_softness":0.83,"bounce_color":"#79675A","bounce_energy":0.002},
-        {"id":"blue_hour","name":"黎明蓝调","start_hour":4.417,"end_hour":5.85,"sun_elevation_min_deg":-18.0,"sun_elevation_max_deg":-0.8,"sky_color":"#2A3B4B","sky_energy":0.16,"sun_color":"#73859A","sun_energy":0.01,"exposure":0.30,"shadow_alpha":0.03,"shadow_softness":0.85,"bounce_color":"#79675A","bounce_energy":0.08},
-        {"id":"sunrise","name":"日出","start_hour":5.85,"end_hour":6.417,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":6.0,"sky_color":"#556876","sky_energy":0.25,"sun_color":"#E6A06D","sun_energy":0.28,"exposure":0.42,"shadow_alpha":0.17,"shadow_softness":0.74,"bounce_color":"#79675A","bounce_energy":0.08},
-        {"id":"morning","name":"上午","start_hour":6.433,"end_hour":10.333,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":44.9,"sky_color":"#B4BCB8","sky_energy":0.42,"sun_color":"#F5D4A5","sun_energy":0.46,"exposure":0.60,"shadow_alpha":0.30,"shadow_softness":0.58,"bounce_color":"#79675A","bounce_energy":0.08},
-        {"id":"noon","name":"正午","start_hour":10.35,"end_hour":12.5,"sun_elevation_min_deg":44.9,"sun_elevation_max_deg":44.9,"sky_color":"#C2C7BE","sky_energy":0.49,"sun_color":"#F2D7AF","sun_energy":0.55,"exposure":0.65,"shadow_alpha":0.35,"shadow_softness":0.54,"bounce_color":"#79675A","bounce_energy":0.08},
-        {"id":"afternoon","name":"下午","start_hour":12.517,"end_hour":16.567,"sun_elevation_min_deg":44.9,"sun_elevation_max_deg":6.0,"sky_color":"#ACB7B3","sky_energy":0.39,"sun_color":"#EBC796","sun_energy":0.41,"exposure":0.56,"shadow_alpha":0.28,"shadow_softness":0.62,"bounce_color":"#79675A","bounce_energy":0.08},
-        {"id":"sunset","name":"日落","start_hour":16.583,"end_hour":17.15,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":-0.8,"sky_color":"#596B77","sky_energy":0.24,"sun_color":"#DB966C","sun_energy":0.26,"exposure":0.41,"shadow_alpha":0.16,"shadow_softness":0.76,"bounce_color":"#79675A","bounce_energy":0.08},
-        {"id":"dusk","name":"暮色蓝调","start_hour":17.167,"end_hour":18.583,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":-18.0,"sky_color":"#2B3949","sky_energy":0.15,"sun_color":"#74849A","sun_energy":0.01,"exposure":0.29,"shadow_alpha":0.03,"shadow_softness":0.87,"bounce_color":"#79675A","bounce_energy":0.08}
+        {"id":"night","name":"夜间","start_hour":18.6,"end_hour":28.4,"sun_elevation_min_deg":-30.0,"sun_elevation_max_deg":-18.0,"sky_color":"#130E27","sky_energy":0.002,"sun_color":"#000000","sun_energy":0.00,"exposure":0.11,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#C56F2D","bounce_energy":0.002},
+        {"id":"blue_hour","name":"黎明蓝调","start_hour":4.417,"end_hour":5.85,"sun_elevation_min_deg":-18.0,"sun_elevation_max_deg":-0.8,"sky_color":"#3C2B59","sky_energy":0.14,"sun_color":"#000000","sun_energy":0.00,"exposure":0.26,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#C56F2D","bounce_energy":0.12},
+        {"id":"sunrise","name":"日出","start_hour":5.85,"end_hour":6.417,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":6.0,"sky_color":"#7F587B","sky_energy":0.27,"sun_color":"#FF7F46","sun_energy":0.34,"exposure":0.46,"shadow_alpha":0.20,"shadow_softness":0.64,"bounce_color":"#C56F2D","bounce_energy":0.12},
+        {"id":"morning","name":"上午","start_hour":6.433,"end_hour":10.333,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":44.9,"sky_color":"#DDBA7A","sky_energy":0.48,"sun_color":"#FFCA67","sun_energy":0.58,"exposure":0.67,"shadow_alpha":0.36,"shadow_softness":0.42,"bounce_color":"#C56F2D","bounce_energy":0.12},
+        {"id":"noon","name":"正午","start_hour":10.35,"end_hour":12.5,"sun_elevation_min_deg":44.9,"sun_elevation_max_deg":44.9,"sky_color":"#EAC57F","sky_energy":0.55,"sun_color":"#FFE198","sun_energy":0.68,"exposure":0.72,"shadow_alpha":0.44,"shadow_softness":0.38,"bounce_color":"#C56F2D","bounce_energy":0.12},
+        {"id":"afternoon","name":"下午","start_hour":12.517,"end_hour":16.567,"sun_elevation_min_deg":44.9,"sun_elevation_max_deg":6.0,"sky_color":"#D7A363","sky_energy":0.45,"sun_color":"#FFB85B","sun_energy":0.52,"exposure":0.63,"shadow_alpha":0.34,"shadow_softness":0.46,"bounce_color":"#C56F2D","bounce_energy":0.12},
+        {"id":"sunset","name":"日落","start_hour":16.583,"end_hour":17.15,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":-0.8,"sky_color":"#8E5468","sky_energy":0.25,"sun_color":"#FF684C","sun_energy":0.30,"exposure":0.43,"shadow_alpha":0.18,"shadow_softness":0.66,"bounce_color":"#C56F2D","bounce_energy":0.12},
+        {"id":"dusk","name":"暮色蓝调","start_hour":17.167,"end_hour":18.583,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":-18.0,"sky_color":"#302642","sky_energy":0.15,"sun_color":"#000000","sun_energy":0.00,"exposure":0.27,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#C56F2D","bounce_energy":0.12}
       ]
     },
     "winter": {
@@ -102,17 +102,17 @@
       "south_component": 0.50,
       "cloud_coverage": 0.80,
       "cloud_strength": 0.36,
-      "bounce_color": "#C7D2DC",
-      "bounce_energy": 0.30,
+      "bounce_color": "#BCE2F2",
+      "bounce_energy": 0.32,
       "phases": [
-        {"id":"night","name":"夜间","start_hour":18.35,"end_hour":29.4,"sun_elevation_min_deg":-30.0,"sun_elevation_max_deg":-18.0,"sky_color":"#111D2C","sky_energy":0.002,"sun_color":"#7D92AB","sun_energy":0.04,"exposure":0.23,"shadow_alpha":0.04,"shadow_softness":0.78,"bounce_color":"#C7D2DC","bounce_energy":0.002},
-        {"id":"blue_hour","name":"黎明蓝调","start_hour":5.417,"end_hour":6.95,"sun_elevation_min_deg":-18.0,"sun_elevation_max_deg":-0.8,"sky_color":"#293E54","sky_energy":0.18,"sun_color":"#768BA4","sun_energy":0.01,"exposure":0.33,"shadow_alpha":0.03,"shadow_softness":0.86,"bounce_color":"#C7D2DC","bounce_energy":0.30},
-        {"id":"sunrise","name":"日出","start_hour":6.95,"end_hour":7.583,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":6.0,"sky_color":"#5B7082","sky_energy":0.27,"sun_color":"#DDA88B","sun_energy":0.20,"exposure":0.42,"shadow_alpha":0.14,"shadow_softness":0.76,"bounce_color":"#C7D2DC","bounce_energy":0.30},
-        {"id":"morning","name":"上午","start_hour":7.6,"end_hour":10.5,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":31.8,"sky_color":"#AEBFCC","sky_energy":0.43,"sun_color":"#EADAC9","sun_energy":0.28,"exposure":0.56,"shadow_alpha":0.21,"shadow_softness":0.66,"bounce_color":"#C7D2DC","bounce_energy":0.30},
-        {"id":"noon","name":"正午","start_hour":10.517,"end_hour":12.75,"sun_elevation_min_deg":31.8,"sun_elevation_max_deg":31.8,"sky_color":"#B7C7D4","sky_energy":0.51,"sun_color":"#EEE0D3","sun_energy":0.35,"exposure":0.61,"shadow_alpha":0.25,"shadow_softness":0.62,"bounce_color":"#C7D2DC","bounce_energy":0.30},
-        {"id":"afternoon","name":"下午","start_hour":12.767,"end_hour":16.167,"sun_elevation_min_deg":31.8,"sun_elevation_max_deg":6.0,"sky_color":"#A7B8C5","sky_energy":0.40,"sun_color":"#E3CDBC","sun_energy":0.25,"exposure":0.52,"shadow_alpha":0.20,"shadow_softness":0.70,"bounce_color":"#C7D2DC","bounce_energy":0.30},
-        {"id":"sunset","name":"日落","start_hour":16.183,"end_hour":16.817,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":-0.8,"sky_color":"#586979","sky_energy":0.25,"sun_color":"#D69A82","sun_energy":0.17,"exposure":0.40,"shadow_alpha":0.13,"shadow_softness":0.80,"bounce_color":"#C7D2DC","bounce_energy":0.30},
-        {"id":"dusk","name":"暮色蓝调","start_hour":16.833,"end_hour":18.333,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":-18.0,"sky_color":"#2B3F54","sky_energy":0.16,"sun_color":"#70859D","sun_energy":0.01,"exposure":0.30,"shadow_alpha":0.03,"shadow_softness":0.91,"bounce_color":"#C7D2DC","bounce_energy":0.30}
+        {"id":"night","name":"夜间","start_hour":18.35,"end_hour":29.4,"sun_elevation_min_deg":-30.0,"sun_elevation_max_deg":-18.0,"sky_color":"#0B122A","sky_energy":0.002,"sun_color":"#000000","sun_energy":0.00,"exposure":0.10,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#BCE2F2","bounce_energy":0.002},
+        {"id":"blue_hour","name":"黎明蓝调","start_hour":5.417,"end_hour":6.95,"sun_elevation_min_deg":-18.0,"sun_elevation_max_deg":-0.8,"sky_color":"#203369","sky_energy":0.18,"sun_color":"#000000","sun_energy":0.00,"exposure":0.30,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#BCE2F2","bounce_energy":0.32},
+        {"id":"sunrise","name":"日出","start_hour":6.95,"end_hour":7.583,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":6.0,"sky_color":"#526FA5","sky_energy":0.30,"sun_color":"#FFB178","sun_energy":0.24,"exposure":0.45,"shadow_alpha":0.13,"shadow_softness":0.72,"bounce_color":"#BCE2F2","bounce_energy":0.32},
+        {"id":"morning","name":"上午","start_hour":7.6,"end_hour":10.5,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":31.8,"sky_color":"#A8D5EA","sky_energy":0.52,"sun_color":"#FFE1B0","sun_energy":0.32,"exposure":0.64,"shadow_alpha":0.20,"shadow_softness":0.58,"bounce_color":"#BCE2F2","bounce_energy":0.32},
+        {"id":"noon","name":"正午","start_hour":10.517,"end_hour":12.75,"sun_elevation_min_deg":31.8,"sun_elevation_max_deg":31.8,"sky_color":"#B9DFEE","sky_energy":0.60,"sun_color":"#FFF0CC","sun_energy":0.40,"exposure":0.69,"shadow_alpha":0.24,"shadow_softness":0.55,"bounce_color":"#BCE2F2","bounce_energy":0.32},
+        {"id":"afternoon","name":"下午","start_hour":12.767,"end_hour":16.167,"sun_elevation_min_deg":31.8,"sun_elevation_max_deg":6.0,"sky_color":"#89BFDB","sky_energy":0.49,"sun_color":"#FFD69A","sun_energy":0.28,"exposure":0.58,"shadow_alpha":0.18,"shadow_softness":0.62,"bounce_color":"#BCE2F2","bounce_energy":0.32},
+        {"id":"sunset","name":"日落","start_hour":16.183,"end_hour":16.817,"sun_elevation_min_deg":6.0,"sun_elevation_max_deg":-0.8,"sky_color":"#53679D","sky_energy":0.29,"sun_color":"#FF885E","sun_energy":0.18,"exposure":0.40,"shadow_alpha":0.12,"shadow_softness":0.78,"bounce_color":"#BCE2F2","bounce_energy":0.32},
+        {"id":"dusk","name":"暮色蓝调","start_hour":16.833,"end_hour":18.333,"sun_elevation_min_deg":-0.8,"sun_elevation_max_deg":-18.0,"sky_color":"#192C58","sky_energy":0.18,"sun_color":"#000000","sun_energy":0.00,"exposure":0.29,"shadow_alpha":0.00,"shadow_softness":1.00,"bounce_color":"#BCE2F2","bounce_energy":0.32}
       ]
     }
   }

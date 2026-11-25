@@ -8,6 +8,8 @@
   "types": {
     "rain": {
       "name": "雨",
+      "fade_in_hours": 0.50,
+      "fade_out_hours": 0.50,
       "small": {
         "duration_hours": [0.5, 3.0],
         "sky_energy_factor": 0.68,
@@ -38,6 +40,8 @@
     },
     "snow": {
       "name": "雪",
+      "fade_in_hours": 0.75,
+      "fade_out_hours": 0.75,
       "small": {
         "duration_hours": [1.0, 4.0],
         "sky_energy_factor": 0.80,
@@ -68,6 +72,8 @@
     },
     "fog": {
       "name": "雾",
+      "fade_in_hours": 0.75,
+      "fade_out_hours": 0.75,
       "small": {
         "duration_hours": [1.0, 3.0],
         "sky_energy_factor": 0.85,
@@ -98,6 +104,8 @@
     },
     "cloud": {
       "name": "云",
+      "fade_in_hours": 1.00,
+      "fade_out_hours": 1.00,
       "small": {
         "duration_hours": [2.0, 6.0],
         "sky_energy_factor": 0.92,

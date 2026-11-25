@@ -230,15 +230,15 @@ func _prepare() -> void:
 
 func _apply_schedule() -> void:
 	var entry: Dictionary = schedule[schedule_index]
-	WorldWeather.set_fog_force(1 if bool(entry["fog"]) else -1)
-	WorldWeather.set_today_rain_force(
-		1 if bool(entry.get("rain", false)) else -1)
+	WorldWeather.clear_weather_event("fog")
+	WorldWeather.clear_weather_event("rain")
 	WorldWeather.clear_weather_event("cloud")
+	if bool(entry["fog"]):
+		_trigger_capture_weather_event("fog", "large", 24.0)
+	if bool(entry.get("rain", false)):
+		_trigger_capture_weather_event("rain", "large", 24.0)
 	if hold_cloud in ["small", "medium", "large"]:
-		WorldWeather.trigger_weather_event(
-			"cloud",
-			hold_cloud,
-			24.0)
+		_trigger_capture_weather_event("cloud", hold_cloud, 24.0)
 	var hour := float(entry["hour"])
 	var target := hour if hour >= GameClock.DAY_START_HOUR else hour + 24.0
 	GameClock.progress = clampf(
@@ -273,6 +273,21 @@ func _apply_schedule() -> void:
 	if panel != null:
 		panel.set_panel_visible(bool(entry.get("panel", false)))
 	wait_left = 90 if hold_mode and hold_rain else WAIT_FRAMES
+
+
+func _trigger_capture_weather_event(
+		type_id: String,
+		size_id: String,
+		duration_hours: float) -> void:
+	var event := WorldWeather.trigger_weather_event(
+		type_id,
+		size_id,
+		duration_hours)
+	if event.is_empty():
+		return
+	WorldWeather.set_weather_event_remaining_hours(
+		type_id,
+		maxf(duration_hours - 2.0, 0.25))
 
 
 func _capture(file_name: String) -> void:

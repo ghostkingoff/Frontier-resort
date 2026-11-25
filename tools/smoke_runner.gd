@@ -977,11 +977,11 @@ func _run_day_night_checks() -> void:
 							float(light_spec.get(
 								"ground_ellipse_aspect",
 								1.0)),
-							sqrt(2.0)) \
+							1.0 / 0.72) \
 						and light_index < ground_aspects.size() \
 						and is_equal_approx(
 							ground_aspects[light_index],
-							sqrt(2.0)):
+							1.0 / 0.72):
 					lamp_ground_shape_ok = true
 					break
 			var glow := spring_lighting.lamp_glows.get(lamp) as Sprite2D
@@ -999,7 +999,7 @@ func _run_day_night_checks() -> void:
 					float(glow_material.get_shader_parameter("brightness")),
 					0.18)
 			spring_lighting.camera.global_position = saved_camera_position
-		checks.append("路灯 v2：正式分层材质 %s｜18:00-次日08:00 %s｜能量 %s｜真实 Spot 阴影 %s｜仅排除自身代理遮挡 %s｜灯头光 12%% 透明度/18%% 亮度且由灯头覆盖 %s｜45°椭圆地块光 %s｜旧 PointLight2D 已关闭 %s" % [
+		checks.append("路灯 v2：正式分层材质 %s｜18:00-次日08:00 %s｜能量 %s｜真实 Spot 阴影 %s｜仅排除自身代理遮挡 %s｜灯头光 12%% 透明度/18%% 亮度且由灯头覆盖 %s｜参数化椭圆地块光 %s｜旧 PointLight2D 已关闭 %s" % [
 			str(lamp_surface_ok), str(lamp_schedule_ok), " / ".join(lamp_energies),
 			str(real_lamp_shadow_ok), str(lamp_occlusion_ok), str(lamp_glow_ok),
 			str(lamp_ground_shape_ok),
@@ -1684,7 +1684,7 @@ func _run_demolish_checks() -> void:
 			and float(sun_evening["sun_energy"]) < float(sun_noon["sun_energy"])
 		exposure_schedule_ok = float(sun_night["exposure"]) < 0.5 \
 			and float(sun_night["exposure"]) < float(sun_noon["exposure"]) \
-			and float(sun_noon["exposure"]) <= 0.82
+			and float(sun_noon["exposure"]) <= 0.92
 		var night_sky: Color = sun_night["sky_color"]
 		var noon_sky: Color = sun_noon["sky_color"]
 		ambient_schedule_ok = not night_sky.is_equal_approx(noon_sky) \
@@ -1736,10 +1736,10 @@ func _run_demolish_checks() -> void:
 				window_light_count += 1
 				windows_are_unshadowed = windows_are_unshadowed \
 					and light_index >= shadow_count \
-					and is_equal_approx(float(light_spec["range"]), 21.0) \
+					and is_equal_approx(float(light_spec["range"]), 34.0) \
 					and is_equal_approx(
 						float(light_spec["attenuation_range"]),
-						52.5) \
+						68.0) \
 					and is_equal_approx(
 						float(light_spec["attenuation_power"]),
 						4.0) \

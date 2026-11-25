@@ -26,6 +26,10 @@ var weather_status_label: Label
 var cloud_event_status_label: Label
 var day_spin: SpinBox
 var cloud_duration_spin: SpinBox
+var rain_duration_spin: SpinBox
+var fog_duration_spin: SpinBox
+var rain_event_status_label: Label
+var fog_event_status_label: Label
 var cloud_shadow_tuning_controls: Dictionary = {}
 var cloud_shadow_tuning_output: TextEdit
 var force_controls: Dictionary = {}
@@ -204,7 +208,7 @@ func _add_day_section() -> void:
 func _add_weather_section() -> void:
 	_add_section_title("天气与能见度")
 	var rollback_hint := Label.new()
-	rollback_hint.text = "降雨全天连续；降雨与清晨雾独立判定。雾在 06:00–06:30 淡入，08:30–09:00 淡出。"
+	rollback_hint.text = "雨、雾、云为独立事件，可在 06:00–次日 06:00 的任意时段开始；三者可同时存在，并各自淡入淡出。"
 	rollback_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rollback_hint.modulate = Color(0.95, 0.78, 0.55, 1.0)
 	rollback_hint.add_theme_font_size_override("font_size", 15)
@@ -213,31 +217,15 @@ func _add_weather_section() -> void:
 	weather_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	weather_status_label.add_theme_font_size_override("font_size", 17)
 	content.add_child(weather_status_label)
-	_add_force_control("today_rain", "当前日降雨")
+	_add_force_control("today_rain", "今日自动雨事件")
 	_add_force_control("yesterday_rain", "昨日降雨（独立记录）")
-	_add_force_control("fog", "当前日清晨雾逻辑")
-	var time_label := Label.new()
-	time_label.text = "淡入淡出预览（点击后自动播放时间）"
-	time_label.modulate = Color(0.78, 0.86, 0.84, 1.0)
-	time_label.add_theme_font_size_override("font_size", 15)
-	content.add_child(time_label)
-	var time_row := HBoxContainer.new()
-	time_row.add_theme_constant_override("separation", 5)
-	content.add_child(time_row)
-	for preview in [
-		["06:00", 6.0],
-		["06:15", 6.25],
-		["06:30", 6.5],
-		["07:00", 7.0],
-		["08:30", 8.5],
-		["08:45", 8.75],
-		["09:00", 9.0],
-	]:
-		var button := Button.new()
-		button.text = str(preview[0])
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.pressed.connect(_on_fog_preview_time.bind(float(preview[1])))
-		time_row.add_child(button)
+	_add_force_control("fog", "今日自动雾事件")
+	var rain_controls := _add_weather_event_controls("rain", "雨事件", 2.0)
+	rain_event_status_label = rain_controls["status_label"] as Label
+	rain_duration_spin = rain_controls["duration_spin"] as SpinBox
+	var fog_controls := _add_weather_event_controls("fog", "雾事件", 3.0)
+	fog_event_status_label = fog_controls["status_label"] as Label
+	fog_duration_spin = fog_controls["duration_spin"] as SpinBox
 	var lighting_label := Label.new()
 	lighting_label.text = "太阳与夜间预览（点击后停在目标时刻）"
 	lighting_label.modulate = Color(0.78, 0.86, 0.84, 1.0)
@@ -254,6 +242,63 @@ func _add_weather_section() -> void:
 			_on_lighting_preview_phase.bind(str(preview["phase"])))
 		lighting_row.add_child(button)
 		lighting_preview_buttons.append(button)
+
+
+func _add_weather_event_controls(
+		type_id: String,
+		title_text: String,
+		default_duration: float) -> Dictionary:
+	var title := Label.new()
+	title.text = "%s（独立）" % title_text
+	title.modulate = Color(0.62, 0.88, 0.86, 1.0)
+	title.add_theme_font_size_override("font_size", 18)
+	content.add_child(title)
+	var status_label := Label.new()
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.add_theme_font_size_override("font_size", 16)
+	content.add_child(status_label)
+	var duration_row := HBoxContainer.new()
+	duration_row.add_theme_constant_override("separation", 8)
+	content.add_child(duration_row)
+	var duration_label := Label.new()
+	duration_label.text = "持续时间（游戏小时）"
+	duration_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	duration_label.add_theme_font_size_override("font_size", 16)
+	duration_row.add_child(duration_label)
+	var duration_spin := SpinBox.new()
+	duration_spin.min_value = 0.25
+	duration_spin.max_value = 48.0
+	duration_spin.step = 0.25
+	duration_spin.value = default_duration
+	duration_spin.custom_minimum_size = Vector2(128.0, 0.0)
+	duration_row.add_child(duration_spin)
+	var event_row := HBoxContainer.new()
+	event_row.add_theme_constant_override("separation", 6)
+	content.add_child(event_row)
+	for definition in [
+		["小", "small"],
+		["中", "medium"],
+		["大", "large"],
+	]:
+		var button := Button.new()
+		button.text = str(definition[0])
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(
+			_on_trigger_weather_event.bind(
+				type_id,
+				str(definition[1]),
+				duration_spin))
+		event_row.add_child(button)
+	var clear_button := Button.new()
+	clear_button.text = "清除"
+	clear_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	clear_button.pressed.connect(
+		_on_clear_weather_event.bind(type_id))
+	event_row.add_child(clear_button)
+	return {
+		"status_label": status_label,
+		"duration_spin": duration_spin,
+	}
 
 
 func _add_cloud_section() -> void:
@@ -713,14 +758,24 @@ func _format_lighting_tuning_value(value: float, format: String) -> String:
 
 
 func _on_trigger_cloud_event(size_id: String) -> void:
-	var duration := 6.0 if cloud_duration_spin == null \
-		else cloud_duration_spin.value
-	WorldWeather.trigger_weather_event("cloud", size_id, duration)
-	_refresh_all()
+	_on_trigger_weather_event("cloud", size_id, cloud_duration_spin)
 
 
 func _on_clear_cloud_event() -> void:
-	WorldWeather.clear_weather_event("cloud")
+	_on_clear_weather_event("cloud")
+
+
+func _on_trigger_weather_event(
+		type_id: String,
+		size_id: String,
+		duration_spin: SpinBox) -> void:
+	var duration := 6.0 if duration_spin == null else duration_spin.value
+	WorldWeather.trigger_weather_event(type_id, size_id, duration)
+	_refresh_all()
+
+
+func _on_clear_weather_event(type_id: String) -> void:
+	WorldWeather.clear_weather_event(type_id)
 	_refresh_all()
 
 
@@ -1026,10 +1081,6 @@ func _on_force_selected(index: int, key: String) -> void:
 	_refresh_all()
 
 
-func _on_fog_preview_time(hour: float) -> void:
-	_set_preview_hour(hour, true)
-
-
 func _on_lighting_preview_phase(phase: String) -> void:
 	_set_preview_hour(_lighting_preview_hour(phase), false)
 
@@ -1292,38 +1343,66 @@ func _format_preview_hour(hour: float) -> String:
 func _refresh_weather_status() -> void:
 	if weather_status_label == null:
 		return
-	var hour := GameClock.hour_of_day()
-	var strength := WorldWeather.fog_strength(hour)
 	weather_status_label.text = (
-		"当前日降雨：%s ｜ 昨日降雨：%s\n"
-		+ "清晨雾事件（独立）：%s ｜ 视觉雾强度 %.0f%%\n"
-		+ "雨天视觉：%s\n"
-		+ "06:00–06:30 淡入，08:30–09:00 淡出"
+		"今日自动事件：雨 %s ｜ 雾 %s ｜ 云 %s\n"
+		+ "昨日降雨记录：%s ｜ 三种事件可同时在任意时段出现"
 	) % [
 		"是" if WorldWeather.today_rain else "否",
-		"是" if WorldWeather.yesterday_rain else "否",
 		"是" if WorldWeather.fog_event else "否",
-		strength * 100.0,
-		"全天降雨" if WorldWeather.today_rain else "无雨",
+		"是" if WorldWeather.cloud_event else "否",
+		"是" if WorldWeather.yesterday_rain else "否",
 	]
+	if rain_event_status_label != null:
+		rain_event_status_label.text = _weather_event_status_text("rain", "雨")
+	if fog_event_status_label != null:
+		fog_event_status_label.text = _weather_event_status_text("fog", "雾")
 
 
 func _refresh_cloud_status() -> void:
 	if cloud_event_status_label == null:
 		return
-	var active := WorldWeather.get_active_weather_event("cloud")
-	if active.is_empty():
-		cloud_event_status_label.text = "云事件：无"
-		return
-	var spec: Dictionary = active.get("spec", {})
-	cloud_event_status_label.text = (
-		"云事件：%s · %s ｜ 剩余 %.2f 小时\n"
-		+ "状态：仅触发接口，云视觉暂未实现"
-	) % [
-		str(spec.get("size_name", spec.get("size", ""))),
-		str(spec.get("type_name", "云")),
-		float(active.get("remaining_hours", 0.0)),
-	]
+	cloud_event_status_label.text = _weather_event_status_text("cloud", "云")
+
+
+func _weather_event_status_text(type_id: String, label_text: String) -> String:
+	var active := WorldWeather.get_active_weather_event(type_id)
+	if not active.is_empty():
+		var spec: Dictionary = active.get("spec", {})
+		var envelope := WorldWeather.weather_event_envelope(type_id)
+		return "%s事件：%s · %s ｜ 剩余 %.2f 小时 ｜ 包络 %.0f%%" % [
+			label_text,
+			str(spec.get("size_name", spec.get("size", ""))),
+			str(spec.get("type_name", label_text)),
+			float(active.get("remaining_hours", 0.0)),
+			envelope * 100.0,
+		]
+	var scheduled := WorldWeather.get_scheduled_weather_events()
+	if scheduled.has(type_id):
+		var plan: Dictionary = scheduled[type_id]
+		if not bool(plan.get("fired", false)):
+			var start_hour := fposmod(
+				GameClock.DAY_START_HOUR
+					+ float(plan.get("start_progress", 0.0)) * 24.0,
+				24.0)
+			return "%s事件：无 ｜ 下次计划 %s · %s" % [
+				label_text,
+				_format_preview_hour(start_hour),
+				str(plan.get("size", "small")),
+			]
+	if not _auto_event_flag(type_id):
+		return "%s事件：无 ｜ 今日不自动安排" % label_text
+	return "%s事件：无" % label_text
+
+
+func _auto_event_flag(type_id: String) -> bool:
+	match type_id:
+		"rain":
+			return WorldWeather.today_rain
+		"fog":
+			return WorldWeather.fog_event
+		"cloud":
+			return WorldWeather.cloud_event
+	return false
 
 
 func _on_refresh_weather() -> void:
