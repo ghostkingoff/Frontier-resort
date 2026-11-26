@@ -9,7 +9,7 @@ const EVENT_CONFIG_PATH := "res://data/lighting_v2/weather_events.json"
 const FORCE_AUTO := 0
 const FORCE_ON := 1
 const FORCE_OFF := -1
-const AUTO_WEATHER_TYPES := ["rain", "fog", "cloud"]
+const AUTO_WEATHER_TYPES := ["rain", "fog", "cloud", "snow"]
 
 var config: Dictionary = {}
 var event_catalog: Dictionary = {}
@@ -18,15 +18,18 @@ var today_rain := false
 var yesterday_rain := false
 var fog_event := false
 var cloud_event := false
+var snow_event := false
 var rain_chance := 0.24
 var fog_chance := 0.18
 var cloud_chance := 0.24
+var snow_chance := 0.10
 var active_weather_events: Dictionary = {}
 var _scheduled_weather_events: Dictionary = {}
 
 var _today_rain_force := FORCE_AUTO
 var _yesterday_rain_force := FORCE_AUTO
 var _fog_force := FORCE_AUTO
+var _snow_force := FORCE_AUTO
 
 
 func _ready() -> void:
@@ -39,6 +42,10 @@ func _ready() -> void:
 		1.0)
 	cloud_chance = clampf(
 		float(config.get("cloud_chance", 0.24)),
+		0.0,
+		1.0)
+	snow_chance = clampf(
+		float(config.get("snow_chance", 0.10)),
 		0.0,
 		1.0)
 	GameState.day_changed.connect(_on_day_changed)
@@ -108,6 +115,12 @@ func refresh() -> void:
 		"weather.cloud",
 		cloud_chance)
 	cloud_event = cloud_roll < effective_cloud_chance
+	var snow_roll := _daily_roll("snow", day)
+	var effective_snow_chance := DevEvents.chance(
+		"weather.snow",
+		snow_chance)
+	snow_event = snow_roll < effective_snow_chance
+	snow_event = _resolve_forced(_snow_force, snow_event)
 	if GameClock.progress <= 0.05:
 		_rebuild_auto_weather_schedule()
 	changed.emit()
@@ -167,6 +180,11 @@ func set_fog_force(mode: int) -> void:
 	refresh()
 
 
+func set_snow_force(mode: int) -> void:
+	_snow_force = _normalize_force(mode)
+	refresh()
+
+
 func get_today_rain_force() -> int:
 	return _today_rain_force
 
@@ -179,10 +197,15 @@ func get_fog_force() -> int:
 	return _fog_force
 
 
+func get_snow_force() -> int:
+	return _snow_force
+
+
 func clear_force_overrides() -> void:
 	_today_rain_force = FORCE_AUTO
 	_yesterday_rain_force = FORCE_AUTO
 	_fog_force = FORCE_AUTO
+	_snow_force = FORCE_AUTO
 	refresh()
 
 
@@ -421,6 +444,8 @@ func _auto_weather_enabled(type_id: String) -> bool:
 			return fog_event
 		"cloud":
 			return cloud_event
+		"snow":
+			return snow_event
 	return false
 
 
@@ -453,13 +478,16 @@ func snapshot() -> Dictionary:
 		"yesterday_rain": yesterday_rain,
 		"fog_event": fog_event,
 		"cloud_event": cloud_event,
+		"snow_event": snow_event,
 		"fog_strength": fog_strength(GameClock.hour_of_day()),
 		"rain_chance": rain_chance,
 		"fog_chance": fog_chance,
 		"cloud_chance": cloud_chance,
+		"snow_chance": snow_chance,
 		"today_rain_force": _today_rain_force,
 		"yesterday_rain_force": _yesterday_rain_force,
 		"fog_force": _fog_force,
+		"snow_force": _snow_force,
 		"active_weather_events": get_active_weather_events(),
 		"scheduled_weather_events": get_scheduled_weather_events(),
 		"weather_event_effects": get_weather_event_effects(),

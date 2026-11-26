@@ -1,24 +1,88 @@
 extends SceneTree
-## Generates deterministic seamless grayscale masks for the spring fog layer.
+## Generates deterministic seamless masks for weather and snow-cover effects.
 ## Run:
 ##   godot --headless --path . --script res://tools/generate_fog_textures.gd
 
 const OUTPUT_DIR := "res://art/generated/lighting_v2"
 const DENSITY_SIZE := 1024
 const DEPTH_SIZE := 512
+const SNOW_SIZE := 1024
 
 
 func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(OUTPUT_DIR)
 	var density := _generate_density_texture(DENSITY_SIZE)
 	var depth := _generate_depth_texture(DEPTH_SIZE)
+	var snow := _generate_snow_coverage_texture(SNOW_SIZE)
 	var density_error := density.save_png(OUTPUT_DIR + "/fog_density.png")
 	var depth_error := depth.save_png(OUTPUT_DIR + "/fog_depth.png")
-	print("[fog-textures] density=%s depth=%s" % [
+	var snow_error := snow.save_png(OUTPUT_DIR + "/snow_coverage.png")
+	print("[weather-textures] density=%s depth=%s snow=%s" % [
 		error_string(density_error),
 		error_string(depth_error),
+		error_string(snow_error),
 	])
-	quit(0 if density_error == OK and depth_error == OK else 1)
+	quit(0 if density_error == OK and depth_error == OK \
+		and snow_error == OK else 1)
+
+
+func _generate_snow_coverage_texture(size: int) -> Image:
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var means := [0.0, 0.0]
+	for y in range(size):
+		var v := float(y) / float(size)
+		for x in range(size):
+			var u := float(x) / float(size)
+			var body := _snow_noise_field(u, v, 1709)
+			var breakup := _snow_breakup_field(u, v, 4513)
+			means[0] += body
+			means[1] += breakup
+			image.set_pixel(x, y, Color(body, breakup, 0.0, 1.0))
+	var pixels := float(size * size)
+	print("[weather-textures] snow field means R=%.3f G=%.3f" % [
+		means[0] / pixels,
+		means[1] / pixels,
+	])
+	return image
+
+
+func _snow_noise_field(u: float, v: float, seed: int) -> float:
+	# Warp the fractal field so its contours form broad, irregular continents
+	# with ragged bays instead of isolated round cloud blobs.
+	var warp_x := (_fbm(u, v, 3, 4, seed + 97, 0.56) - 0.5) * 0.24
+	var warp_y := (_fbm(u, v, 4, 4, seed + 211, 0.56) - 0.5) * 0.24
+	var field := _fbm(
+		u + warp_x,
+		v + warp_y,
+		7,
+		7,
+		seed,
+		0.56)
+	var edge_breakup := _periodic_value_noise(
+		u,
+		v,
+		31,
+		seed + 1301)
+	field = field * 0.90 + edge_breakup * 0.10
+	return clampf((field - 0.5) * 1.42 + 0.5, 0.0, 1.0)
+
+
+func _snow_breakup_field(u: float, v: float, seed: int) -> float:
+	var coarse := _periodic_value_noise(u, v, 17, seed)
+	var medium := _periodic_value_noise(
+		u,
+		v,
+		43,
+		seed + 307)
+	var fine := _periodic_value_noise(
+		u,
+		v,
+		97,
+		seed + 911)
+	return clampf(
+		coarse * 0.27 + medium * 0.45 + fine * 0.28,
+		0.0,
+		1.0)
 
 
 func _generate_density_texture(size: int) -> Image:

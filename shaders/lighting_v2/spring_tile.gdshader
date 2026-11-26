@@ -1,7 +1,9 @@
 shader_type canvas_item;
 render_mode unshaded;
 
+#include "res://shaders/lighting_v2/ground_projection.gdshaderinc"
 #include "res://shaders/lighting_v2/rain_ground.gdshaderinc"
+#include "res://shaders/lighting_v2/snow_cover.gdshaderinc"
 
 uniform sampler2D normal_texture : filter_linear, repeat_disable;
 uniform sampler2D specular_texture : filter_linear, repeat_disable;
@@ -19,6 +21,7 @@ uniform float cloud_shadow_ambient_strength : hint_range(0.0, 1.0) = 0.0;
 uniform float cloud_shadow_coverage : hint_range(0.0, 1.0) = 0.0;
 uniform float cloud_shadow_softness : hint_range(0.001, 0.5) = 0.14;
 uniform float cloud_shadow_world_scale = 900.0;
+uniform float cloud_shadow_y_compression : hint_range(1.0, 2.5) = 1.414214;
 uniform vec2 cloud_shadow_offset_px = vec2(0.0);
 uniform float cloud_hole_size = 1.4;
 uniform float cloud_hole_amount : hint_range(0.0, 1.0) = 0.55;
@@ -83,6 +86,12 @@ void fragment() {
 	if (base.a <= 0.001) {
 		discard;
 	}
+	base.rgb = apply_snow_cover(
+		base.rgb,
+		v_world_position,
+		1.0,
+		1.0,
+		0.0);
 	float macro_variation = sin(v_world_position.x * 0.019)
 		+ sin(v_world_position.y * 0.027 + 1.7)
 		+ sin((v_world_position.x + v_world_position.y) * 0.011);
@@ -129,8 +138,8 @@ void fragment() {
 		vec3(0.0, 0.0, 1.0),
 		rain_puddle * 0.92));
 	normal = normalize(normal + vec3(
-		ripple_gradient.x * 9.0 * rain_puddle,
-		ripple_gradient.y * 9.0 * rain_puddle,
+		ripple_gradient.x * 9.0 * rain_puddle * rain_intensity,
+		ripple_gradient.y * 9.0 * rain_puddle * rain_intensity,
 		0.0));
 	ao = mix(ao, 1.0, rain_puddle);
 	gloss = mix(gloss, max(gloss, 0.90), rain_puddle);
@@ -180,7 +189,9 @@ void fragment() {
 	float extreme_opening = 0.0;
 	if (cloud_shadow_direct_strength > 0.001
 			|| cloud_shadow_ambient_strength > 0.001) {
-		vec2 cloud_uv = (v_world_position + cloud_shadow_offset_px)
+		vec2 cloud_uv = project_ground_position(
+			v_world_position + cloud_shadow_offset_px,
+			cloud_shadow_y_compression)
 			/ max(cloud_shadow_world_scale, 64.0);
 		float cloud_broad = texture(
 			cloud_shadow_noise_texture,

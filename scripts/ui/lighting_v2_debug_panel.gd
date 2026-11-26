@@ -28,8 +28,10 @@ var day_spin: SpinBox
 var cloud_duration_spin: SpinBox
 var rain_duration_spin: SpinBox
 var fog_duration_spin: SpinBox
+var snow_duration_spin: SpinBox
 var rain_event_status_label: Label
 var fog_event_status_label: Label
+var snow_event_status_label: Label
 var cloud_shadow_tuning_controls: Dictionary = {}
 var cloud_shadow_tuning_output: TextEdit
 var force_controls: Dictionary = {}
@@ -208,7 +210,7 @@ func _add_day_section() -> void:
 func _add_weather_section() -> void:
 	_add_section_title("天气与能见度")
 	var rollback_hint := Label.new()
-	rollback_hint.text = "雨、雾、云为独立事件，可在 06:00–次日 06:00 的任意时段开始；三者可同时存在，并各自淡入淡出。"
+	rollback_hint.text = "雨、雾、云、雪为独立事件，可在 06:00–次日 06:00 的任意时段开始；它们可同时存在，并各自淡入淡出。"
 	rollback_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rollback_hint.modulate = Color(0.95, 0.78, 0.55, 1.0)
 	rollback_hint.add_theme_font_size_override("font_size", 15)
@@ -220,12 +222,16 @@ func _add_weather_section() -> void:
 	_add_force_control("today_rain", "今日自动雨事件")
 	_add_force_control("yesterday_rain", "昨日降雨（独立记录）")
 	_add_force_control("fog", "今日自动雾事件")
+	_add_force_control("snow", "今日自动雪事件")
 	var rain_controls := _add_weather_event_controls("rain", "雨事件", 2.0)
 	rain_event_status_label = rain_controls["status_label"] as Label
 	rain_duration_spin = rain_controls["duration_spin"] as SpinBox
 	var fog_controls := _add_weather_event_controls("fog", "雾事件", 3.0)
 	fog_event_status_label = fog_controls["status_label"] as Label
 	fog_duration_spin = fog_controls["duration_spin"] as SpinBox
+	var snow_controls := _add_weather_event_controls("snow", "雪事件", 4.0)
+	snow_event_status_label = snow_controls["status_label"] as Label
+	snow_duration_spin = snow_controls["duration_spin"] as SpinBox
 	var lighting_label := Label.new()
 	lighting_label.text = "太阳与夜间预览（点击后停在目标时刻）"
 	lighting_label.modulate = Color(0.78, 0.86, 0.84, 1.0)
@@ -1078,6 +1084,8 @@ func _on_force_selected(index: int, key: String) -> void:
 			WorldWeather.set_yesterday_rain_force(mode)
 		"fog":
 			WorldWeather.set_fog_force(mode)
+		"snow":
+			WorldWeather.set_snow_force(mode)
 	_refresh_all()
 
 
@@ -1174,6 +1182,7 @@ func _refresh_force_controls() -> void:
 		"today_rain": WorldWeather.get_today_rain_force(),
 		"yesterday_rain": WorldWeather.get_yesterday_rain_force(),
 		"fog": WorldWeather.get_fog_force(),
+		"snow": WorldWeather.get_snow_force(),
 	}
 	for key in force_controls.keys():
 		var option := force_controls[key] as OptionButton
@@ -1344,18 +1353,21 @@ func _refresh_weather_status() -> void:
 	if weather_status_label == null:
 		return
 	weather_status_label.text = (
-		"今日自动事件：雨 %s ｜ 雾 %s ｜ 云 %s\n"
-		+ "昨日降雨记录：%s ｜ 三种事件可同时在任意时段出现"
+		"今日自动事件：雨 %s ｜ 雾 %s ｜ 云 %s ｜ 雪 %s\n"
+		+ "昨日降雨记录：%s ｜ 四种事件可同时在任意时段出现"
 	) % [
 		"是" if WorldWeather.today_rain else "否",
 		"是" if WorldWeather.fog_event else "否",
 		"是" if WorldWeather.cloud_event else "否",
+		"是" if WorldWeather.snow_event else "否",
 		"是" if WorldWeather.yesterday_rain else "否",
 	]
 	if rain_event_status_label != null:
 		rain_event_status_label.text = _weather_event_status_text("rain", "雨")
 	if fog_event_status_label != null:
 		fog_event_status_label.text = _weather_event_status_text("fog", "雾")
+	if snow_event_status_label != null:
+		snow_event_status_label.text = _weather_event_status_text("snow", "雪")
 
 
 func _refresh_cloud_status() -> void:
@@ -1402,6 +1414,8 @@ func _auto_event_flag(type_id: String) -> bool:
 			return WorldWeather.fog_event
 		"cloud":
 			return WorldWeather.cloud_event
+		"snow":
+			return WorldWeather.snow_event
 	return false
 
 

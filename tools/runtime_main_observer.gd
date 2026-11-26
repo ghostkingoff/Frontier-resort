@@ -19,7 +19,11 @@ var wait_left := 0
 var hold_mode := false
 var hold_hour := 12.0
 var hold_fog := false
+var hold_fog_size := "large"
 var hold_rain := false
+var hold_rain_size := "large"
+var hold_snow := false
+var hold_snow_size := "large"
 var hold_cloud := ""
 var hold_animate := false
 var hold_speed := GameClock.Speed.X1
@@ -90,6 +94,8 @@ func _ready() -> void:
 			_hour_display(hold_hour))
 		print("[runtime-main] 云事件：%s" % (
 			hold_cloud if hold_cloud != "" else "关闭"))
+		print("[runtime-main] 雪事件：%s" % (
+			"开启" if hold_snow else "关闭"))
 
 
 func _process(_delta: float) -> void:
@@ -232,11 +238,14 @@ func _apply_schedule() -> void:
 	var entry: Dictionary = schedule[schedule_index]
 	WorldWeather.clear_weather_event("fog")
 	WorldWeather.clear_weather_event("rain")
+	WorldWeather.clear_weather_event("snow")
 	WorldWeather.clear_weather_event("cloud")
 	if bool(entry["fog"]):
-		_trigger_capture_weather_event("fog", "large", 24.0)
+		_trigger_capture_weather_event("fog", hold_fog_size, 24.0)
 	if bool(entry.get("rain", false)):
-		_trigger_capture_weather_event("rain", "large", 24.0)
+		_trigger_capture_weather_event("rain", hold_rain_size, 24.0)
+	if hold_snow:
+		_trigger_capture_weather_event("snow", hold_snow_size, 24.0)
 	if hold_cloud in ["small", "medium", "large"]:
 		_trigger_capture_weather_event("cloud", hold_cloud, 24.0)
 	var hour := float(entry["hour"])
@@ -272,7 +281,7 @@ func _apply_schedule() -> void:
 		"LightingV2DebugPanel") as LightingV2DebugPanel
 	if panel != null:
 		panel.set_panel_visible(bool(entry.get("panel", false)))
-	wait_left = 90 if hold_mode and hold_rain else WAIT_FRAMES
+	wait_left = 90 if hold_mode and (hold_rain or hold_snow) else WAIT_FRAMES
 
 
 func _trigger_capture_weather_event(
@@ -288,6 +297,20 @@ func _trigger_capture_weather_event(
 	WorldWeather.set_weather_event_remaining_hours(
 		type_id,
 		maxf(duration_hours - 2.0, 0.25))
+	if type_id == "snow":
+		var spring_lighting := get_parent().get_node_or_null(
+			"SpringWorldLighting") as SpringWorldLighting
+		if spring_lighting != null:
+			var snow_visual := WorldWeather.weather_event_visual_strength(
+				"snow")
+			var snow_profile := spring_lighting._active_weather_size_profile(
+				"snow")
+			var snow_cover := snow_visual \
+				* spring_lighting._weather_profile_value(
+				snow_profile,
+				"visual_intensity_scale")
+			spring_lighting._snow_visual_strength = snow_visual
+			spring_lighting._snow_cover_amount = snow_cover
 
 
 func _capture(file_name: String) -> void:
@@ -314,9 +337,20 @@ func _parse_capture_args() -> void:
 				0.0,
 				23.999)
 		elif arg.begins_with("--hold-fog="):
-			hold_fog = arg.trim_prefix("--hold-fog=") == "1"
+			var fog_value := arg.trim_prefix("--hold-fog=")
+			hold_fog = fog_value != "0"
+			if fog_value in ["small", "medium", "large"]:
+				hold_fog_size = fog_value
 		elif arg.begins_with("--hold-rain="):
-			hold_rain = arg.trim_prefix("--hold-rain=") == "1"
+			var rain_value := arg.trim_prefix("--hold-rain=")
+			hold_rain = rain_value != "0"
+			if rain_value in ["small", "medium", "large"]:
+				hold_rain_size = rain_value
+		elif arg.begins_with("--hold-snow="):
+			var snow_value := arg.trim_prefix("--hold-snow=")
+			hold_snow = snow_value != "0"
+			if snow_value in ["small", "medium", "large"]:
+				hold_snow_size = snow_value
 		elif arg.begins_with("--hold-cloud="):
 			var cloud_size := arg.trim_prefix("--hold-cloud=")
 			if cloud_size in ["small", "medium", "large"]:
@@ -402,6 +436,8 @@ func _create_capture_marker() -> void:
 	]
 	if hold_cloud != "":
 		capture_marker.text += "  CLOUD %s" % hold_cloud.to_upper()
+	if hold_snow:
+		capture_marker.text += "  SNOW"
 	capture_marker.add_theme_font_size_override("font_size", 18)
 	capture_marker.add_theme_color_override("font_color", Color(1.0, 0.94, 0.74))
 	capture_marker.add_theme_color_override(
@@ -419,6 +455,7 @@ func _write_hold_ready(viewport_path: String) -> void:
 		"hour": hold_hour,
 		"fog": hold_fog,
 		"cloud": hold_cloud,
+		"snow": hold_snow,
 		"viewport_capture": viewport_path,
 		"config_md5": FileAccess.get_md5(CONFIG_PATH),
 		"atmosphere_shader_md5": FileAccess.get_md5(ATMOSPHERE_SHADER_PATH),

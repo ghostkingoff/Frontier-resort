@@ -17,6 +17,7 @@ var start_usec := 0
 var fog_mode := false
 var morning_mode := false
 var rain_mode := false
+var snow_mode := false
 var day_mode := false
 var cloud_large_mode := false
 
@@ -34,6 +35,8 @@ func _ready() -> void:
 			morning_mode = true
 		elif arg == "--rain":
 			rain_mode = true
+		elif arg == "--snow":
+			snow_mode = true
 		elif arg == "--day":
 			day_mode = true
 		elif arg == "--cloud-large":
@@ -55,6 +58,14 @@ func _ready() -> void:
 	if rain_mode:
 		WorldWeather.trigger_weather_event("rain", "large", 12.0)
 		WorldWeather.set_weather_event_remaining_hours("rain", 10.0)
+	if snow_mode:
+		WorldWeather.trigger_weather_event("snow", "large", 12.0)
+		WorldWeather.set_weather_event_remaining_hours("snow", 10.0)
+		var snow_lighting := main.get_node_or_null(
+			"SpringWorldLighting") as SpringWorldLighting
+		if snow_lighting != null:
+			snow_lighting._snow_visual_strength = 1.0
+			snow_lighting._snow_cover_amount = 1.0
 	if fog_mode:
 		WorldWeather.trigger_weather_event("fog", "large", 12.0)
 		WorldWeather.set_weather_event_remaining_hours("fog", 10.0)
@@ -173,8 +184,9 @@ func _finish() -> void:
 	print("[lighting-v2-perf] %s ｜ 1920x1080 ｜ 帧 %d ｜ 平均 %.2f ms ｜ P95 %.2f ms ｜ P99 %.2f ms ｜ 平均 %.1f FPS" % [
 		"%s%s" % [
 			"连续降雨事件" if rain_mode else (
+				"连续降雪事件" if snow_mode else (
 				"晴朗清晨" if morning_mode else (
-					"晴天正午" if day_mode else "无雾")),
+					"晴天正午" if day_mode else "无雾"))),
 			" + 噪声深度雾" if fog_mode else "",
 		],
 		sorted.size(),

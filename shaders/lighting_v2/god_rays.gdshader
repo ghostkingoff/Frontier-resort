@@ -1,11 +1,14 @@
 shader_type canvas_item;
 render_mode unshaded, blend_add;
 
+#include "res://shaders/lighting_v2/ground_projection.gdshaderinc"
+
 uniform sampler2D noise_texture : filter_linear, repeat_enable;
 uniform vec2 camera_origin_px = vec2(0.0);
 uniform vec2 visible_world_size_px = vec2(1920.0, 1080.0);
 uniform vec2 cloud_shadow_offset_px = vec2(0.0);
 uniform float cloud_shadow_world_scale = 1200.0;
+uniform float cloud_shadow_y_compression : hint_range(1.0, 2.5) = 1.414214;
 uniform float cloud_hole_size = 3.0;
 uniform float cloud_hole_amount : hint_range(0.0, 1.0) = 1.0;
 uniform vec3 sun_screen_direction = vec3(0.0, 0.0, 1.0);
@@ -25,7 +28,9 @@ const float MARCH_ENERGY_GAIN = 2.0;
 const float MIN_BEAM_ENERGY = 0.18;
 
 float cloud_hole_at(vec2 world_position) {
-	vec2 cloud_uv = (world_position + cloud_shadow_offset_px)
+	vec2 cloud_uv = project_ground_position(
+		world_position + cloud_shadow_offset_px,
+		cloud_shadow_y_compression)
 		/ max(cloud_shadow_world_scale, 64.0);
 	vec2 hole_uv = cloud_uv
 		* (1.4 / max(cloud_hole_size, 0.25))

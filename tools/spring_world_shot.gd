@@ -26,6 +26,8 @@ var schedule := [
 	{"hour": SUNSET_HOUR, "name": "main_sunset_1925.png", "debug": 0},
 	{"hour": 21.5, "name": "main_2130.png", "debug": 0},
 	{"hour": 1.0, "name": "main_night_0100.png", "debug": 0},
+	{"hour": 12.0, "name": "main_snow_1200.png", "debug": 0, "snow_event": true, "snow_remaining": 1.5},
+	{"hour": 1.0, "name": "main_snow_night_0100.png", "debug": 0, "snow_event": true, "snow_remaining": 1.5},
 	{"hour": 6.15, "name": "main_fog_0615_fade_in.png", "debug": 0, "fog_event": true, "fog_remaining": 3.625},
 	{"hour": 6.5, "name": "main_fog_0630_full.png", "debug": 0, "fog_event": true, "fog_remaining": 1.5},
 	{"hour": 8.5, "name": "main_fog_0830_fade_start.png", "debug": 0, "fog_event": true, "fog_remaining": 1.5},
@@ -108,6 +110,14 @@ func _set_next_shot() -> void:
 		WorldWeather.set_weather_event_remaining_hours(
 			"fog",
 			float(entry.get("fog_remaining", 1.5)))
+	WorldWeather.clear_weather_event("snow")
+	if bool(entry.get("snow_event", false)):
+		WorldWeather.trigger_weather_event("snow", "large", 4.0)
+		WorldWeather.set_weather_event_remaining_hours(
+			"snow",
+			float(entry.get("snow_remaining", 1.5)))
+		spring._snow_visual_strength = 1.0
+		spring._snow_cover_amount = 1.0
 	var dev_panel := main.get_node_or_null(
 		"LightingV2DebugPanel") as LightingV2DebugPanel
 	if dev_panel != null:

@@ -27,6 +27,13 @@ const CHANCE_DEFINITIONS := [
 		"hint": "云与雨、雾独立安排，可在任意时段开始。",
 	},
 	{
+		"id": "weather.snow",
+		"group": "天气",
+		"label": "每日自动雪事件",
+		"default": 0.10,
+		"hint": "雪与雨、雾、云独立安排，可在任意时段开始。",
+	},
+	{
 		"id": "visitor.star_arrival",
 		"group": "游客与经营",
 		"label": "明星 / 富商到访",

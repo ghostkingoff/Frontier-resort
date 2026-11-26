@@ -41,25 +41,29 @@ func _ready() -> void:
 	DevEvents.set_chance_override("weather.rain", 0.0)
 	DevEvents.set_chance_override("weather.fog", 1.0)
 	DevEvents.set_chance_override("weather.cloud", 0.0)
+	DevEvents.set_chance_override("weather.snow", 0.0)
 	WorldWeather.refresh()
 	WorldWeather.call("_rebuild_auto_weather_schedule")
 	var scheduled_fog := WorldWeather.get_scheduled_weather_events()
-	checks.append("雨雾云自动事件独立判定：%s" % [
+	checks.append("雨雾云雪自动事件独立判定：%s" % [
 		str(
 			WorldWeather.fog_event
 			and not WorldWeather.today_rain
 			and not WorldWeather.cloud_event
 			and scheduled_fog.has("fog")
 			and not scheduled_fog.has("rain")
-			and not scheduled_fog.has("cloud"))])
+			and not scheduled_fog.has("cloud")
+			and not scheduled_fog.has("snow"))])
 	DevEvents.clear_chance_override("weather.rain")
 	DevEvents.clear_chance_override("weather.fog")
 	DevEvents.clear_chance_override("weather.cloud")
+	DevEvents.clear_chance_override("weather.snow")
 	WorldWeather.clear_force_overrides()
 	var schedule_test_day := GameState.day
 	DevEvents.set_chance_override("weather.rain", 1.0)
 	DevEvents.set_chance_override("weather.fog", 1.0)
 	DevEvents.set_chance_override("weather.cloud", 1.0)
+	DevEvents.set_chance_override("weather.snow", 1.0)
 	var schedule_spread_ok := true
 	var minimum_start := 1.0
 	var maximum_start := 0.0
@@ -71,7 +75,8 @@ func _ready() -> void:
 			WorldWeather.get_scheduled_weather_events()
 		if not schedule_test.has("rain") \
 				or not schedule_test.has("fog") \
-				or not schedule_test.has("cloud"):
+				or not schedule_test.has("cloud") \
+				or not schedule_test.has("snow"):
 			schedule_spread_ok = false
 			break
 		var start_progress := float(
@@ -84,9 +89,10 @@ func _ready() -> void:
 	DevEvents.clear_chance_override("weather.rain")
 	DevEvents.clear_chance_override("weather.fog")
 	DevEvents.clear_chance_override("weather.cloud")
+	DevEvents.clear_chance_override("weather.snow")
 	WorldWeather.refresh()
 	WorldWeather.call("_rebuild_auto_weather_schedule")
-	checks.append("雨雾云独立计划可在全天随机时段开始：%s（%.2f—%.2f）" % [
+	checks.append("雨雾云雪独立计划可在全天随机时段开始：%s（%.2f—%.2f）" % [
 		str(schedule_spread_ok and maximum_start - minimum_start > 0.25),
 		minimum_start,
 		maximum_start,
@@ -105,13 +111,18 @@ func _ready() -> void:
 			"type": "cloud", "size": "small",
 			"duration_hours": 2.0, "start_progress": 0.0, "fired": false,
 		},
+		"snow": {
+			"type": "snow", "size": "small",
+			"duration_hours": 2.0, "start_progress": 0.0, "fired": false,
+		},
 	}
 	WorldWeather.call("_start_scheduled_weather_events")
 	var concurrent_events := WorldWeather.get_active_weather_events()
-	checks.append("雨雾云自动事件可独立同时启动：%s" % [
+	checks.append("雨雾云雪自动事件可独立同时启动：%s" % [
 		str(concurrent_events.has("rain")
 			and concurrent_events.has("fog")
-			and concurrent_events.has("cloud"))])
+			and concurrent_events.has("cloud")
+			and concurrent_events.has("snow"))])
 	WorldWeather.clear_weather_events()
 
 	checks.append("天气事件接口类型：%s" % [
@@ -133,7 +144,7 @@ func _ready() -> void:
 		event_specs.size(),
 	])
 	var event_fades_ok := true
-	for type_id in ["rain", "fog", "cloud"]:
+	for type_id in ["rain", "fog", "cloud", "snow"]:
 		for size_id in ["small", "medium", "large"]:
 			var spec := WorldWeather.weather_event_spec(type_id, size_id)
 			if float(spec.get("fade_in_hours", 0.0)) <= 0.0 \
@@ -142,7 +153,7 @@ func _ready() -> void:
 				break
 		if not event_fades_ok:
 			break
-	checks.append("雨雾云事件均配置淡入淡出：%s" % [
+	checks.append("雨雾云雪事件均配置淡入淡出：%s" % [
 		str(event_fades_ok)])
 	var cloud_tier_specs_ok := true
 	for tier in [
@@ -237,14 +248,17 @@ func _ready() -> void:
 				and panel.cloud_shadow_tuning_output != null),
 			panel.cloud_shadow_tuning_controls.size(),
 		])
-		checks.append("F10 雨雾独立事件与云概率接口已接入：%s" % [
+		checks.append("F10 雨雾云雪独立事件与自动概率接口已接入：%s" % [
 			str(panel.rain_event_status_label != null
 				and panel.fog_event_status_label != null
+				and panel.snow_event_status_label != null
 				and panel.rain_duration_spin != null
 				and panel.fog_duration_spin != null
+				and panel.snow_duration_spin != null
 				and panel.chance_controls.has("weather.rain")
 				and panel.chance_controls.has("weather.fog")
-				and panel.chance_controls.has("weather.cloud"))])
+				and panel.chance_controls.has("weather.cloud")
+				and panel.chance_controls.has("weather.snow"))])
 		panel._on_trigger_weather_event(
 			"rain",
 			"small",
@@ -253,11 +267,18 @@ func _ready() -> void:
 			"fog",
 			"small",
 			panel.fog_duration_spin)
+		panel._on_trigger_weather_event(
+			"snow",
+			"small",
+			panel.snow_duration_spin)
 		var f10_events := WorldWeather.get_active_weather_events()
-		checks.append("F10 可独立同时触发雨雾事件：%s" % [
-			str(f10_events.has("rain") and f10_events.has("fog"))])
+		checks.append("F10 可独立同时触发雨雾雪事件：%s" % [
+			str(f10_events.has("rain")
+				and f10_events.has("fog")
+				and f10_events.has("snow"))])
 		panel._on_clear_weather_event("rain")
 		panel._on_clear_weather_event("fog")
+		panel._on_clear_weather_event("snow")
 		var day_control_original := GameState.day
 		panel.day_spin.value = 64.0
 		panel._on_apply_day()
@@ -524,7 +545,15 @@ func _ready() -> void:
 			seasonal_profile, "morning")
 		var evening_hour := _profile_phase_center(
 			seasonal_profile, "afternoon")
+		WorldWeather.clear_weather_event("rain")
 		WorldWeather.trigger_weather_event("rain", "large", 4.0)
+		spring._rain_puddle_strength = 0.0
+		spring._rain_puddle_was_raining = false
+		spring._rain_puddle_linger_remaining_hours = 0.0
+		WorldWeather.set_weather_event_remaining_hours("rain", 3.5)
+		spring._update_rain_puddle_strength(0.0)
+		var rain_puddle_delay_ok := is_zero_approx(
+			float(spring._rain_puddle_strength))
 		WorldWeather.set_weather_event_remaining_hours("rain", 1.5)
 		spring._rain_visual_strength = 0.0
 		spring._update_rain_visual_strength(1.0)
@@ -546,23 +575,33 @@ func _ready() -> void:
 		var rain_ground_ok := true
 		for material in spring.ground_materials:
 			var rain_material := material as ShaderMaterial
-			if rain_material == null \
-					or rain_material.get_shader_parameter(
-						"rain_noise_texture") == null \
-					or rain_material.get_shader_parameter(
-						"water_reflection_texture") == null \
-					or rain_material.get_shader_parameter(
-						"water_ripple_texture") == null \
-					or float(rain_material.get_shader_parameter(
-						"rain_intensity")) < 0.99 \
-					or float(rain_material.get_shader_parameter(
-						"rain_puddle_threshold")) <= 0.0 \
-					or float(rain_material.get_shader_parameter(
-						"rain_puddle_edge_softness")) <= 0.0 \
-					or float(rain_material.get_shader_parameter(
-						"rain_puddle_depth_softness")) <= 0.0 \
-					or float(rain_material.get_shader_parameter(
-						"rain_puddle_scale_px")) < 300.0:
+			var rain_material_ok := rain_material != null
+			if rain_material_ok:
+				rain_material_ok = \
+					rain_material.get_shader_parameter(
+						"rain_noise_texture") != null \
+					and rain_material.get_shader_parameter(
+						"water_reflection_texture") != null \
+					and rain_material.get_shader_parameter(
+						"water_ripple_texture") != null \
+					and float(rain_material.get_shader_parameter(
+						"rain_intensity")) >= 0.99 \
+					and float(rain_material.get_shader_parameter(
+						"rain_puddle_intensity")) >= 0.99 \
+					and float(rain_material.get_shader_parameter(
+						"rain_splash_intensity")) >= 0.99 \
+					and float(rain_material.get_shader_parameter(
+						"rain_puddle_threshold")) > 0.0 \
+					and float(rain_material.get_shader_parameter(
+						"rain_puddle_edge_softness")) > 0.0 \
+					and float(rain_material.get_shader_parameter(
+						"rain_puddle_depth_softness")) > 0.0 \
+					and float(rain_material.get_shader_parameter(
+						"rain_puddle_scale_px")) >= 300.0 \
+					and absf(float(rain_material.get_shader_parameter(
+						"rain_puddle_y_compression")) - 1.951633) \
+						<= 0.0001
+			if not rain_material_ok:
 				rain_ground_ok = false
 				break
 		var rain_overlay_ok: bool = spring.rain_layer != null \
@@ -574,8 +613,8 @@ func _ready() -> void:
 			and float(spring.rain_material.get_shader_parameter(
 				"rain_intensity")) >= 0.99 \
 			and float(spring.rain_material.get_shader_parameter(
-				"rain_density")) <= 0.34 \
-			and spring.rain_particles.amount <= 120
+				"rain_density")) <= 0.46 \
+			and spring.rain_particles.amount <= 180
 		var rain_reflection_ok: bool = \
 			spring.rain_reflection_viewport != null \
 			and spring.rain_reflection_proxy_root != null \
@@ -632,6 +671,9 @@ func _ready() -> void:
 			str(rain_reflection_ok),
 			str(rain_overlay_ok),
 			str(rain_ground_ok),
+		])
+		checks.append("积水延迟形成：%s" % [
+			str(rain_puddle_delay_ok),
 		])
 		checks.append("建筑倒影按各自素材脚点对齐：%s（路灯 %.1f / 度假屋 %.1f）" % [
 			str(building_pivots_ok),
@@ -709,20 +751,258 @@ func _ready() -> void:
 		])
 		WorldWeather.clear_weather_event("rain")
 		spring._update_rain_visual_strength(1.0)
+		spring._update_surface_parameters(
+			spring._sample_light_state(solar_noon_hour),
+			rain_sun,
+			spring._update_lamp_state(solar_noon_hour),
+			0.0,
+			solar_noon_hour)
 		spring._update_rain(
 			solar_noon_hour,
 			0.5,
 			spring._sample_light_state(solar_noon_hour),
 			rain_sun)
+		var puddle_ground_material := \
+			spring.ground_materials[0] as ShaderMaterial
 		var rain_shutdown_ok: bool = (
 			not spring.rain_layer.visible
 			and spring.rain_reflection_viewport.render_target_update_mode \
-				== SubViewport.UPDATE_DISABLED
+				== SubViewport.UPDATE_ALWAYS
 			and spring.rain_ripple_viewport.render_target_update_mode \
 				== SubViewport.UPDATE_DISABLED
-			and not spring.rain_ripple_particles.emitting)
-		checks.append("关闭降雨后雨层、倒影和水波停止：%s" % [
+			and not spring.rain_ripple_particles.emitting
+			and spring._rain_puddle_strength > 0.99
+			and float(puddle_ground_material.get_shader_parameter(
+				"rain_puddle_intensity")) > 0.99
+			and is_zero_approx(float(
+				puddle_ground_material.get_shader_parameter(
+					"rain_splash_intensity")))
+			and is_zero_approx(float(
+				puddle_ground_material.get_shader_parameter(
+					"rain_ripple_strength")))
+			and is_zero_approx(float(
+				puddle_ground_material.get_shader_parameter(
+					"rain_ripple_uv_strength"))))
+		checks.append("雨停后雨幕与水波停止、积水及倒影保留：%s" % [
 			str(rain_shutdown_ok)])
+		var large_puddle_profile: Dictionary = spring._weather_size_profile(
+			"puddle",
+			"large")
+		var large_puddle_linger := \
+			float(WorldWeather.config.get("rain_puddle_linger_hours", 3.0)) \
+			* float(large_puddle_profile.get("linger_scale", 1.0))
+		var large_puddle_dry := \
+			float(WorldWeather.config.get("rain_puddle_dry_hours", 1.5)) \
+			* float(large_puddle_profile.get("dry_scale", 1.0))
+		spring._update_rain_puddle_strength(large_puddle_linger + 0.01)
+		var puddle_after_linger_ok: bool = \
+			spring._rain_puddle_strength > 0.99
+		spring._update_rain_puddle_strength(large_puddle_dry + 0.01)
+		spring._update_rain(
+			solar_noon_hour,
+			0.5,
+			spring._sample_light_state(solar_noon_hour),
+			rain_sun)
+		var puddle_dried_ok: bool = \
+			is_zero_approx(float(spring._rain_puddle_strength)) \
+			and spring.rain_reflection_viewport.render_target_update_mode \
+				== SubViewport.UPDATE_DISABLED
+		checks.append("积水保留一段时间后消退：%s｜%s" % [
+			str(puddle_after_linger_ok),
+			str(puddle_dried_ok),
+		])
+		var rain_small: Dictionary = spring._weather_size_profile(
+			"rain", "small")
+		var rain_medium: Dictionary = spring._weather_size_profile(
+			"rain", "medium")
+		var rain_large: Dictionary = spring._weather_size_profile(
+			"rain", "large")
+		var rain_profiles_ok: bool = \
+			float(rain_small["particle_amount_scale"]) \
+				< float(rain_medium["particle_amount_scale"]) \
+			and float(rain_medium["particle_amount_scale"]) \
+				< float(rain_large["particle_amount_scale"]) \
+			and is_equal_approx(float(rain_medium["overlay_density_scale"]), 1.0) \
+			and is_equal_approx(float(rain_medium["overlay_opacity_scale"]), 1.0)
+		var puddle_small: Dictionary = spring._weather_size_profile(
+			"puddle", "small")
+		var puddle_medium: Dictionary = spring._weather_size_profile(
+			"puddle", "medium")
+		var puddle_large: Dictionary = spring._weather_size_profile(
+			"puddle", "large")
+		var puddle_profiles_ok: bool = \
+			float(puddle_small["threshold_offset"]) \
+				> float(puddle_medium["threshold_offset"]) \
+			and float(puddle_medium["threshold_offset"]) \
+				> float(puddle_large["threshold_offset"]) \
+			and float(puddle_small["scale_factor"]) \
+				< float(puddle_medium["scale_factor"]) \
+			and float(puddle_medium["scale_factor"]) \
+				< float(puddle_large["scale_factor"]) \
+			and is_equal_approx(float(puddle_medium["intensity_scale"]), 1.0)
+		var snow_small: Dictionary = spring._weather_size_profile(
+			"snow", "small")
+		var snow_medium: Dictionary = spring._weather_size_profile(
+			"snow", "medium")
+		var snow_large: Dictionary = spring._weather_size_profile(
+			"snow", "large")
+		var snow_profiles_ok: bool = \
+			float(snow_small["particle_amount_scale"]) \
+				< float(snow_medium["particle_amount_scale"]) \
+			and float(snow_medium["particle_amount_scale"]) \
+				< float(snow_large["particle_amount_scale"]) \
+			and float(snow_small["ground_growth_scale"]) \
+				< float(snow_medium["ground_growth_scale"]) \
+			and float(snow_medium["ground_growth_scale"]) \
+				< float(snow_large["ground_growth_scale"]) \
+			and float(snow_small["visual_intensity_scale"]) \
+				< float(snow_medium["visual_intensity_scale"]) \
+			and float(snow_medium["visual_intensity_scale"]) \
+				< float(snow_large["visual_intensity_scale"]) \
+			and float(snow_large["threshold_offset"]) <= -0.2
+		var fog_small: Dictionary = spring._weather_size_profile(
+			"fog", "small")
+		var fog_medium: Dictionary = spring._weather_size_profile(
+			"fog", "medium")
+		var fog_large: Dictionary = spring._weather_size_profile(
+			"fog", "large")
+		var fog_profiles_ok: bool = \
+			float(fog_small["max_alpha_scale"]) \
+				< float(fog_medium["max_alpha_scale"]) \
+			and float(fog_medium["max_alpha_scale"]) \
+				< float(fog_large["max_alpha_scale"]) \
+			and float(fog_small["noise_scale_factor"]) \
+				< float(fog_medium["noise_scale_factor"]) \
+			and float(fog_medium["noise_scale_factor"]) \
+				< float(fog_large["noise_scale_factor"]) \
+			and is_equal_approx(float(fog_medium["density_scale"]), 1.0)
+		checks.append("雨/积水/雪/雾三档视觉配置：%s｜%s｜%s｜%s" % [
+			str(rain_profiles_ok),
+			str(puddle_profiles_ok),
+			str(snow_profiles_ok),
+			str(fog_profiles_ok),
+		])
+		WorldWeather.trigger_weather_event("snow", "large", 4.0)
+		WorldWeather.set_weather_event_remaining_hours("snow", 1.5)
+		var snow_state: Dictionary = spring._snow_adjusted_light_state(
+			spring._sample_light_state(solar_noon_hour))
+		spring.call("_update_snow", snow_state, 10.0)
+		spring.call(
+			"_update_surface_parameters",
+			snow_state,
+			rain_sun,
+			spring._update_lamp_state(solar_noon_hour),
+			0.0,
+			solar_noon_hour)
+		var snow_particles_ok: bool = spring.snow_layer != null \
+			and spring.snow_layer.layer == 3 \
+			and spring.snow_layer.follow_viewport_enabled \
+			and spring.snow_layer.visible \
+			and spring.snow_particles != null \
+			and spring.snow_particles.emitting \
+			and spring.snow_particles.amount_ratio > 0.9 \
+			and spring.snow_particles.position.is_equal_approx(
+				spring.camera.get_screen_center_position()) \
+			and spring.snow_particles.texture != null \
+			and spring.snow_particles.texture.get_width() == 24 \
+			and spring.snow_particles.texture.get_height() == 24 \
+			and spring.snow_canvas_material != null \
+			and spring.snow_canvas_material.particles_animation \
+			and spring.snow_canvas_material.particles_anim_h_frames == 3 \
+			and spring.snow_canvas_material.particles_anim_v_frames == 3
+		var snow_scale_before_zoom: float = \
+			spring.snow_process_material.scale_max
+		var snow_zoom_before: Vector2 = spring.camera.zoom
+		spring.camera.zoom = snow_zoom_before * 2.0
+		spring.call("_update_snow", snow_state, 0.0)
+		var snow_scale_after_zoom: float = \
+			spring.snow_process_material.scale_max
+		var snow_zoom_stable: bool = is_equal_approx(
+			snow_scale_after_zoom,
+			snow_scale_before_zoom * 0.5)
+		spring.camera.zoom = snow_zoom_before
+		spring.call("_update_snow", snow_state, 0.0)
+		checks.append("飘雪世界锚定且不随视口缩放改变大小：%s" % [
+			str(snow_zoom_stable),
+		])
+		var snow_ground_ok := false
+		if not spring.ground_materials.is_empty():
+			var snow_ground_material := \
+				spring.ground_materials[0] as ShaderMaterial
+			snow_ground_ok = snow_ground_material != null \
+				and float(snow_ground_material.get_shader_parameter(
+					"snow_cover_amount")) > 0.95 \
+				and absf(float(snow_ground_material.get_shader_parameter(
+					"snow_cover_y_compression")) - 1.414214) <= 0.0001
+		var snow_surface_ok := false
+		var all_roofs_snow_enabled := true
+		var roof_local_mask_ok := true
+		var roof_local_scale_ok := true
+		var roof_y_compression_ok := true
+		var dedicated_snow_texture_ok := true
+		var snow_texture_reference: Texture2D = load(
+			"res://art/generated/lighting_v2/snow_coverage.png")
+		var snow_world := main.get_node("World")
+		for snow_building in snow_world.buildings:
+			for snow_material_value in spring.building_materials.get(
+					snow_building,
+					[]):
+				var snow_material := snow_material_value as ShaderMaterial
+				if snow_material != null and snow_material.get_shader_parameter(
+						"snow_cover_noise_texture") != snow_texture_reference:
+					dedicated_snow_texture_ok = false
+				var snow_meta: Dictionary = spring.surface_meta.get(
+					snow_material,
+					{})
+				if str(snow_meta.get("surface_kind", "")) == "roof" \
+						and float(snow_meta.get(
+							"snow_surface_scale",
+							0.0)) <= 0.0:
+					all_roofs_snow_enabled = false
+				if str(snow_meta.get("surface_kind", "")) == "roof" \
+						and float(snow_material.get_shader_parameter(
+							"snow_surface_local_uv_mix")) < 0.99:
+					roof_local_mask_ok = false
+				if str(snow_meta.get("surface_kind", "")) == "roof" \
+						and float(snow_material.get_shader_parameter(
+							"snow_surface_uv_size_px")) < 1023.0:
+					roof_local_scale_ok = false
+				if str(snow_meta.get("surface_kind", "")) == "roof" \
+						and absf(float(snow_material.get_shader_parameter(
+							"snow_cover_y_compression")) - 1.414214) > 0.0001:
+					roof_y_compression_ok = false
+				if snow_material != null \
+						and float(snow_material.get_shader_parameter(
+							"snow_surface_scale")) > 0.0:
+					snow_surface_ok = true
+					break
+			if snow_surface_ok:
+				break
+		checks.append("飘雪粒子、地面积雪与物体顶部积雪：%s｜%s｜%s｜屋顶全覆盖：%s｜屋顶局部遮罩：%s" % [
+			str(snow_particles_ok),
+			str(snow_ground_ok),
+			str(snow_surface_ok),
+			str(all_roofs_snow_enabled),
+			str(roof_local_mask_ok),
+		])
+		checks.append("专用破碎积雪图：%s｜屋顶局部积雪尺度：%s" % [
+			str(dedicated_snow_texture_ok),
+			str(roof_local_scale_ok),
+		])
+		checks.append("地面与屋顶积雪俯视压缩：%s" % [
+			str(roof_y_compression_ok),
+		])
+		WorldWeather.clear_weather_event("snow")
+		spring.call("_update_snow", snow_state, 1.0)
+		var snow_persists: bool = not spring.snow_layer.visible \
+			and spring._snow_cover_amount > 0.0
+		spring.call("_update_snow", snow_state, 60.0)
+		var snow_melts: bool = is_zero_approx(
+			float(spring.get("_snow_cover_amount")))
+		checks.append("雪停后粒子消失、积雪保留并缓慢消融：%s｜%s" % [
+			str(snow_persists),
+			str(snow_melts),
+		])
 		WorldWeather.trigger_weather_event("fog", "large", 4.0)
 		WorldWeather.set_weather_event_remaining_hours("fog", 1.5)
 		spring._update_fog(7.0, 0.0)
@@ -758,7 +1038,7 @@ func _ready() -> void:
 			>= fog_time_before + 0.49 \
 			and drift.length() >= 0.01 \
 			and float(spring.fog_material.get_shader_parameter(
-				"motion_speed")) >= 1.9 \
+				"motion_speed")) >= 0.8 \
 			and float(spring.fog_material.get_shader_parameter(
 				"turbulence_strength")) > 0.0 \
 			and float(spring.fog_material.get_shader_parameter(
@@ -875,6 +1155,9 @@ func _ready() -> void:
 						"cloud_shadow_ambient_strength")) <= 0.0 \
 					or float(cloud_material.get_shader_parameter(
 						"cloud_shadow_world_scale")) < 1200.0 \
+					or absf(float(cloud_material.get_shader_parameter(
+						"cloud_shadow_y_compression")) - 1.414214) \
+						> 0.0001 \
 					or not is_equal_approx(
 						float(cloud_material.get_shader_parameter(
 							"cloud_shadow_coverage")),
@@ -923,6 +1206,8 @@ func _ready() -> void:
 				float(ray_material.get_shader_parameter(
 					"cloud_hole_amount")),
 				1.0) \
+			and absf(float(ray_material.get_shader_parameter(
+				"cloud_shadow_y_compression")) - 1.414214) <= 0.0001 \
 			and float(ray_material.get_shader_parameter(
 				"spot_energy_scale")) > 0.0 \
 			and float(ray_material.get_shader_parameter(

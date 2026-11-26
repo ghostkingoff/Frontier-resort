@@ -27,6 +27,8 @@ const INTERIOR_PORTAL_SHADER := preload(
 const CONFIG_PATH := "res://data/lighting_v2/spring_clear.json"
 const WEATHER_NOISE_TEXTURE := preload(
 	"res://art/generated/lighting_v2/fog_density.png")
+const SNOW_COVER_TEXTURE := preload(
+	"res://art/generated/lighting_v2/snow_coverage.png")
 const WINDOW_TEXTURE_SIZE := 64
 const SHADOW_REGION_CELLS := 20
 const SHADOW_LIGHTS_PER_REGION := 3
@@ -75,6 +77,11 @@ var _rain_reflection_refresh_elapsed := 0.0
 var rain_ripple_viewport: SubViewport
 var rain_ripple_particles: CPUParticles2D
 var rain_ripple_texture: ImageTexture
+var snow_layer: CanvasLayer
+var snow_particles: GPUParticles2D
+var snow_process_material: ParticleProcessMaterial
+var snow_canvas_material: CanvasItemMaterial
+var snowflake_atlas: ImageTexture
 var player_material: ShaderMaterial
 var _player_surface_mode := ""
 var _player_atlas_frame_uv := Vector4(-1.0, -1.0, 0.0, 0.0)
@@ -105,9 +112,22 @@ var building_batch_active := false
 var _fog_time := 0.0
 var _rain_time := 0.0
 var _rain_visual_strength := 0.0
+var _rain_puddle_strength := 0.0
+var _rain_puddle_was_raining := false
+var _rain_puddle_linger_remaining_hours := 0.0
+var _rain_size_profile: Dictionary = {}
+var _puddle_size_profile: Dictionary = {}
+var _rain_particle_amount := -1
 var _rain_effects_were_active := false
 var _rain_puddle_layout_day := -1
 var _rain_puddle_layout_offset := Vector2.ZERO
+var _snow_visual_strength := 0.0
+var _snow_cover_amount := 0.0
+var _snow_size_profile: Dictionary = {}
+var _snow_particle_amount_max_scale := 1.0
+var _snow_cover_layout_day := -1
+var _snow_cover_layout_offset := Vector2.ZERO
+var _weather_size_profiles: Dictionary = {}
 var _cloud_shadow_strength := 0.0
 var _cloud_shadow_coverage := 0.0
 var _cloud_shadow_direct_strength := 0.0
@@ -148,6 +168,7 @@ func _ready() -> void:
 	_setup_ground_materials()
 	_create_fog_layer()
 	_create_rain_layer()
+	_create_snow_layer()
 	_create_atmosphere()
 	_create_god_ray_layer()
 	_create_region_debug_grid()
@@ -171,7 +192,8 @@ func _process(delta: float) -> void:
 	_update_rain_visual_strength(delta)
 	_refresh_rain_puddle_layout()
 	_refresh_grass_noise_shadow_seed()
-	var state := _rain_adjusted_light_state(_sample_light_state(hour))
+	var state := _snow_adjusted_light_state(
+		_rain_adjusted_light_state(_sample_light_state(hour)))
 	var sun_screen := _sun_to_screen_direction(hour)
 	var sun_3d := Vector3(
 		sun_screen.x,
@@ -233,6 +255,7 @@ func _process(delta: float) -> void:
 	_update_window_effects(state, sun_screen, hour)
 	_update_fog(hour, delta, state, sun_screen)
 	_update_rain(hour, delta, state, sun_screen, lamp_state)
+	_update_snow(state, delta)
 	_update_god_rays(state, sun_screen, delta)
 
 
@@ -483,13 +506,221 @@ func _create_rain_layer() -> void:
 	_create_rain_ripple_viewport()
 
 
+func _create_snow_layer() -> void:
+	snow_layer = CanvasLayer.new()
+	snow_layer.name = "SpringSnow"
+	snow_layer.layer = 3
+	snow_layer.follow_viewport_enabled = true
+	snow_layer.follow_viewport_scale = 1.0
+	snow_layer.visible = false
+	add_child(snow_layer)
+
+	snowflake_atlas = _make_snowflake_atlas()
+	snow_canvas_material = CanvasItemMaterial.new()
+	snow_canvas_material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	snow_canvas_material.particles_animation = true
+	snow_canvas_material.particles_anim_h_frames = 3
+	snow_canvas_material.particles_anim_v_frames = 3
+	snow_canvas_material.particles_anim_loop = false
+
+	snow_process_material = ParticleProcessMaterial.new()
+	snow_process_material.emission_shape = \
+		ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	snow_process_material.emission_box_extents = Vector3(1100.0, 620.0, 0.0)
+	snow_process_material.direction = Vector3(0.12, 1.0, 0.0).normalized()
+	snow_process_material.spread = 16.0
+	snow_process_material.initial_velocity_min = 24.0
+	snow_process_material.initial_velocity_max = 62.0
+	snow_process_material.gravity = Vector3(12.0, 42.0, 0.0)
+	snow_process_material.angle_min = 0.0
+	snow_process_material.angle_max = 360.0
+	snow_process_material.angular_velocity_min = -28.0
+	snow_process_material.angular_velocity_max = 28.0
+	snow_process_material.scale_min = 0.55
+	snow_process_material.scale_max = 1.15
+	snow_process_material.anim_offset_min = 0.0
+	snow_process_material.anim_offset_max = 1.0
+	snow_process_material.anim_speed_min = 0.0
+	snow_process_material.anim_speed_max = 0.0
+	snow_process_material.lifetime_randomness = 0.25
+	var alpha_curve := Curve.new()
+	alpha_curve.add_point(Vector2(0.0, 0.0))
+	alpha_curve.add_point(Vector2(0.12, 1.0))
+	alpha_curve.add_point(Vector2(0.82, 1.0))
+	alpha_curve.add_point(Vector2(1.0, 0.0))
+	var alpha_texture := CurveTexture.new()
+	alpha_texture.width = 128
+	alpha_texture.curve = alpha_curve
+	snow_process_material.alpha_curve = alpha_texture
+	var scale_curve := Curve.new()
+	scale_curve.add_point(Vector2(0.0, 0.55))
+	scale_curve.add_point(Vector2(0.22, 1.0))
+	scale_curve.add_point(Vector2(0.82, 0.92))
+	scale_curve.add_point(Vector2(1.0, 0.68))
+	var scale_texture := CurveTexture.new()
+	scale_texture.width = 128
+	scale_texture.curve = scale_curve
+	snow_process_material.scale_curve = scale_texture
+
+	snow_particles = GPUParticles2D.new()
+	snow_particles.name = "SnowParticles"
+	snow_particles.texture = snowflake_atlas
+	snow_particles.material = snow_canvas_material
+	snow_particles.process_material = snow_process_material
+	snow_particles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var snow_particle_base := int(WorldWeather.config.get(
+		"snow_particle_amount",
+		320))
+	_snow_particle_amount_max_scale = maxf(_weather_size_max_scale(
+		"snow",
+		"particle_amount_scale"), 0.1)
+	snow_particles.amount = maxi(
+		int(round(float(snow_particle_base)
+			* _snow_particle_amount_max_scale)),
+		64)
+	snow_particles.lifetime = maxf(
+		float(WorldWeather.config.get("snow_particle_lifetime", 8.0)),
+		2.0)
+	snow_particles.preprocess = snow_particles.lifetime
+	snow_particles.randomness = 0.35
+	snow_particles.local_coords = false
+	snow_particles.fixed_fps = 30
+	snow_particles.interpolate = true
+	snow_particles.fract_delta = true
+	snow_particles.amount_ratio = 0.0
+	snow_particles.emitting = false
+	snow_layer.add_child(snow_particles)
+
+
+func _make_snowflake_atlas() -> ImageTexture:
+	const CELL_SIZE := 8
+	const GRID_SIZE := 3
+	var image := Image.create(
+		CELL_SIZE * GRID_SIZE,
+		CELL_SIZE * GRID_SIZE,
+		false,
+		Image.FORMAT_RGBA8)
+	image.fill(Color.TRANSPARENT)
+	var patterns := [
+		[
+			"........",
+			"...#....",
+			"...#....",
+			".#####..",
+			"...#....",
+			"...#....",
+			"........",
+			"........",
+		],
+		[
+			"........",
+			"..#..#..",
+			"...#....",
+			"..###...",
+			"...#....",
+			"..#..#..",
+			"........",
+			"........",
+		],
+		[
+			"........",
+			"...#....",
+			"..###...",
+			".#####..",
+			"..###...",
+			"...#....",
+			"........",
+			"........",
+		],
+		[
+			"........",
+			"#......#",
+			".#....#.",
+			"..####..",
+			".#....#.",
+			"#......#",
+			"........",
+			"........",
+		],
+		[
+			"........",
+			"...#....",
+			"#..#..#.",
+			".#####..",
+			"#..#..#.",
+			"...#....",
+			"........",
+			"........",
+		],
+		[
+			"........",
+			"..#..#..",
+			".######.",
+			"...##...",
+			".######.",
+			"..#..#..",
+			"........",
+			"........",
+		],
+		[
+			"........",
+			"...#....",
+			"..#.#...",
+			"##...##.",
+			"..#.#...",
+			"...#....",
+			"........",
+			"........",
+		],
+		[
+			"........",
+			".#....#.",
+			"..#..#..",
+			"########",
+			"..#..#..",
+			".#....#.",
+			"........",
+			"........",
+		],
+		[
+			"........",
+			"...##...",
+			"#..##..#",
+			".######.",
+			"#..##..#",
+			"...##...",
+			"........",
+			"........",
+		],
+	]
+	for frame_index in range(patterns.size()):
+		var frame_pattern: Array = patterns[frame_index]
+		var frame_x := (frame_index % GRID_SIZE) * CELL_SIZE
+		var frame_y := int(frame_index / GRID_SIZE) * CELL_SIZE
+		for y in range(CELL_SIZE):
+			var row := str(frame_pattern[y])
+			for x in range(CELL_SIZE):
+				if row.substr(x, 1) == "#":
+					image.set_pixel(
+						frame_x + x,
+						frame_y + y,
+						Color.WHITE)
+	return ImageTexture.create_from_image(image)
+
+
 func _create_rain_particle_emitter() -> void:
 	rain_particles = CPUParticles2D.new()
 	rain_particles.name = "RainParticles"
 	rain_particles.texture = _make_rain_drop_texture()
 	rain_particles.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var rain_particle_base := int(WorldWeather.config.get(
+		"rain_particle_amount",
+		120))
 	rain_particles.amount = maxi(
-		int(WorldWeather.config.get("rain_particle_amount", 120)),
+		int(round(float(rain_particle_base)
+			* _weather_size_max_scale(
+				"rain",
+				"particle_amount_scale"))),
 		32)
 	rain_particles.lifetime = 1.05
 	rain_particles.preprocess = 1.2
@@ -852,7 +1083,7 @@ func _setup_pines() -> void:
 		var sprite := root.get_node_or_null("PineSurface") as Sprite2D
 		if sprite == null:
 			continue
-		sprite.material = _make_surface_material(
+		var pine_material := _make_surface_material(
 			"res://art/characters/trees/pine/normal.png",
 			"res://art/characters/trees/pine/specular.png",
 			"res://art/characters/trees/pine/occlusion.png",
@@ -863,6 +1094,13 @@ func _setup_pines() -> void:
 			0.86,
 			0.2,
 			0.78)
+		sprite.material = pine_material
+		surface_meta[pine_material] = {
+			"snow_surface_scale": 1.0,
+			"snow_surface_top_gate_strength": 1.0,
+			"snow_surface_local_uv_mix": 1.0,
+			"snow_surface_uv_size_px": 512.0,
+		}
 
 
 func _setup_player_material() -> void:
@@ -1088,7 +1326,24 @@ func _make_building_surface_material(
 	var specular_path := str(layers.get(prefix + "_specular", ""))
 	var occlusion_path := str(layers.get(prefix + "_occlusion", ""))
 	if normal_path == "":
-		return _make_fallback_surface_material()
+		var fallback := _make_fallback_surface_material()
+		var fallback_is_wall := prefix == "wall" and receives_projection
+		surface_meta[fallback] = {
+			"building": building,
+			"is_building_surface": true,
+			"is_wall": fallback_is_wall,
+			"apply_wall_facing_gate": false,
+			"surface_kind": prefix,
+			"snow_surface_scale": 1.0 if prefix == "roof" else (
+				0.18 if fallback_is_wall else 0.0),
+			"snow_surface_top_gate_strength": (
+				1.0 if fallback_is_wall else 0.0),
+			"snow_surface_local_uv_mix": 1.0 if (
+				prefix == "roof" or fallback_is_wall) else 0.0,
+			"snow_surface_uv_size_px": 1024.0 if prefix == "roof" else (
+				512.0 if fallback_is_wall else 0.0),
+		}
+		return fallback
 	var canvas: Array = layers.get("canvas", [256, 256])
 	var canvas_height := float(canvas[1])
 	var origin: Array = layers.get("origin", [0, 0])
@@ -1157,6 +1412,13 @@ func _make_building_surface_material(
 		"is_wall": is_wall,
 		"apply_wall_facing_gate": apply_gate,
 		"surface_kind": prefix,
+		"snow_surface_scale": 1.0 if prefix == "roof" else (
+			0.18 if is_wall else 0.0),
+		"snow_surface_top_gate_strength": 1.0 if is_wall else 0.0,
+		"snow_surface_local_uv_mix": 1.0 if (
+			prefix == "roof" or is_wall) else 0.0,
+		"snow_surface_uv_size_px": 1024.0 if prefix == "roof" else (
+			512.0 if is_wall else 0.0),
 	}
 	return material
 
@@ -2246,6 +2508,9 @@ func _set_material_parameters(
 		"cloud_shadow_world_scale",
 		float(cloud_settings.get("noise_scale_px", 1200.0)))
 	material.set_shader_parameter(
+		"cloud_shadow_y_compression",
+		float(cloud_settings.get("y_compression", 1.414214)))
+	material.set_shader_parameter(
 		"cloud_shadow_offset_px",
 		_cloud_shadow_offset_world_px())
 	material.set_shader_parameter(
@@ -2302,6 +2567,78 @@ func _set_material_parameters(
 	material.set_shader_parameter(
 		"grass_noise_shadow_softness",
 		float(grass_shadow.get("softness", 0.28)))
+	var snow_meta: Dictionary = surface_meta.get(material, {})
+	var snow_surface_scale := float(snow_meta.get(
+		"snow_surface_scale",
+		0.0)) * float(WorldWeather.config.get(
+			"snow_object_coverage_scale",
+			0.82)) * _weather_profile_value(
+				_snow_size_profile,
+				"surface_coverage_scale")
+	material.set_shader_parameter(
+		"snow_cover_noise_texture",
+		SNOW_COVER_TEXTURE)
+	material.set_shader_parameter(
+		"snow_cover_amount",
+		_snow_cover_amount)
+	material.set_shader_parameter(
+		"snow_cover_threshold",
+		float(WorldWeather.config.get(
+			"snow_cover_threshold",
+			0.50)) + _weather_profile_value(
+				_snow_size_profile,
+				"threshold_offset",
+				0.0))
+	material.set_shader_parameter(
+		"snow_cover_softness",
+		float(WorldWeather.config.get(
+			"snow_cover_softness",
+			0.006)))
+	material.set_shader_parameter(
+		"snow_cover_scale_px",
+		float(WorldWeather.config.get(
+			"snow_cover_scale_px",
+			1800.0)) * _weather_profile_value(
+				_snow_size_profile,
+				"cover_scale_factor"))
+	material.set_shader_parameter(
+		"snow_cover_offset_px",
+		_snow_cover_layout_offset)
+	material.set_shader_parameter(
+		"snow_cover_pixel_size_px",
+		float(WorldWeather.config.get(
+			"snow_cover_pixel_size_px",
+			4.0)))
+	material.set_shader_parameter(
+		"snow_cover_y_compression",
+		float(WorldWeather.config.get(
+			"snow_cover_y_compression",
+			1.414214)))
+	material.set_shader_parameter(
+		"snow_cover_color",
+		Color.from_string(
+			str(WorldWeather.config.get(
+				"snow_cover_color",
+				"#dbe9f1")),
+			Color("#dbe9f1")))
+	material.set_shader_parameter(
+		"snow_surface_scale",
+		snow_surface_scale)
+	material.set_shader_parameter(
+		"snow_surface_top_gate_strength",
+		float(snow_meta.get(
+			"snow_surface_top_gate_strength",
+			0.0)))
+	material.set_shader_parameter(
+		"snow_surface_local_uv_mix",
+		float(snow_meta.get(
+			"snow_surface_local_uv_mix",
+			0.0)))
+	material.set_shader_parameter(
+		"snow_surface_uv_size_px",
+		float(snow_meta.get(
+			"snow_surface_uv_size_px",
+			1024.0)))
 	material.set_shader_parameter("debug_mode", debug_mode)
 
 
@@ -2413,7 +2750,12 @@ func _update_fog(
 		state = _sample_light_state(hour)
 	if sun_screen.length_squared() < 0.000001:
 		sun_screen = _sun_to_screen_direction(hour)
-	var intensity := WorldWeather.fog_strength(hour)
+	var fog_profile := _active_weather_size_profile("fog")
+	var intensity := clampf(
+		WorldWeather.fog_strength(hour)
+			* _weather_profile_value(fog_profile, "density_scale"),
+		0.0,
+		1.0)
 	fog_layer.visible = intensity > 0.0001
 	if not fog_layer.visible:
 		return
@@ -2427,12 +2769,18 @@ func _update_fog(
 		[0.006, 0.003])
 	var drift := Vector2(
 		float(drift_array[0]) if drift_array.size() > 0 else 0.006,
-		float(drift_array[1]) if drift_array.size() > 1 else 0.003)
+		float(drift_array[1]) if drift_array.size() > 1 else 0.003) \
+		* _weather_profile_value(
+			fog_profile,
+			"drift_speed_factor")
 	fog_material.set_shader_parameter("fog_intensity", intensity)
 	fog_material.set_shader_parameter("fog_time", _fog_time)
 	fog_material.set_shader_parameter(
 		"motion_speed",
-		float(weather_config.get("fog_motion_speed", 2.0)))
+		float(weather_config.get("fog_motion_speed", 2.0))
+			* _weather_profile_value(
+				fog_profile,
+				"motion_speed_factor"))
 	fog_material.set_shader_parameter(
 		"fog_color",
 		Color.from_string(
@@ -2440,23 +2788,38 @@ func _update_fog(
 			Color(0.76, 0.82, 0.82)))
 	fog_material.set_shader_parameter(
 		"fog_max_alpha",
-		float(weather_config.get("fog_max_alpha", 0.52)))
+		float(weather_config.get("fog_max_alpha", 0.52))
+			* _weather_profile_value(
+				fog_profile,
+				"max_alpha_scale"))
 	fog_material.set_shader_parameter(
 		"noise_scale_px",
-		float(weather_config.get("fog_noise_scale_px", 620.0)))
+		float(weather_config.get("fog_noise_scale_px", 620.0))
+			* _weather_profile_value(
+				fog_profile,
+				"noise_scale_factor"))
 	fog_material.set_shader_parameter(
 		"depth_scale_px",
-		float(weather_config.get("fog_depth_scale_px", 940.0)))
+		float(weather_config.get("fog_depth_scale_px", 940.0))
+			* _weather_profile_value(
+				fog_profile,
+				"depth_scale_factor"))
 	fog_material.set_shader_parameter("drift_speed", drift)
 	fog_material.set_shader_parameter(
 		"depth_drift_scale",
 		float(weather_config.get("fog_depth_drift_scale", -0.067)))
 	fog_material.set_shader_parameter(
 		"turbulence_strength",
-		float(weather_config.get("fog_turbulence_strength", 0.24)))
+		float(weather_config.get("fog_turbulence_strength", 0.24))
+			* _weather_profile_value(
+				fog_profile,
+				"turbulence_scale"))
 	fog_material.set_shader_parameter(
 		"pulse_strength",
-		float(weather_config.get("fog_pulse_strength", 0.16)))
+		float(weather_config.get("fog_pulse_strength", 0.16))
+			* _weather_profile_value(
+				fog_profile,
+				"pulse_scale"))
 	fog_material.set_shader_parameter("camera_origin_px", camera_origin)
 	fog_material.set_shader_parameter("camera_zoom", zoom)
 	fog_material.set_shader_parameter("viewport_size_px", viewport_size)
@@ -2469,10 +2832,16 @@ func _update_fog(
 		sun_screen)
 	fog_material.set_shader_parameter(
 		"sun_response",
-		float(weather_config.get("fog_sun_response", 0.46)))
+		float(weather_config.get("fog_sun_response", 0.46))
+			* _weather_profile_value(
+				fog_profile,
+				"light_response_scale"))
 	fog_material.set_shader_parameter(
 		"evaporation",
-		float(weather_config.get("fog_evaporation", 0.10)))
+		float(weather_config.get("fog_evaporation", 0.10))
+			* _weather_profile_value(
+				fog_profile,
+				"evaporation_scale"))
 	fog_material.set_shader_parameter(
 		"scatter_strength",
 		float(weather_config.get("fog_scatter_strength", 0.09)))
@@ -2530,6 +2899,61 @@ func _fog_time_delta(delta: float) -> float:
 			or GameClock.phase != GameClock.Phase.RUNNING:
 		return 0.0
 	return delta * GameClock.time_scale()
+
+
+func _game_hours_delta(delta: float) -> float:
+	if GameClock.paused \
+			or GameClock.phase != GameClock.Phase.RUNNING:
+		return 0.0
+	return delta * GameClock.time_scale() * 24.0 \
+		/ maxf(GameClock.cycle_length_seconds, 0.001)
+
+
+func _weather_size_profile(
+		type_id: String,
+		size_id: String) -> Dictionary:
+	var cache_key := "%s:%s" % [type_id, size_id]
+	if _weather_size_profiles.has(cache_key):
+		return _weather_size_profiles[cache_key] as Dictionary
+	var profiles: Dictionary = WorldWeather.config.get(
+		"size_visual_profiles",
+		{})
+	var type_profiles: Dictionary = profiles.get(type_id, {})
+	var profile := (type_profiles.get(
+		size_id,
+		{}) as Dictionary).duplicate(true)
+	_weather_size_profiles[cache_key] = profile
+	return profile
+
+
+func _active_weather_size_profile(type_id: String) -> Dictionary:
+	var event := WorldWeather.get_active_weather_event(type_id)
+	if event.is_empty():
+		return {}
+	return _weather_size_profile(
+		type_id,
+		str(event.get("size", "medium")))
+
+
+func _weather_profile_value(
+		profile: Dictionary,
+		key: String,
+		fallback: float = 1.0) -> float:
+	return float(profile.get(key, fallback))
+
+
+func _weather_size_max_scale(type_id: String, key: String) -> float:
+	var profiles: Dictionary = WorldWeather.config.get(
+		"size_visual_profiles",
+		{})
+	var type_profiles: Dictionary = profiles.get(type_id, {})
+	var maximum := 1.0
+	for size_value in type_profiles.values():
+		if size_value is Dictionary:
+			maximum = maxf(
+				maximum,
+				float((size_value as Dictionary).get(key, 1.0)))
+	return maximum
 
 
 func _update_cloud_shadow(delta: float) -> void:
@@ -2640,6 +3064,9 @@ func _update_god_rays(
 		"cloud_shadow_world_scale",
 		float(cloud_settings.get("noise_scale_px", 1200.0)))
 	god_ray_material.set_shader_parameter(
+		"cloud_shadow_y_compression",
+		float(cloud_settings.get("y_compression", 1.414214)))
+	god_ray_material.set_shader_parameter(
 		"cloud_hole_size",
 		float(cloud_shadow_tuning.get("large_hole_size", 3.0)))
 	god_ray_material.set_shader_parameter(
@@ -2744,12 +3171,226 @@ func _refresh_cloud_shadow_layout() -> void:
 
 
 func _update_rain_visual_strength(delta: float) -> void:
+	var active_rain_profile := _active_weather_size_profile("rain")
+	if not active_rain_profile.is_empty():
+		_rain_size_profile = active_rain_profile
+		_puddle_size_profile = _active_weather_size_profile("puddle")
 	var target := WorldWeather.weather_event_visual_strength("rain")
 	var speed := 2.4 if target > _rain_visual_strength else 4.0
 	_rain_visual_strength = move_toward(
 		_rain_visual_strength,
 		target,
 		maxf(delta, 0.0) * speed)
+	_update_rain_puddle_strength(_game_hours_delta(delta))
+
+
+func _update_rain_puddle_strength(game_hours_delta: float) -> void:
+	var event := WorldWeather.get_active_weather_event("rain")
+	var weather_config: Dictionary = WorldWeather.config
+	if not event.is_empty():
+		_puddle_size_profile = _weather_size_profile(
+			"puddle",
+			str(event.get("size", "medium")))
+		_rain_puddle_was_raining = true
+		_rain_puddle_linger_remaining_hours = maxf(
+			float(weather_config.get("rain_puddle_linger_hours", 3.0)),
+			0.0) * maxf(_weather_profile_value(
+				_puddle_size_profile,
+				"linger_scale"), 0.0)
+		var duration := maxf(
+			float(event.get("duration_hours", 0.001)),
+			0.001)
+		var remaining := clampf(
+			float(event.get("remaining_hours", 0.0)),
+			0.0,
+			duration)
+		var elapsed := maxf(duration - remaining, 0.0)
+		var delay := maxf(
+			float(weather_config.get("rain_puddle_delay_hours", 0.75)),
+			0.0) * maxf(_weather_profile_value(
+				_puddle_size_profile,
+				"delay_scale"), 0.0)
+		var formation := maxf(
+			float(weather_config.get(
+				"rain_puddle_formation_hours",
+				1.25)),
+			0.001) * maxf(_weather_profile_value(
+				_puddle_size_profile,
+				"formation_scale"), 0.001)
+		var spec: Dictionary = event.get("spec", {})
+		var event_intensity := clampf(
+			float(spec.get("intensity", 1.0)),
+			0.0,
+			1.0)
+		var max_wetness := clampf(
+			(0.35 + event_intensity * 0.65)
+				* _weather_profile_value(
+					_puddle_size_profile,
+					"intensity_scale"),
+			0.0,
+			1.0)
+		var target := smoothstep(
+			delay,
+			delay + formation,
+			elapsed) * max_wetness
+		_rain_puddle_strength = maxf(_rain_puddle_strength, target)
+		return
+	var was_raining := _rain_puddle_was_raining
+	_rain_puddle_was_raining = false
+	if _rain_puddle_strength <= 0.0001:
+		_rain_puddle_strength = 0.0
+		return
+	if _rain_puddle_linger_remaining_hours > 0.0:
+		_rain_puddle_linger_remaining_hours = maxf(
+			_rain_puddle_linger_remaining_hours
+				- maxf(game_hours_delta, 0.0),
+			0.0)
+		return
+	if not was_raining and game_hours_delta <= 0.0:
+		return
+	var dry_hours := maxf(
+		float(weather_config.get("rain_puddle_dry_hours", 1.5))
+			* _weather_profile_value(
+				_puddle_size_profile,
+				"dry_scale"),
+		0.05)
+	_rain_puddle_strength = move_toward(
+		_rain_puddle_strength,
+		0.0,
+		maxf(game_hours_delta, 0.0) / dry_hours)
+
+
+func _update_snow(state: Dictionary, delta: float) -> void:
+	_refresh_snow_cover_layout()
+	var active_snow_profile := _active_weather_size_profile("snow")
+	if not active_snow_profile.is_empty():
+		_snow_size_profile = active_snow_profile
+	var particle_target := WorldWeather.weather_event_visual_strength(
+		"snow")
+	var cover_target := particle_target * _weather_profile_value(
+			_snow_size_profile,
+			"visual_intensity_scale")
+	var particle_speed := 2.2 if particle_target > _snow_visual_strength \
+		else 1.2
+	var effect_delta := _fog_time_delta(delta)
+	_snow_visual_strength = move_toward(
+		_snow_visual_strength,
+		particle_target,
+		maxf(effect_delta, 0.0) * particle_speed)
+	var cover_speed := float(WorldWeather.config.get(
+		"snow_ground_growth_speed",
+		0.22)) * _weather_profile_value(
+			_snow_size_profile,
+			"ground_growth_scale") \
+			if cover_target > _snow_cover_amount else float(
+			WorldWeather.config.get("snow_ground_melt_speed", 0.055)) \
+			* _weather_profile_value(
+				_snow_size_profile,
+				"ground_melt_scale")
+	_snow_cover_amount = move_toward(
+		_snow_cover_amount,
+		clampf(cover_target, 0.0, 1.0),
+		maxf(effect_delta, 0.0) * maxf(cover_speed, 0.0))
+	if snow_layer == null or snow_particles == null:
+		return
+	var visible := _snow_visual_strength > 0.001
+	snow_layer.visible = visible
+	snow_particles.emitting = visible
+	if not visible:
+		snow_particles.amount_ratio = 0.0
+		return
+	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
+	var camera_origin := camera.get_screen_center_position() \
+		if camera != null else Vector2.ZERO
+	var camera_zoom := camera.zoom if camera != null else Vector2.ONE
+	var visible_world_size := viewport_size / Vector2(
+		maxf(camera_zoom.x, 0.001),
+		maxf(camera_zoom.y, 0.001))
+	var inverse_screen_zoom := 1.0 / maxf(
+		(absf(camera_zoom.x) + absf(camera_zoom.y)) * 0.5,
+		0.001)
+	var wind_speed := float(WorldWeather.config.get(
+		"snow_wind_px_per_second",
+		18.0)) * _weather_profile_value(
+			_snow_size_profile,
+			"fall_speed_scale")
+	var fall_speed := maxf(float(WorldWeather.config.get(
+		"snow_fall_speed",
+		68.0)) * _weather_profile_value(
+			_snow_size_profile,
+			"fall_speed_scale"), 1.0)
+	var wind_ratio := wind_speed / fall_speed
+	snow_particles.position = camera_origin
+	snow_process_material.emission_box_extents = Vector3(
+		visible_world_size.x * 0.62,
+		visible_world_size.y * 0.55,
+		0.0)
+	snow_process_material.direction = Vector3(
+		wind_ratio,
+		1.0,
+		0.0).normalized()
+	snow_particles.amount_ratio = clampf(
+		(0.15 + _snow_visual_strength * 0.85)
+			* _weather_profile_value(
+				_snow_size_profile,
+				"particle_amount_scale")
+			/ _snow_particle_amount_max_scale,
+		0.0,
+		1.0)
+	var snow_particle_scale := _weather_profile_value(
+		_snow_size_profile,
+		"particle_scale") * inverse_screen_zoom
+	snow_process_material.scale_min = 0.55 * snow_particle_scale
+	snow_process_material.scale_max = 1.15 * snow_particle_scale
+	snow_process_material.initial_velocity_min = 24.0 * inverse_screen_zoom
+	snow_process_material.initial_velocity_max = 62.0 * inverse_screen_zoom
+	snow_process_material.gravity = Vector3(
+		wind_speed * 0.35 * inverse_screen_zoom,
+		fall_speed * inverse_screen_zoom,
+		0.0)
+	snow_particles.speed_scale = 0.0
+	if not GameClock.paused \
+			and GameClock.phase == GameClock.Phase.RUNNING:
+		snow_particles.speed_scale = clampf(
+			GameClock.time_scale(),
+			0.35,
+			4.0)
+	var sun_energy := float(state.get("sun_energy", 0.0))
+	var sky_energy := float(state.get("sky_energy", 0.0))
+	var night_factor := 1.0 - smoothstep(0.02, 0.36, sun_energy)
+	var day_color := Color.from_string(
+		str(WorldWeather.config.get("snow_color", "#e3f1f7")),
+		Color("#e3f1f7"))
+	var night_color := Color.from_string(
+		str(WorldWeather.config.get(
+			"snow_night_color",
+			"#9fb9cb")),
+		Color("#9fb9cb"))
+	var particle_color := day_color.lerp(night_color, night_factor * 0.82)
+	var light_factor := 0.42 + 0.58 * smoothstep(
+		0.02,
+		0.72,
+		maxf(sun_energy, sky_energy))
+	particle_color *= light_factor
+	particle_color.a = _snow_visual_strength
+	snow_particles.modulate = particle_color
+
+
+func _refresh_snow_cover_layout() -> void:
+	var day := GameState.day
+	if day == _snow_cover_layout_day:
+		return
+	_snow_cover_layout_day = day
+	var rng := RandomNumberGenerator.new()
+	var seed_value := 2166136261
+	var key := "snow-cover-layout:%d" % day
+	for index in range(key.length()):
+		seed_value = seed_value ^ key.unicode_at(index)
+		seed_value = int((seed_value * 16777619) & 0x7fffffff)
+	rng.seed = seed_value
+	_snow_cover_layout_offset = Vector2(
+		rng.randf_range(-8192.0, 8192.0),
+		rng.randf_range(-8192.0, 8192.0))
 
 
 func _refresh_rain_puddle_layout() -> void:
@@ -2851,6 +3492,62 @@ func _rain_adjusted_light_state(source: Dictionary) -> Dictionary:
 	return state
 
 
+func _snow_adjusted_light_state(source: Dictionary) -> Dictionary:
+	var event := WorldWeather.get_active_weather_event("snow")
+	if event.is_empty() or source.is_empty():
+		return source
+	var size_profile := _weather_size_profile(
+		"snow",
+		str(event.get("size", "medium")))
+	var strength := WorldWeather.weather_event_envelope("snow") \
+		* _weather_profile_value(
+			size_profile,
+			"visual_intensity_scale")
+	if strength <= 0.0001:
+		return source
+	var spec: Dictionary = event.get("spec", {})
+	var state := source.duplicate()
+	state["sun_energy"] = float(source.get("sun_energy", 0.0)) * lerpf(
+		1.0,
+		float(spec.get("sun_energy_factor", 0.18)),
+		strength)
+	state["sky_energy"] = float(source.get("sky_energy", 0.0)) * lerpf(
+		1.0,
+		float(spec.get("sky_energy_factor", 0.80)),
+		strength)
+	state["exposure"] = float(source.get("exposure", 1.0)) * lerpf(
+		1.0,
+		float(spec.get("exposure_factor", 0.92)),
+		strength)
+	state["shadow_alpha"] = float(source.get("shadow_alpha", 0.0)) * lerpf(
+		1.0,
+		float(spec.get("shadow_alpha_factor", 0.22)),
+		strength)
+	state["shadow_softness"] = lerpf(
+		float(source.get("shadow_softness", 0.5)),
+		1.0,
+		strength * 0.72)
+	state["sun_color"] = (source.get(
+		"sun_color",
+		Color.WHITE) as Color).lerp(
+			Color.from_string(
+				str(WorldWeather.config.get(
+					"snow_sun_color",
+					"#e8edf0")),
+				Color("#e8edf0")),
+			strength * 0.62)
+	state["sky_color"] = (source.get(
+		"sky_color",
+		Color.WHITE) as Color).lerp(
+			Color.from_string(
+				str(WorldWeather.config.get(
+					"snow_sky_color",
+					"#9fb5c5")),
+				Color("#9fb5c5")),
+			strength * 0.58)
+	return state
+
+
 func _update_rain(
 		_hour: float,
 		delta: float,
@@ -2891,6 +3588,16 @@ func _update_rain(
 	var zoom: Vector2 = camera.zoom if camera != null else Vector2.ONE
 	var viewport_size := Vector2(get_viewport().get_visible_rect().size)
 	var weather_config: Dictionary = WorldWeather.config
+	var rain_profile := _rain_size_profile
+	var rain_particle_scale := maxf(_weather_profile_value(
+		rain_profile,
+		"particle_scale"), 0.1)
+	var rain_particle_speed_scale := maxf(_weather_profile_value(
+		rain_profile,
+		"particle_speed_scale"), 0.1)
+	var rain_particle_amount_scale := maxf(_weather_profile_value(
+		rain_profile,
+		"particle_amount_scale"), 0.0)
 	var sun_energy := float(state.get("sun_energy", 0.0))
 	var sky_energy := float(state.get("sky_energy", 0.0))
 	var night_factor := 1.0 - smoothstep(0.02, 0.36, sun_energy)
@@ -2940,14 +3647,24 @@ func _update_rain(
 		_rain_visual_strength)
 	rain_material.set_shader_parameter(
 		"rain_density",
-		float(weather_config.get("rain_density", 0.72)))
+		float(weather_config.get("rain_density", 0.72))
+			* _weather_profile_value(
+				rain_profile,
+				"overlay_density_scale"))
 	rain_material.set_shader_parameter(
 		"rain_slant",
-		float(weather_config.get("rain_slant", 0.10)))
+		float(weather_config.get("rain_slant", 0.10))
+			* _weather_profile_value(
+				rain_profile,
+				"slant_scale"))
 	rain_material.set_shader_parameter("rain_color", rain_color)
 	rain_material.set_shader_parameter(
 		"rain_opacity",
-		float(weather_config.get("rain_opacity", 0.42)) * rain_visibility)
+		float(weather_config.get("rain_opacity", 0.42))
+			* _weather_profile_value(
+				rain_profile,
+				"overlay_opacity_scale")
+			* rain_visibility)
 	rain_material.set_shader_parameter(
 		"rain_mist",
 		float(weather_config.get("rain_mist", 0.08)))
@@ -2960,6 +3677,23 @@ func _update_rain(
 			animation_speed = clampf(GameClock.time_scale(), 0.35, 4.0)
 		rain_particles.speed_scale = animation_speed
 		rain_particles.emitting = animation_speed > 0.0
+		var desired_particle_amount := maxi(
+			int(round(float(WorldWeather.config.get(
+				"rain_particle_amount",
+				120))) * rain_particle_amount_scale),
+			32)
+		if _rain_particle_amount != desired_particle_amount:
+			_rain_particle_amount = desired_particle_amount
+			rain_particles.amount = desired_particle_amount
+		rain_particles.scale_amount_min = 0.72 * rain_particle_scale
+		rain_particles.scale_amount_max = 1.18 * rain_particle_scale
+		rain_particles.initial_velocity_min = \
+			520.0 * rain_particle_speed_scale
+		rain_particles.initial_velocity_max = \
+			820.0 * rain_particle_speed_scale
+		rain_particles.gravity = Vector2(
+			72.0 * rain_particle_speed_scale,
+			420.0 * rain_particle_speed_scale)
 		rain_particles.modulate = Color(
 			rain_color.r,
 			rain_color.g,
@@ -3013,19 +3747,22 @@ func _update_rain_reflection_and_ripples(
 	if rain_reflection_viewport == null \
 			or rain_ripple_viewport == null:
 		return
-	var active := _rain_visual_strength > 0.001
-	var starting := active and not _rain_effects_were_active
-	_rain_effects_were_active = active
+	var rain_active := _rain_visual_strength > 0.001
+	var puddle_active := _rain_puddle_strength > 0.001
+	var starting := rain_active and not _rain_effects_were_active
+	_rain_effects_were_active = rain_active
 	rain_reflection_viewport.render_target_update_mode = \
-		SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+		SubViewport.UPDATE_ALWAYS if puddle_active \
+		else SubViewport.UPDATE_DISABLED
 	rain_ripple_viewport.render_target_update_mode = \
-		SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+		SubViewport.UPDATE_ALWAYS if rain_active \
+		else SubViewport.UPDATE_DISABLED
 	if rain_ripple_particles != null:
 		if starting:
 			rain_ripple_particles.restart(true)
 			if rain_particles != null:
 				rain_particles.restart(true)
-		rain_ripple_particles.emitting = active \
+		rain_ripple_particles.emitting = rain_active \
 			and not GameClock.paused \
 			and GameClock.phase == GameClock.Phase.RUNNING
 		if not GameClock.paused \
@@ -3036,7 +3773,7 @@ func _update_rain_reflection_and_ripples(
 				4.0)
 		else:
 			rain_ripple_particles.speed_scale = 0.0
-	if not active:
+	if not puddle_active:
 		return
 	_rain_reflection_refresh_elapsed += maxf(delta, 0.0)
 	if starting or _rain_reflection_refresh_elapsed >= 0.25:
@@ -3108,7 +3845,7 @@ func _update_rain_reflection_and_ripples(
 			float(state.get("sun_energy", 0.0)))
 		rain_reflection_sky_material.set_shader_parameter(
 			"rain_intensity",
-			_rain_visual_strength)
+			_rain_puddle_strength)
 
 
 func _set_rain_material_parameters(material: ShaderMaterial) -> void:
@@ -3125,13 +3862,27 @@ func _set_rain_material_parameters(material: ShaderMaterial) -> void:
 			"water_ripple_texel_size",
 			Vector2.ONE / Vector2(rain_ripple_viewport.size))
 	material.set_shader_parameter("rain_intensity", _rain_visual_strength)
+	material.set_shader_parameter(
+		"rain_puddle_intensity",
+		_rain_puddle_strength)
+	material.set_shader_parameter(
+		"rain_splash_intensity",
+		_rain_visual_strength)
 	material.set_shader_parameter("rain_time_seconds", _rain_time)
 	material.set_shader_parameter(
 		"rain_puddle_threshold",
-		float(weather_config.get("rain_puddle_threshold", 0.48)))
+		float(weather_config.get("rain_puddle_threshold", 0.48))
+			+ _weather_profile_value(
+				_puddle_size_profile,
+				"threshold_offset",
+				0.0))
 	material.set_shader_parameter(
 		"rain_puddle_deep_threshold",
-		float(weather_config.get("rain_puddle_deep_threshold", 0.56)))
+		float(weather_config.get("rain_puddle_deep_threshold", 0.56))
+			+ _weather_profile_value(
+				_puddle_size_profile,
+				"deep_threshold_offset",
+				0.0))
 	material.set_shader_parameter(
 		"rain_puddle_edge_softness",
 		float(weather_config.get("rain_puddle_edge_softness", 0.04)))
@@ -3140,22 +3891,33 @@ func _set_rain_material_parameters(material: ShaderMaterial) -> void:
 		float(weather_config.get("rain_puddle_depth_softness", 0.025)))
 	material.set_shader_parameter(
 		"rain_puddle_scale_px",
-		float(weather_config.get("rain_puddle_scale_px", 1680.0)))
+		float(weather_config.get("rain_puddle_scale_px", 1680.0))
+			* _weather_profile_value(
+				_puddle_size_profile,
+				"scale_factor"))
 	material.set_shader_parameter(
 		"rain_puddle_y_compression",
-		float(weather_config.get("rain_puddle_y_compression", 1.38)))
+		float(weather_config.get("rain_puddle_y_compression", 1.951633)))
 	material.set_shader_parameter(
 		"rain_puddle_offset_px",
 		_rain_puddle_layout_offset)
 	material.set_shader_parameter(
 		"rain_ripple_strength",
-		float(weather_config.get("rain_ripple_strength", 0.72)))
+		float(weather_config.get("rain_ripple_strength", 0.72))
+			* _weather_profile_value(
+				_puddle_size_profile,
+				"ripple_scale")
+			* _rain_visual_strength)
 	material.set_shader_parameter(
 		"rain_reflection_strength",
-		float(weather_config.get("rain_reflection_strength", 0.78)))
+		float(weather_config.get("rain_reflection_strength", 0.78))
+			* _weather_profile_value(
+				_puddle_size_profile,
+				"reflection_scale"))
 	material.set_shader_parameter(
 		"rain_ripple_uv_strength",
-		float(weather_config.get("rain_ripple_uv_strength", 0.018)))
+		float(weather_config.get("rain_ripple_uv_strength", 0.018))
+			* _rain_visual_strength)
 
 
 func _shadow_state_key(

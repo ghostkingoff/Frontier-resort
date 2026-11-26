@@ -3,6 +3,7 @@
   "rain_chance": 0.24,
   "fog_chance": 0.18,
   "cloud_chance": 0.24,
+  "snow_chance": 0.10,
   "rain_opacity": 0.30,
   "rain_density": 0.33,
   "rain_slant": 0.09,
@@ -21,13 +22,173 @@
   "rain_puddle_edge_softness": 0.04,
   "rain_puddle_depth_softness": 0.025,
   "rain_puddle_scale_px": 1680.0,
-  "rain_puddle_y_compression": 1.38,
+  "rain_puddle_y_compression": 1.951633,
+  "rain_puddle_delay_hours": 0.75,
+  "rain_puddle_formation_hours": 1.25,
+  "rain_puddle_linger_hours": 3.0,
+  "rain_puddle_dry_hours": 1.5,
   "rain_ripple_strength": 0.76,
   "rain_particle_amount": 120,
   "rain_ripple_particle_amount": 72,
   "rain_reflection_scale": 0.5,
   "rain_reflection_strength": 0.85,
   "rain_ripple_uv_strength": 0.018,
+  "snow_particle_amount": 420,
+  "snow_particle_lifetime": 8.0,
+  "snow_fall_speed": 68.0,
+  "snow_wind_px_per_second": 18.0,
+  "snow_color": "#e3f1f7",
+  "snow_night_color": "#9fb9cb",
+  "snow_sky_color": "#9fb5c5",
+  "snow_sun_color": "#e8edf0",
+  "snow_ground_growth_speed": 0.22,
+  "snow_ground_melt_speed": 0.055,
+  "snow_cover_threshold": 0.5,
+  "snow_cover_softness": 0.006,
+  "snow_cover_scale_px": 1800.0,
+  "snow_cover_pixel_size_px": 4.0,
+  "snow_cover_y_compression": 1.414214,
+  "snow_cover_color": "#dbe9f1",
+  "snow_object_coverage_scale": 1.0,
+  "size_visual_profiles": {
+    "rain": {
+      "small": {
+        "particle_amount_scale": 0.45,
+        "particle_scale": 0.82,
+        "particle_speed_scale": 0.86,
+        "overlay_density_scale": 0.72,
+        "overlay_opacity_scale": 0.70,
+        "slant_scale": 0.86
+      },
+      "medium": {
+        "particle_amount_scale": 1.0,
+        "particle_scale": 1.0,
+        "particle_speed_scale": 1.0,
+        "overlay_density_scale": 1.0,
+        "overlay_opacity_scale": 1.0,
+        "slant_scale": 1.0
+      },
+      "large": {
+        "particle_amount_scale": 1.5,
+        "particle_scale": 1.14,
+        "particle_speed_scale": 1.14,
+        "overlay_density_scale": 1.35,
+        "overlay_opacity_scale": 1.28,
+        "slant_scale": 1.18
+      }
+    },
+    "puddle": {
+      "small": {
+        "threshold_offset": 0.03,
+        "deep_threshold_offset": 0.02,
+        "scale_factor": 0.82,
+        "intensity_scale": 0.72,
+        "delay_scale": 1.35,
+        "formation_scale": 1.25,
+        "linger_scale": 0.72,
+        "dry_scale": 0.8,
+        "reflection_scale": 0.82,
+        "ripple_scale": 0.72
+      },
+      "medium": {
+        "threshold_offset": 0.0,
+        "deep_threshold_offset": 0.0,
+        "scale_factor": 1.0,
+        "intensity_scale": 1.0,
+        "delay_scale": 1.0,
+        "formation_scale": 1.0,
+        "linger_scale": 1.0,
+        "dry_scale": 1.0,
+        "reflection_scale": 1.0,
+        "ripple_scale": 1.0
+      },
+      "large": {
+        "threshold_offset": -0.025,
+        "deep_threshold_offset": -0.015,
+        "scale_factor": 1.16,
+        "intensity_scale": 1.15,
+        "delay_scale": 0.68,
+        "formation_scale": 0.8,
+        "linger_scale": 1.35,
+        "dry_scale": 1.3,
+        "reflection_scale": 1.12,
+        "ripple_scale": 1.18
+      }
+    },
+    "snow": {
+      "small": {
+        "visual_intensity_scale": 0.65,
+        "particle_amount_scale": 0.5,
+        "particle_scale": 0.8,
+        "fall_speed_scale": 0.85,
+        "ground_growth_scale": 0.5,
+        "ground_melt_scale": 1.4,
+        "surface_coverage_scale": 0.62,
+        "cover_scale_factor": 0.8,
+        "threshold_offset": 0.055
+      },
+      "medium": {
+        "visual_intensity_scale": 0.75,
+        "particle_amount_scale": 1.0,
+        "particle_scale": 1.0,
+        "fall_speed_scale": 1.0,
+        "ground_growth_scale": 0.8,
+        "ground_melt_scale": 1.0,
+        "surface_coverage_scale": 0.82,
+        "cover_scale_factor": 0.95,
+        "threshold_offset": 0.025
+      },
+      "large": {
+        "visual_intensity_scale": 1.0,
+        "particle_amount_scale": 1.6,
+        "particle_scale": 1.15,
+        "fall_speed_scale": 1.12,
+        "ground_growth_scale": 2.0,
+        "ground_melt_scale": 0.55,
+        "surface_coverage_scale": 1.0,
+        "cover_scale_factor": 1.3,
+        "threshold_offset": -0.22
+      }
+    },
+    "fog": {
+      "small": {
+        "density_scale": 0.72,
+        "max_alpha_scale": 0.82,
+        "noise_scale_factor": 0.78,
+        "depth_scale_factor": 0.84,
+        "motion_speed_factor": 1.18,
+        "drift_speed_factor": 1.15,
+        "turbulence_scale": 0.78,
+        "pulse_scale": 0.72,
+        "evaporation_scale": 1.18,
+        "light_response_scale": 0.9
+      },
+      "medium": {
+        "density_scale": 1.0,
+        "max_alpha_scale": 1.0,
+        "noise_scale_factor": 1.0,
+        "depth_scale_factor": 1.0,
+        "motion_speed_factor": 1.0,
+        "drift_speed_factor": 1.0,
+        "turbulence_scale": 1.0,
+        "pulse_scale": 1.0,
+        "evaporation_scale": 1.0,
+        "light_response_scale": 1.0
+      },
+      "large": {
+        "density_scale": 1.0,
+        "max_alpha_scale": 1.25,
+        "noise_scale_factor": 1.35,
+        "depth_scale_factor": 1.2,
+        "motion_speed_factor": 0.82,
+        "drift_speed_factor": 0.82,
+        "turbulence_scale": 1.28,
+        "pulse_scale": 1.2,
+        "evaporation_scale": 0.84,
+        "light_response_scale": 1.08
+      }
+    }
+  },
   "fog_color": "#aab9b8",
   "fog_max_alpha": 0.34,
   "fog_noise_scale_px": 620.0,
@@ -52,6 +213,7 @@
   },
   "cloud_shadow": {
     "noise_scale_px": 1200.0,
+    "y_compression": 1.414214,
     "softness": 0.14,
     "direct_strength": 0.82,
     "ambient_strength": 0.42,

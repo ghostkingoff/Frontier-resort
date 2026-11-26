@@ -3,13 +3,15 @@ uniform sampler2D water_reflection_texture : filter_linear, repeat_disable;
 uniform sampler2D water_ripple_texture : filter_linear, repeat_disable;
 uniform vec2 water_ripple_texel_size = vec2(0.001953125, 0.003472222);
 uniform float rain_intensity : hint_range(0.0, 1.0) = 0.0;
+uniform float rain_puddle_intensity : hint_range(0.0, 1.0) = 0.0;
+uniform float rain_splash_intensity : hint_range(0.0, 1.0) = 0.0;
 uniform float rain_time_seconds = 0.0;
 uniform float rain_puddle_threshold : hint_range(0.0, 1.0) = 0.48;
 uniform float rain_puddle_deep_threshold : hint_range(0.0, 1.0) = 0.56;
 uniform float rain_puddle_edge_softness : hint_range(0.001, 0.15) = 0.04;
 uniform float rain_puddle_depth_softness : hint_range(0.001, 0.12) = 0.025;
 uniform float rain_puddle_scale_px = 1680.0;
-uniform float rain_puddle_y_compression : hint_range(1.0, 2.0) = 1.38;
+uniform float rain_puddle_y_compression : hint_range(1.0, 2.5) = 1.951633;
 uniform vec2 rain_puddle_offset_px = vec2(0.0);
 uniform float rain_ripple_strength : hint_range(0.0, 1.0) = 0.90;
 uniform float rain_reflection_strength : hint_range(0.0, 1.0) = 0.78;
@@ -28,13 +30,13 @@ vec2 rain_rotate_uv(vec2 value, float angle) {
 }
 
 vec3 rain_puddle_masks(vec2 world_position) {
-	if (rain_intensity <= 0.001) {
+	if (rain_puddle_intensity <= 0.001) {
 		return vec3(0.0);
 	}
 	vec2 shifted_world = world_position + rain_puddle_offset_px;
-	vec2 compressed_world = vec2(
-		shifted_world.x,
-		shifted_world.y * rain_puddle_y_compression);
+	vec2 compressed_world = project_ground_position(
+		shifted_world,
+		rain_puddle_y_compression);
 	vec2 base_uv = compressed_world / max(rain_puddle_scale_px, 1.0);
 	vec2 warp = texture(
 		rain_noise_texture,
@@ -78,7 +80,7 @@ vec3 rain_puddle_masks(vec2 world_position) {
 	return vec3(
 		outer_mask,
 		inner_mask,
-		reflection_value) * rain_intensity;
+		reflection_value) * rain_puddle_intensity;
 }
 
 float rain_ripple_sample(vec2 screen_uv) {
@@ -86,7 +88,7 @@ float rain_ripple_sample(vec2 screen_uv) {
 }
 
 float rain_splash_mask(vec2 world_position) {
-	if (rain_intensity <= 0.001) {
+	if (rain_splash_intensity <= 0.001) {
 		return 0.0;
 	}
 	vec2 cell_size = vec2(34.0, 25.0);
@@ -110,5 +112,6 @@ float rain_splash_mask(vec2 world_position) {
 	float side = (1.0 - smoothstep(0.010, 0.025, side_x))
 		* (1.0 - smoothstep(0.008, 0.025, side_y));
 	float splash = max(vertical, side) * active * fade;
-	return splash * mix(0.28, 1.0, random_value) * rain_intensity;
+	return splash * mix(0.28, 1.0, random_value)
+		* rain_splash_intensity;
 }

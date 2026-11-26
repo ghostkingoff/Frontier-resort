@@ -1,6 +1,9 @@
 shader_type canvas_item;
 render_mode unshaded;
 
+#include "res://shaders/lighting_v2/ground_projection.gdshaderinc"
+#include "res://shaders/lighting_v2/snow_cover.gdshaderinc"
+
 uniform sampler2D normal_texture : filter_linear, repeat_disable;
 uniform sampler2D specular_texture : filter_linear, repeat_disable;
 uniform sampler2D occlusion_texture : filter_linear, repeat_disable;
@@ -22,6 +25,7 @@ uniform float cloud_shadow_ambient_strength : hint_range(0.0, 1.0) = 0.0;
 uniform float cloud_shadow_coverage : hint_range(0.0, 1.0) = 0.0;
 uniform float cloud_shadow_softness : hint_range(0.001, 0.5) = 0.14;
 uniform float cloud_shadow_world_scale = 900.0;
+uniform float cloud_shadow_y_compression : hint_range(1.0, 2.5) = 1.414214;
 uniform vec2 cloud_shadow_offset_px = vec2(0.0);
 uniform float cloud_hole_size = 1.4;
 uniform float cloud_hole_amount : hint_range(0.0, 1.0) = 0.55;
@@ -124,6 +128,16 @@ void fragment() {
 		encoded_normal.x,
 		-encoded_normal.y,
 		max(encoded_normal.z, 0.08)));
+	vec2 snow_sample_position = mix(
+		v_world_position,
+		v_map_uv * snow_surface_uv_size_px,
+		snow_surface_local_uv_mix);
+	base.rgb = apply_snow_cover(
+		base.rgb,
+		snow_sample_position,
+		normal.y,
+		snow_surface_scale,
+		snow_surface_top_gate_strength);
 
 	float ao = use_nearest_surface
 		? texture(occlusion_texture_nearest, map_uv).r
@@ -343,7 +357,9 @@ void fragment() {
 	float extreme_opening = 0.0;
 	if (cloud_shadow_direct_strength > 0.001
 			|| cloud_shadow_ambient_strength > 0.001) {
-		vec2 cloud_uv = (v_world_position + cloud_shadow_offset_px)
+		vec2 cloud_uv = project_ground_position(
+			v_world_position + cloud_shadow_offset_px,
+			cloud_shadow_y_compression)
 			/ max(cloud_shadow_world_scale, 64.0);
 		float cloud_broad = texture(
 			cloud_shadow_noise_texture,
